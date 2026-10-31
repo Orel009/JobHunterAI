@@ -5,6 +5,7 @@
  *   1. answers-bank matching (analyze): {entryId, confidence} vs expected
  *   2. free-text drafts (write): Hebrew, male first person, profile facts only
  *   3. job scoring (analyze): structured JSON validity + latency
+ *   4. draft hallucinations: Phase 1 free-text prompt vs Phase 2 pipeline (WRITE model)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,6 +14,7 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { chatJson, listLocalModels, ollamaChat } from '../llm/ollama.js';
 import { buildScoreMessages, ScoreSchema } from '../llm/score.js';
+import { runDraftComparison } from './bench-drafts.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const benchDir = path.join(here, '..', '..', 'bench');
@@ -152,6 +154,11 @@ jobs.forEach((j, i) => {
   for (const m of live) lines.push(`**${m}** (${results[m]!.score[i]!.ms} ms): ${esc(results[m]!.score[i]!.out)}`, '');
   lines.push('</div>', '');
 });
+
+console.log('draft comparison…');
+const drafts = await runDraftComparison();
+lines.push('', drafts.markdown);
+console.log(`unsupported claims: before=${drafts.before} after=${drafts.after}`);
 
 const out = path.join(config.paths.reports, `model-bench-${new Date().toISOString().replace(/[:.]/g, '-')}.md`);
 fs.writeFileSync(out, lines.join('\n'));

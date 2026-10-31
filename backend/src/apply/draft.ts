@@ -78,23 +78,29 @@ export function makeDrafter(profile: Profile | null, opts: { cache?: LlmCache; n
     const rejected = checkDraftCitations(data, new Set(all.map((f) => f.id)));
     if (rejected) return { text: null, usedFactIds: data.usedFactIds, unanswerable: data.unanswerable, flaggedClaims: [], rejectedReason: rejected };
     const cited = all.filter((f) => data.usedFactIds.includes(f.id));
-    const { data: v } = await chatJson({
-      model: config.OLLAMA_MODEL_ANALYZE,
-      schema: VerifySchema,
-      cache: opts.cache,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a strict fact checker. List every factual claim in TEXT that is not directly supported by FACTS ' +
-            '(years, availability, willingness, skills, employers, achievements, traits). Ignore generic politeness. ' +
-            'Quote each unsupported claim briefly in the language of TEXT. Empty list if everything is supported.',
-        },
-        { role: 'user', content: `FACTS:\n${cited.map((f) => `[${f.id}] ${f.text}`).join('\n')}\n\nTEXT:\n${data.text}` },
-      ],
-    });
-    return { text: data.text.trim(), usedFactIds: data.usedFactIds, unanswerable: false, flaggedClaims: v.unsupportedClaims };
+    const flaggedClaims = await judgeClaims(data.text, cited, { cache: opts.cache });
+    return { text: data.text.trim(), usedFactIds: data.usedFactIds, unanswerable: false, flaggedClaims };
   };
+}
+
+/** Verification pass: claims in `text` not supported by `facts` (ANALYZE model). */
+export async function judgeClaims(text: string, facts: Fact[], opts: { cache?: LlmCache; model?: string } = {}): Promise<string[]> {
+  const { data } = await chatJson({
+    model: opts.model ?? config.OLLAMA_MODEL_ANALYZE,
+    schema: VerifySchema,
+    cache: opts.cache,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are a strict fact checker. List every factual claim in TEXT that is not directly supported by FACTS ' +
+          '(years, availability, willingness, skills, employers, achievements, traits). Ignore generic politeness. ' +
+          'Quote each unsupported claim briefly in the language of TEXT. Empty list if everything is supported.',
+      },
+      { role: 'user', content: `FACTS:\n${facts.map((f) => `[${f.id}] ${f.text}`).join('\n')}\n\nTEXT:\n${text}` },
+    ],
+  });
+  return data.unsupportedClaims;
 }
 
 export function makeBankMatcher(opts: { cache?: LlmCache } = {}) {

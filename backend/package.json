@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "investigate:apply": "tsx src/cli/investigate-apply.ts",
     "session:check": "tsx src/cli/session-check.ts",
-    "profile:init": "tsx src/cli/profile-init.ts"
+    "profile:init": "tsx src/cli/profile-init.ts",
+    "bench:drafts": "tsx src/cli/bench-drafts.ts"
   },
   "dependencies": {
     "dotenv": "^18.0.9",
