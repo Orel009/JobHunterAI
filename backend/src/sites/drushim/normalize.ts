@@ -93,6 +93,7 @@ export interface DrushimApiJob {
     Requirements?: string;
     Addresses?: Array<{ City?: string }>;
     Regions?: Array<{ NameInHebrew?: string }>;
+    Experience?: { NameInHebrew?: string } | null;
   };
   JobInfo: { Link: string; JobCode?: number; Hash?: string; Date?: string; HasFilter?: boolean; AllowNoCV?: boolean; IsExpired?: boolean; Lang?: number };
 }
@@ -117,7 +118,7 @@ export function fromApiJob(j: DrushimApiJob): RawJob {
     applyTarget: external || j.SendCVButtonModel?.ButtonLink || sendCvUrl(j.Code),
     language: j.JobInfo.Lang === 2 ? 'en' : detectLanguage(`${title} ${descriptionText}`),
     detailsFetched: true, // the API returns full description + requirements + HasFilter
-    raw: { shape: 'api-search', code: j.Code, hash: j.JobInfo.Hash, hasFilter: j.JobInfo.HasFilter, allowNoCv: j.JobInfo.AllowNoCV, externalLink: external },
+    raw: { shape: 'api-search', code: j.Code, hash: j.JobInfo.Hash, hasFilter: j.JobInfo.HasFilter, allowNoCv: j.JobInfo.AllowNoCV, externalLink: external, experience: j.JobContent.Experience?.NameInHebrew ?? null },
   };
 }
 

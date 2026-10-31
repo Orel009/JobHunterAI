@@ -110,3 +110,12 @@ tr.pending-row { background: #fff8e1; }
 .inline-edit { display: inline-flex; gap: 4px; }
 .inline-edit input { min-width: 260px; }
 .status-dry_run_ok { background: #d6f2dc; }
+
+/* ---------- ranking ---------- */
+.rank { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.rank-parts { font-size: 10px; color: #6b7385; white-space: nowrap; }
+.rank-parts i { font-style: normal; color: #9aa1b0; }
+.exp-row { margin-bottom: 8px; }
+.exp-row q { font-size: 12px; }
+.status-skipped_experience, .status-skipped_screening { background: #f1f1f1; color: #888; }
+.prov-declared_experience { background: #fce4ec; }

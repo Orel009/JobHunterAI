@@ -1,5 +1,5 @@
 import type { Job } from '../sites/types.js';
-import type { Prefs } from './prefs.js';
+import { activeRoleTypes, type Prefs, type RoleType } from './prefs.js';
 import { containsKeyword, normalizeCompany, normalizeText } from './text.js';
 import { skillKey } from '../profile/facts.js';
 
@@ -9,7 +9,7 @@ export interface PrefilterResult {
 }
 
 type PrefilterInput = Pick<Job, 'title' | 'company' | 'location'>;
-type PrefilterPrefs = Pick<Prefs, 'locations' | 'filters'>;
+type PrefilterPrefs = Pick<Prefs, 'locations' | 'filters'> & Partial<Pick<Prefs, 'roleTypes' | 'queries'>>;
 
 /**
  * Expands keywords with every spelling of the same skill (profile aliases): "JavaScript" also matches
@@ -32,7 +32,10 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
   const groups = opts.aliasGroups ?? [];
   const f = {
     ...prefs.filters,
-    includeTitleKeywords: expandWithAliases(prefs.filters.includeTitleKeywords, groups),
+    includeTitleKeywords: expandWithAliases(
+      [...prefs.filters.includeTitleKeywords, ...activeRoleTypes({ roleTypes: prefs.roleTypes ?? [], queries: prefs.queries ?? { titles: [], keywords: [] } }).flatMap((r) => r.titleKeywords)],
+      groups,
+    ),
     excludeTitleKeywords: expandWithAliases(prefs.filters.excludeTitleKeywords, groups),
   };
 
@@ -54,10 +57,29 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
     const ok =
       prefs.locations.some((l) => {
         const n = normalizeText(l);
-        return n && (loc.includes(n) || n.includes(loc));
+        return !!n && (containsKeyword(loc, l) || containsKeyword(n, job.location));
       }) || f.remoteKeywords.some((k) => containsKeyword(loc, k));
     if (!ok) return { pass: false, reason: `location: ${job.location}` };
   }
 
   return { pass: true, reason: 'ok' };
+}
+
+/** Enabled role types whose titleKeywords match the title (whole words). */
+export function rolesMatchingTitle(title: string, roles: RoleType[]): RoleType[] {
+  const t = normalizeText(title);
+  return roles.filter((r) => r.enabled && r.titleKeywords.some((k) => containsKeyword(t, k)));
+}
+
+/**
+ * The role type a job is judged and ranked as (best tier wins at each step):
+ *   1. role types that found it AND whose title keywords match the title
+ *   2. else role types whose title keywords match
+ *   3. else role types whose queries found it
+ */
+export function primaryRole(job: { title: string; roleTypes: string[] }, prefs: Pick<Prefs, 'roleTypes' | 'queries'>): RoleType | null {
+  const roles = activeRoleTypes(prefs);
+  const byTier = (rs: RoleType[]) => [...rs].sort((a, b) => a.tier - b.tier)[0] ?? null;
+  const titled = rolesMatchingTitle(job.title, roles);
+  return byTier(titled.filter((r) => job.roleTypes.includes(r.id))) ?? byTier(titled) ?? byTier(roles.filter((r) => job.roleTypes.includes(r.id)));
 }

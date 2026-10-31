@@ -73,7 +73,7 @@ export function App() {
         </div>
       )}
       {status && <Controls status={status} onChange={refresh} />}
-      {tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
+      {tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} roleTypes={status?.roleTypes ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
       {tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} onChanged={refresh} />}
       {tab === 'answers' && <AnswersBank onChanged={refresh} />}
       <LogPanel />

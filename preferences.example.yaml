@@ -1,12 +1,79 @@
 # Copy to preferences.yaml (gitignored) and edit. Hebrew and English both work everywhere.
 
-queries:
-  # Each entry is searched as its own term on every site.
-  titles:
-    - Full Stack
-    - מפתח Full Stack
-    - Backend Developer
-  keywords: []
+# Role types to search for. tier: 1 = core, 2 = good, 3 = fallback (affects ranking).
+# queries: searched on every site (Hebrew + English). titleKeywords: a job title must contain one of these
+# (whole words, case-insensitive) to count as this role type. Set enabled: false to pause a role type.
+roleTypes:
+  # ---------- tier 1 ----------
+  - id: fullstack
+    label: Full Stack Developer
+    tier: 1
+    queries: [Full Stack Developer, Full Stack, מפתח פולסטאק, מפתח Full Stack]
+    titleKeywords: [full stack, fullstack, full-stack, פולסטאק, פול סטאק]
+  - id: backend
+    label: Backend Developer (.NET / Node.js)
+    tier: 1
+    queries: [Backend Developer, .NET Developer, Node.js Developer, מפתח צד שרת]
+    titleKeywords: [backend, back end, back-end, server side, .NET, C#, Node.js, NodeJS, צד שרת]
+  - id: frontend
+    label: Frontend Developer (React / Angular)
+    tier: 1
+    queries: [Frontend Developer, React Developer, Angular Developer, מפתח צד לקוח]
+    titleKeywords: [frontend, front end, front-end, React, Angular, client side, צד לקוח]
+  - id: software
+    label: Software Developer / Software Engineer
+    tier: 1
+    queries: [Software Developer, Software Engineer, מפתח תוכנה, מהנדס תוכנה, מתכנת]
+    titleKeywords: [software developer, software engineer, developer, programmer, מפתח, מפתחת, מתכנת, מתכנתת, מהנדס תוכנה, מהנדסת תוכנה]
+  - id: junior
+    label: Junior Developer
+    tier: 1
+    queries: [Junior Developer, מפתח ג'וניור, ג'וניור]
+    titleKeywords: [junior, jr, ג'וניור, entry level, בוגרי קורס, ללא ניסיון]
+  # ---------- tier 2 ----------
+  - id: integration
+    label: Integration / API Developer
+    tier: 2
+    queries: [Integration Developer, API Developer, מפתח אינטגרציות]
+    titleKeywords: [integration, integrations, API, אינטגרציה, אינטגרציות]
+  - id: automation
+    label: Automation Developer (incl. QA Automation with TypeScript/Playwright)
+    tier: 2
+    queries: [Automation Developer, QA Automation, Playwright, מפתח אוטומציה, QA אוטומציה]
+    titleKeywords: [automation, אוטומציה, Playwright, SDET, QA automation]
+  - id: ai
+    label: AI / LLM Developer
+    tier: 2
+    queries: [AI Developer, LLM Developer, מפתח AI]
+    titleKeywords: [AI, LLM, GenAI, Generative AI, בינה מלאכותית]
+  # ---------- tier 3 ----------
+  - id: implementation
+    label: Implementation Engineer / מיישם מערכות
+    tier: 3
+    queries: [Implementation Engineer, מיישם מערכות]
+    titleKeywords: [implementation, implementer, מיישם, מיישמת, יישום]
+  - id: support
+    label: Technical Support Engineer / Application Support
+    tier: 3
+    notes: development-oriented support only (code, SQL, APIs, debugging); score call-center / customer-service roles low
+    queries: [Application Support, Technical Support Engineer, תמיכה טכנית]
+    titleKeywords: [application support, technical support, support engineer, תמיכה טכנית, תמיכה אפליקטיבית]
+
+# Jobs that REQUIRE more years than this are skipped (status skipped_experience).
+maxRequiredYears: 3
+
+# rank = score + experienceBoost + tierBoost
+ranking:
+  experienceBoost:
+    junior: 15     # junior / entry-level / ללא ניסיון / בוגרי קורס / סטודנטים / 0-1 years
+    years2: 5
+    years3: -10
+    above3: -20    # only reachable if maxRequiredYears > 3
+    unknown: 0
+  tierBoost:
+    tier1: 5
+    tier2: 0
+    tier3: -10
 
 # Accepted job locations. A job passes if its location contains one of these
 # (or matches remoteKeywords). Jobs with no location pass. Empty list = any location.
@@ -19,15 +86,16 @@ locations:
   - בני ברק
 
 filters:
-  # Title must contain at least one of these (empty = no requirement).
-  includeTitleKeywords: [full stack, fullstack, full-stack, backend, back end, frontend, developer, engineer, מפתח, מתכנת, פיתוח]
-  excludeTitleKeywords: [QA, בודק, מכירות, תמיכה, support, embedded, הנדסאי]
-  # Seniority words to drop before any LLM call.
-  excludeSeniorityKeywords: [בכיר, ראש צוות, ראש תחום, מנהל, senior, sr, team lead, tech lead, lead, principal, architect, director, head of, vp]
+  # Extra title keywords (in addition to every enabled role type's titleKeywords).
+  includeTitleKeywords: []
+  # Whole words, case-insensitive ("Java" does not exclude "JavaScript").
+  excludeTitleKeywords: [בודק ידני, manual QA, manual tester, מכירות, sales, embedded, מוקד, call center]
+  # Seniority words in the title → skipped before any LLM call (whole words; list inflections, e.g. בכיר + בכירה).
+  excludeSeniorityKeywords: [Senior, Sr, Lead, Team Lead, Tech Lead, Principal, Staff, Architect, Head of, Manager, Director, בכיר, בכירה, ראש צוות, ארכיטקט, מנהל פיתוח]
   excludeCompanies: []
   remoteKeywords: [מהבית, remote, היברידי, hybrid, כל הארץ]
 
-# Used by the scorer until data/profile/profile.json exists (Phase 2, `npm run profile:init`).
+# Used by the scorer only until data/profile/profile.json exists.
 # TRUE FACTS ONLY: skills, years, education, the kind of role you want.
 candidateSummary: |
   (fill in) e.g. Full Stack developer, X years experience. Skills: ... Education: ... Looking for: ...

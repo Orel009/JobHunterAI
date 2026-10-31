@@ -31,6 +31,11 @@ interface JobRow {
   first_seen_at: string;
   last_seen_at: string;
   updated_at: string;
+  role_types: string;
+  required_years: number | null;
+  required_years_source: string | null;
+  required_years_text: string | null;
+  junior_text: string | null;
 }
 
 export interface StoredJob extends Job {
@@ -42,9 +47,19 @@ export interface StoredJob extends Job {
   firstSeenAt: string;
   lastSeenAt: string;
   updatedAt: string;
+  /** role type ids whose queries found this job */
+  roleTypes: string[];
+  requiredYears: number | null;
+  requiredYearsSource: 'regex' | 'llm' | null;
+  requiredYearsText: string | null;
+  juniorText: string | null;
 }
 
 export interface ScoreRecord {
+  requiredYearsMin?: number | null;
+  requiredYearsQuote?: string | null;
+  seniority?: string | null;
+  roleType?: string | null;
   score: number;
   matchedSkills: string[];
   missingRequirements: string[];
@@ -82,6 +97,11 @@ const fromRow = (r: JobRow): StoredJob => ({
   firstSeenAt: r.first_seen_at,
   lastSeenAt: r.last_seen_at,
   updatedAt: r.updated_at,
+  roleTypes: JSON.parse(r.role_types ?? '[]') as string[],
+  requiredYears: r.required_years ?? null,
+  requiredYearsSource: (r.required_years_source as 'regex' | 'llm' | null) ?? null,
+  requiredYearsText: r.required_years_text ?? null,
+  juniorText: r.junior_text ?? null,
 });
 
 export type UpsertOutcome = 'inserted' | 'updated' | 'unchanged';
@@ -199,28 +219,34 @@ export class Repo {
     tx(this.db, () => {
       this.db
         .prepare(
-          `INSERT INTO scores (job_id, content_hash, model, score, matched_skills, missing_requirements, seniority_fit, reasoning_he, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?)
+          `INSERT INTO scores (job_id, content_hash, model, score, matched_skills, missing_requirements, seniority_fit, reasoning_he, created_at,
+             required_years_min, required_years_quote, seniority, role_type)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(job_id) DO UPDATE SET content_hash=excluded.content_hash, model=excluded.model, score=excluded.score,
              matched_skills=excluded.matched_skills, missing_requirements=excluded.missing_requirements,
-             seniority_fit=excluded.seniority_fit, reasoning_he=excluded.reasoning_he, created_at=excluded.created_at`,
+             seniority_fit=excluded.seniority_fit, reasoning_he=excluded.reasoning_he, created_at=excluded.created_at,
+             required_years_min=excluded.required_years_min, required_years_quote=excluded.required_years_quote,
+             seniority=excluded.seniority, role_type=excluded.role_type`,
         )
-        .run(jobId, s.contentHash, s.model, s.score, JSON.stringify(s.matchedSkills), JSON.stringify(s.missingRequirements), s.seniorityFit, s.reasoningHe, now);
+        .run(jobId, s.contentHash, s.model, s.score, JSON.stringify(s.matchedSkills), JSON.stringify(s.missingRequirements), s.seniorityFit, s.reasoningHe, now,
+          s.requiredYearsMin ?? null, s.requiredYearsQuote ?? null, s.seniority ?? null, s.roleType ?? null);
       this.db.prepare(`UPDATE jobs SET status='scored', status_reason=NULL, updated_at=? WHERE id=? AND status='discovered'`).run(now, jobId);
     });
   }
 
-  listJobs(f: { site?: string; status?: string; minScore?: number; q?: string; limit?: number; offset?: number }) {
+  listJobs(f: { site?: string; status?: string; minScore?: number; q?: string; roleType?: string; limit?: number; offset?: number }) {
     const where: string[] = [];
     const args: Array<string | number> = [];
     if (f.site) (where.push('j.site = ?'), args.push(f.site));
     if (f.status) (where.push('j.status = ?'), args.push(f.status));
     if (f.minScore !== undefined) (where.push('s.score >= ?'), args.push(f.minScore));
     if (f.q) (where.push('(j.title LIKE ? OR j.company LIKE ?)'), args.push(`%${f.q}%`, `%${f.q}%`));
+    if (f.roleType) (where.push('j.role_types LIKE ?'), args.push(`%"${f.roleType}"%`));
     const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const rows = this.db
       .prepare(
-        `SELECT j.*, s.score, s.matched_skills, s.missing_requirements, s.seniority_fit, s.reasoning_he, s.model AS score_model
+        `SELECT j.*, s.score, s.matched_skills, s.missing_requirements, s.seniority_fit, s.reasoning_he, s.model AS score_model,
+                s.required_years_min, s.required_years_quote, s.seniority, s.role_type
          FROM jobs j LEFT JOIN scores s ON s.job_id = j.id ${w}
          ORDER BY (s.score IS NULL), s.score DESC, j.first_seen_at DESC LIMIT ? OFFSET ?`,
       )
@@ -241,6 +267,10 @@ export class Repo {
                 seniorityFit: r.seniority_fit as string,
                 reasoningHe: r.reasoning_he as string,
                 model: r.score_model as string,
+                requiredYearsMin: (r.required_years_min as number | null) ?? null,
+                requiredYearsQuote: (r.required_years_quote as string | null) ?? null,
+                seniority: (r.seniority as string | null) ?? null,
+                roleType: (r.role_type as string | null) ?? null,
               },
       })),
     };
@@ -256,7 +286,25 @@ export class Repo {
       seniorityFit: r.seniority_fit as string,
       reasoningHe: r.reasoning_he as string,
       model: r.model as string,
+      requiredYearsMin: (r.required_years_min as number | null) ?? null,
+      requiredYearsQuote: (r.required_years_quote as string | null) ?? null,
+      seniority: (r.seniority as string | null) ?? null,
+      roleType: (r.role_type as string | null) ?? null,
     };
+  }
+
+  /** Records which role types found a job (union with existing tags). */
+  addRoleTypes(id: string, roleIds: string[]): void {
+    const cur = this.getJob(id);
+    if (!cur) return;
+    const next = [...new Set([...cur.roleTypes, ...roleIds])];
+    if (next.length !== cur.roleTypes.length) this.db.prepare('UPDATE jobs SET role_types = ? WHERE id = ?').run(JSON.stringify(next), id);
+  }
+
+  setExperience(id: string, e: { years: number | null; source: 'regex' | 'llm' | null; text: string | null; juniorText: string | null }): void {
+    this.db
+      .prepare('UPDATE jobs SET required_years = ?, required_years_source = ?, required_years_text = ?, junior_text = ? WHERE id = ?')
+      .run(e.years, e.source, e.text, e.juniorText, id);
   }
 
   statusCounts(): Record<string, number> {

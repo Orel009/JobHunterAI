@@ -36,8 +36,10 @@ describe('containsKeyword', () => {
     expect(containsKeyword(normalizeText('QA Engineer'), 'qa')).toBe(true);
     expect(containsKeyword(normalizeText('Aqua systems'), 'qa')).toBe(false);
   });
-  it('matches Hebrew substrings incl. inflections', () => {
-    expect(containsKeyword(normalizeText('מפתחת בכירה'), 'בכיר')).toBe(true);
+  it('whole words only (inflections must be listed), Hebrew prefix letters tolerated', () => {
+    expect(containsKeyword(normalizeText('מפתחת בכירה'), 'בכיר')).toBe(false);
+    expect(containsKeyword(normalizeText('מפתחת בכירה'), 'בכירה')).toBe(true);
+    expect(containsKeyword(normalizeText('דרוש/ה לראש צוות'), 'ראש צוות')).toBe(true);
   });
 });
 

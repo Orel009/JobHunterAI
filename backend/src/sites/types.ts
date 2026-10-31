@@ -14,6 +14,10 @@ export const JOB_STATUSES = [
   'failed',
   'blocked',
   'skipped',
+  /** required experience above preferences.maxRequiredYears */
+  'skipped_experience',
+  /** a required screening statement is false for the candidate */
+  'skipped_screening',
 ] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 

@@ -12,7 +12,9 @@ _Screenshot: coming soon._
 ## Features
 
 - **Discovery** on Drushim. It reads the site's own data rather than scraping the page, with human pacing and per-run limits. AllJobs and JobMaster come next.
-- **Deterministic prefilter** (titles, seniority, locations, companies), then **LLM scoring** with Hebrew reasoning (Ollama, `gemma4:12b`).
+- **Role types with tiers** (Full Stack, Backend, Junior, Automation, …), searched in Hebrew and English.
+- **Deterministic prefilter** (whole-word title keywords, seniority, locations) and an **experience cap** read from the requirements text, then **LLM scoring** for the job's role type with Hebrew reasoning (Ollama, `gemma4:12b`).
+- **Ranking that prefers junior roles**: `rank = score + experience boost + tier boost`. Jobs, the review queue and preparation all follow it.
 - **Profile from your CVs** (`profile:init`), built from a Hebrew and an English PDF. Every fact is checked against the CV text, and contradictions are listed for you to resolve.
 - **Answers bank**: you answer each question once, and it is reused for every later job.
 - **Field resolution** in this order: profile, then the answers bank, then skill years, then a fact-cited draft. The LLM never answers yes/no, salary, availability, legal and similar questions.

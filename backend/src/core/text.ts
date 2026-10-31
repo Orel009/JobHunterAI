@@ -69,10 +69,17 @@ export function detectLanguage(text: string): 'he' | 'en' {
   return he >= en * 0.3 ? 'he' : 'en';
 }
 
-/** Substring keyword match on normalized text; short latin keywords (≤3 chars) need word boundaries. */
+const HE_PREFIX = '[ובלהמשכ]{0,2}';
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Whole-word, case-insensitive keyword match on normalized text: "Java" does NOT match "JavaScript",
+ * "Lead" does not match "Leading". Hebrew keywords tolerate attached prefix letters (ו ב ל ה מ ש כ):
+ * "ראש צוות" matches "לראש צוות". Multi-word keywords match as a phrase.
+ */
 export function containsKeyword(haystackNorm: string, keyword: string): boolean {
   const k = normalizeText(keyword);
   if (!k) return false;
-  if (/^[a-z0-9+#]{1,3}$/.test(k)) return new RegExp(`(^|\\s)${k.replace(/[+#]/g, '\\$&')}(\\s|$)`).test(haystackNorm);
-  return haystackNorm.includes(k);
+  const prefix = /^[א-ת]/.test(k) ? HE_PREFIX : '';
+  return new RegExp(`(^| )${prefix}${escapeRe(k)}( |$)`).test(haystackNorm);
 }

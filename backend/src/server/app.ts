@@ -8,6 +8,7 @@ import { SITES } from '../sites/registry.js';
 import { JOB_STATUSES } from '../sites/types.js';
 import { getActiveRun, startRun, startTask, stopRun } from '../pipeline/runner.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
+import { byRank, rankStoredJob } from '../core/rank.js';
 import { listLocalModels } from '../llm/ollama.js';
 import { prepareJobs, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
@@ -47,6 +48,8 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
       },
       sites: SITES,
       sessions: allSessions(),
+      roleTypes: loadPrefs().roleTypes.map((r) => ({ id: r.id, label: r.label ?? r.id, tier: r.tier, enabled: r.enabled })),
+      maxRequiredYears: loadPrefs().maxRequiredYears,
       pendingQuestions: (db.prepare("SELECT COUNT(*) AS n FROM answers WHERE status = 'pending'").get() as { n: number }).n,
     };
   });
@@ -56,10 +59,18 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
     status: z.enum(JOB_STATUSES).optional(),
     minScore: z.coerce.number().int().min(0).max(100).optional(),
     q: z.string().optional(),
+    roleType: z.string().optional(),
     limit: z.coerce.number().int().min(1).max(500).default(200),
     offset: z.coerce.number().int().min(0).default(0),
   });
-  app.get('/api/jobs', async (req) => repo.listJobs(JobsQuery.parse(req.query)));
+  /** Sorted by rank = score + experienceBoost + tierBoost (unscored last), paginated after ranking. */
+  app.get('/api/jobs', async (req) => {
+    const q = JobsQuery.parse(req.query);
+    const prefs = loadPrefs();
+    const all = repo.listJobs({ ...q, limit: 5000, offset: 0 });
+    const ranked = all.items.map((j) => ({ ...j, rank: rankStoredJob(j, j.score, prefs) })).sort(byRank);
+    return { total: all.total, items: ranked.slice(q.offset, q.offset + q.limit) };
+  });
 
   app.get<{ Params: { id: string } }>('/api/jobs/:id', async (req, reply) => {
     const job = repo.getJob(req.params.id);

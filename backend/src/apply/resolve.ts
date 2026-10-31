@@ -28,6 +28,11 @@ export interface ResolveDeps {
   matchBank(question: string, candidates: BankEntry[]): Promise<{ entryId: number | null; confidence: number }>;
   /** LLM: free-text draft with fact citations + verification (see draft.ts). */
   draft(field: FormField, context: { jobTitle: string; jobText: string; language: 'he' | 'en' }): Promise<DraftResult>;
+  /**
+   * LLM: is a years statement GENERAL (total development experience, no technology named) or
+   * TECHNOLOGY-specific? Classification only — never an answer. Missing/failed classifier → pending.
+   */
+  classifyYears?(question: string): Promise<{ kind: 'general' | 'technology' | 'unsure' }>;
   minConfidence: number;
   job: { title: string; text: string; language: 'he' | 'en' };
   now?: Date;
@@ -68,13 +73,30 @@ export function skillsMentioned(profile: Profile, question: string): Profile['sk
   );
 }
 
-type YearsResult = { value: string; ref: string; detail: string } | { pending: string } | null;
+type YearsResult = { value: string; ref: string; detail: string; source: 'skill_years' | 'declared_experience' } | { pending: string } | null;
 
-function fromSkillYears(field: FormField, profile: Profile | null, now: Date): YearsResult {
+async function fromYears(field: FormField, deps: ResolveDeps, now: Date): Promise<YearsResult> {
   const minYears = parseMinYears(field.label);
   const countQ = asksYearsCount(field.label);
   if (minYears === null && !countQ) return null;
+  const profile = deps.profile;
   if (!profile) return { pending: 'years question: no profile yet' };
+  const cls = deps.classifyYears ? await deps.classifyYears(field.label).catch(() => ({ kind: 'unsure' as const })) : { kind: 'unsure' as const };
+  if (cls.kind === 'unsure') return { pending: 'years question: unclear whether general or technology-specific — answer yourself' };
+  const yesNoQ = minYears !== null && (field.type === 'yes_no' || field.type === 'consent' || !countQ);
+
+  if (cls.kind === 'general') {
+    // GENERAL statements: only from declaredExperience; never mixed with a named skill
+    const named = skillsMentioned(profile, field.label);
+    if (named.length) return { pending: `classified as general but names ${named.map((s) => s.name).join(', ')} — answer yourself` };
+    const d = profile.declaredExperience;
+    if (!d) return { pending: 'general years question: no declaredExperience in your profile' };
+    const detail = `declared ${d.totalDevYears}y — ${d.basis}`;
+    if (yesNoQ) return { value: d.totalDevYears >= minYears! ? 'yes' : 'no', ref: 'declared.totalDevYears', detail: `${detail} (required ${minYears})`, source: 'declared_experience' };
+    return { value: String(Math.floor(d.totalDevYears)), ref: 'declared.totalDevYears', detail, source: 'declared_experience' };
+  }
+
+  // TECHNOLOGY-specific: only from kind=work roles linked to that skill; never from declaredExperience
   const skills = skillsMentioned(profile, field.label);
   // keep the most specific matches ("react native" over "react")
   const specific = skills.filter((s) => !skills.some((o) => o !== s && skillKey(o.name).includes(skillKey(s.name)) && skillKey(o.name) !== skillKey(s.name)));
@@ -83,14 +105,12 @@ function fromSkillYears(field: FormField, profile: Profile | null, now: Date): Y
   const basic = specific.filter((s) => s.level === 'basic');
   if (basic.length) return { pending: `basic-level skill (${basic.map((s) => s.name).join(', ')}): answer this yourself` };
   const ys = specific.map((s) => ({ s, y: skillYears(profile, s.id, now) }));
-  if (ys.some((x) => x.y.years === null)) return { pending: 'years question: no dated role lists this skill' };
+  if (ys.some((x) => x.y.years === null)) return { pending: 'years question: no dated work role lists this skill' };
   const min = Math.min(...ys.map((x) => x.y.years!));
   const ref = ys.map((x) => x.s.id).join(',');
   const detail = ys.map((x) => `${x.s.name}: ${x.y.years}y ${x.y.source}${x.y.from.length ? ` from ${x.y.from.join('+')}` : ''}`).join('; ');
-  if (minYears !== null && (field.type === 'yes_no' || field.type === 'consent' || !countQ)) {
-    return { value: min >= minYears ? 'yes' : 'no', ref, detail: `${detail} vs required ${minYears}` };
-  }
-  return { value: String(Math.floor(min)), ref, detail };
+  if (yesNoQ) return { value: min >= minYears! ? 'yes' : 'no', ref, detail: `${detail} vs required ${minYears}`, source: 'skill_years' };
+  return { value: String(Math.floor(min)), ref, detail, source: 'skill_years' };
 }
 
 // ---------- bank candidates ----------
@@ -149,10 +169,10 @@ export async function resolveField(field: FormField, deps: ResolveDeps): Promise
   }
 
   // (c)
-  const y = fromSkillYears(field, deps.profile, now);
+  const y = await fromYears(field, deps, now);
   if (y && 'value' in y) {
     const v = normalizeChoice(y.value, field) ?? y.value;
-    return { ...base, status: 'resolved', value: v, provenance: { source: 'skill_years', ref: y.ref, detail: y.detail } };
+    return { ...base, status: 'resolved', value: v, provenance: { source: y.source, ref: y.ref, detail: y.detail } };
   }
 
   // (d)

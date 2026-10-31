@@ -122,3 +122,32 @@ export function makeBankMatcher(opts: { cache?: LlmCache } = {}) {
     return data;
   };
 }
+
+export const YearsClassSchema = z.object({ kind: z.enum(['general', 'technology', 'unsure']) });
+
+/**
+ * Classifies a years-of-experience statement. Classification only: the answer always comes from
+ * declaredExperience (general) or profile work roles (technology), never from the model.
+ */
+export function makeYearsClassifier(opts: { cache?: LlmCache } = {}) {
+  return async (question: string) => {
+    const { data } = await chatJson({
+      model: config.OLLAMA_MODEL_ANALYZE,
+      schema: YearsClassSchema,
+      cache: opts.cache,
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'Classify a job-application statement about years of experience.',
+            'general: total professional experience in software development / programming / as a developer or engineer, with NO specific technology, language, framework, tool, platform, product or business domain named.',
+            'technology: names any specific technology, language, framework, database, tool, platform, product or domain (e.g. React, .NET, SQL, stored procedures, AWS, QA automation, Priority, fintech).',
+            'unsure: anything else or ambiguous. Do NOT answer the statement.',
+          ].join('\n'),
+        },
+        { role: 'user', content: question },
+      ],
+    });
+    return data;
+  };
+}

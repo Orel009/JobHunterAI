@@ -151,8 +151,8 @@ if (!fs.existsSync(prefsFile)) {
     if (p.queries.titles.length === 0) warn('אין שאילתות חיפוש (queries.titles)', 'No search queries (queries.titles)', 'הוסף כותרות משרה ב-preferences.yaml', 'Add job titles to preferences.yaml');
   }
 }
-const { loadProfile } = await import('../profile/facts.js');
-const profileFile = path.join(config.paths.profileDir, 'profile.json');
+const { loadProfile, profilePath } = await import('../profile/facts.js');
+const profileFile = profilePath();
 const draftFile = path.join(config.paths.profileDir, 'profile.draft.json');
 if (fs.existsSync(profileFile)) {
   try {
@@ -305,9 +305,14 @@ if (HUNT) {
   console.log(`  run: ${run?.status}${run?.reason ? ` (${run.reason})` : ''} · new ${run?.stats?.inserted ?? 0} · scored ${run?.stats?.scored ?? 0}`);
   const apps = new Applications(db!);
   const room = Math.max(0, limits.dailyApplyLimit - repo.submittedToday());
+  const { rankStoredJob } = await import('../core/rank.js');
+  const huntPrefs = loadPrefs();
+  // highest rank first: the daily limit is spent on the best jobs
   const candidates = repo
-    .listJobs({ status: 'scored', minScore: limits.autoSubmitMinScore, limit: 200 })
+    .listJobs({ status: 'scored', minScore: limits.autoSubmitMinScore, limit: 2000 })
     .items.filter((j) => j.site === 'drushim' && !apps.latestForJob(j.id))
+    .map((j) => ({ ...j, r: rankStoredJob(j, j.score, huntPrefs).rank ?? -Infinity }))
+    .sort((a, b) => b.r - a.r)
     .slice(0, room);
   if (getSession('drushim').state === 'logged_out') {
     console.log(c.yellow(`  ${candidates.length} job(s) ≥ ${limits.autoSubmitMinScore} — not preparing: not logged in to Drushim`));

@@ -6,11 +6,34 @@ import { ROOT_DIR, config } from '../config.js';
 
 const strList = z.array(z.string()).default([]);
 
+/** Title words that mark a role as too senior (whole-word, case-insensitive). */
+export const DEFAULT_SENIORITY_EXCLUDES = [
+  'Senior', 'Sr', 'Lead', 'Team Lead', 'Tech Lead', 'Principal', 'Staff', 'Architect', 'Head of', 'Manager', 'Director',
+  'בכיר', 'בכירה', 'ראש צוות', 'ארכיטקט', 'מנהל פיתוח',
+];
+
+export const RoleTypeSchema = z.object({
+  id: z.string().min(1),
+  /** shown in the UI and given to the scorer; defaults to id */
+  label: z.string().optional(),
+  /** 1 = core, 2 = good, 3 = fallback */
+  tier: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  enabled: z.boolean().default(true),
+  /** search terms (Hebrew + English); each is searched on every site */
+  queries: strList,
+  /** a job title must contain one of these (whole words) for the job to count as this role type */
+  titleKeywords: strList,
+  /** extra guidance for the scorer, e.g. "development-oriented only" */
+  notes: z.string().optional(),
+});
+export type RoleType = z.infer<typeof RoleTypeSchema>;
+
 export const PrefsSchema = z.object({
+  roleTypes: z.array(RoleTypeSchema).default([]),
+  /** Legacy single query list (used only when roleTypes is empty). */
   queries: z
     .object({
       titles: strList,
-      /** Optional extra keywords; each is searched as its own term. */
       keywords: strList,
     })
     .default({ titles: [], keywords: [] }),
@@ -18,18 +41,34 @@ export const PrefsSchema = z.object({
   locations: strList,
   filters: z
     .object({
+      /** extra title keywords, in addition to every enabled role type's titleKeywords */
       includeTitleKeywords: strList,
       excludeTitleKeywords: strList,
-      excludeSeniorityKeywords: strList,
+      excludeSeniorityKeywords: z.array(z.string()).default(DEFAULT_SENIORITY_EXCLUDES),
       excludeCompanies: strList,
       /** Location text that always passes the location filter (remote / nationwide). */
       remoteKeywords: strList,
     })
     .prefault({}),
-  /**
-   * Used by the scorer until data/profile/profile.json exists (Phase 2).
-   * Only put true facts here.
-   */
+  /** Jobs requiring more years than this are skipped (status skipped_experience). */
+  maxRequiredYears: z.number().nonnegative().default(3),
+  ranking: z
+    .object({
+      experienceBoost: z
+        .object({
+          /** junior / entry-level / ללא ניסיון / בוגרי קורס / סטודנטים / 0–1 years */
+          junior: z.number().default(15),
+          years2: z.number().default(5),
+          years3: z.number().default(-10),
+          /** only reachable if maxRequiredYears > 3 */
+          above3: z.number().default(-20),
+          unknown: z.number().default(0),
+        })
+        .prefault({}),
+      tierBoost: z.object({ tier1: z.number().default(5), tier2: z.number().default(0), tier3: z.number().default(-10) }).prefault({}),
+    })
+    .prefault({}),
+  /** Used by the scorer only until data/profile/profile.json exists. True facts only. */
   candidateSummary: z.string().default(''),
   thresholds: z
     .object({
@@ -58,9 +97,28 @@ export function loadPrefs(file = config.paths.preferences): Prefs {
   return PrefsSchema.parse(YAML.parse(fs.readFileSync(src, 'utf8')) ?? {});
 }
 
-export function searchTerms(p: Prefs): string[] {
-  return [...new Set([...p.queries.titles, ...p.queries.keywords].map((s) => s.trim()).filter(Boolean))];
+/** Enabled role types; the legacy `queries` list becomes one tier-1 role type when none are configured. */
+export function activeRoleTypes(p: Pick<Prefs, 'roleTypes' | 'queries'>): RoleType[] {
+  if (p.roleTypes.length > 0) return p.roleTypes.filter((r) => r.enabled);
+  const legacy = [...p.queries.titles, ...p.queries.keywords];
+  return legacy.length ? [{ id: 'default', tier: 1, enabled: true, queries: legacy, titleKeywords: [] }] : [];
 }
+
+/** Unique search terms with the role types that asked for them (a term shared by two roles is searched once). */
+export function searchPlan(p: Prefs): Array<{ query: string; roleIds: string[] }> {
+  const byQuery = new Map<string, string[]>();
+  for (const r of activeRoleTypes(p)) {
+    for (const q of r.queries.map((s) => s.trim()).filter(Boolean)) {
+      const key = q.toLowerCase();
+      byQuery.set(key, [...(byQuery.get(key) ?? []), r.id]);
+    }
+  }
+  const original = new Map(activeRoleTypes(p).flatMap((r) => r.queries.map((q) => [q.trim().toLowerCase(), q.trim()] as const)));
+  return [...byQuery.entries()].map(([k, roleIds]) => ({ query: original.get(k) ?? k, roleIds: [...new Set(roleIds)] }));
+}
+
+/** Kept for callers that only need the terms. */
+export const searchTerms = (p: Prefs): string[] => searchPlan(p).map((s) => s.query);
 
 /** preferences.yaml overrides env for thresholds/limits. */
 export function effectiveLimits(p: Prefs) {

@@ -9,6 +9,9 @@ const valid = {
   missingRequirements: [],
   seniorityFit: 'fit',
   reasoningHe: 'המועמד מתאים מאוד. חסר לו מעט ניסיון בענן.',
+  requiredYearsMin: 2,
+  requiredYearsQuote: 'ניסיון של שנתיים',
+  seniority: 'mid',
 };
 const msgs = [{ role: 'user' as const, content: 'x' }];
 

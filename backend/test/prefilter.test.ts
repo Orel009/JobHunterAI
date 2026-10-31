@@ -7,7 +7,7 @@ const prefs = PrefsSchema.parse({
   filters: {
     includeTitleKeywords: ['full stack', 'fullstack', 'backend', 'מפתח', 'developer'],
     excludeTitleKeywords: ['QA', 'בודק', 'מכירות'],
-    excludeSeniorityKeywords: ['בכיר', 'ראש צוות', 'senior', 'team lead', 'מנהל'],
+    excludeSeniorityKeywords: ['בכיר', 'בכירה', 'ראש צוות', 'senior', 'team lead', 'מנהל'],
     excludeCompanies: ['חברה רעה בע"מ'],
     remoteKeywords: ['מהבית', 'remote', 'כל הארץ'],
   },

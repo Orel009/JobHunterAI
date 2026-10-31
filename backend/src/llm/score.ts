@@ -13,7 +13,19 @@ export const ScoreSchema = z.object({
   missingRequirements: z.array(z.string()).transform((a) => a.slice(0, 20)),
   seniorityFit: z.enum(['too_junior', 'fit', 'too_senior', 'unclear']),
   reasoningHe: z.string().min(10),
+  /** fallback for the deterministic extractor: minimum years the post REQUIRES (not "advantage"), or null */
+  requiredYearsMin: z.number().min(0).max(30).nullable(),
+  /** short quote from the post supporting requiredYearsMin (provenance), or null */
+  requiredYearsQuote: z.string().nullable(),
+  seniority: z.enum(['junior', 'mid', 'senior', 'unknown']),
 });
+
+export interface ScoreRole {
+  id: string;
+  label?: string;
+  tier: number;
+  notes?: string;
+}
 export type ScoreResult = z.infer<typeof ScoreSchema>;
 
 const MAX_POST_CHARS = 6000;
@@ -30,7 +42,12 @@ export function candidateContext(prefs: Prefs): string {
   throw new Error('No candidate profile: add `candidateSummary` to preferences.yaml (or create data/profile/profile.json).');
 }
 
-export function buildScoreMessages(job: Pick<Job, 'title' | 'company' | 'location' | 'descriptionText' | 'requirementsText'>, candidate: string) {
+export function buildScoreMessages(
+  job: Pick<Job, 'title' | 'company' | 'location' | 'descriptionText' | 'requirementsText'>,
+  candidate: string,
+  role?: ScoreRole | null,
+) {
+  const roleName = role ? `${role.label ?? role.id} (tier ${role.tier})` : '';
   const post = [
     `כותרת: ${job.title}`,
     `חברה: ${job.company || 'לא צוין'}`,
@@ -52,21 +69,31 @@ export function buildScoreMessages(job: Pick<Job, 'title' | 'company' | 'locatio
         'matchedSkills: requirements from the post the candidate clearly has. missingRequirements: mandatory requirements the candidate lacks or that the profile does not show.',
         'seniorityFit: compare required years/seniority to the candidate.',
         'reasoningHe: exactly 2 short sentences in natural, grammatical Hebrew explaining the score.',
-      ].join('\n'),
+        'requiredYearsMin: minimum years of experience the post REQUIRES (ignore anything marked יתרון / advantage / nice to have); a range counts as its minimum; several requirements → the highest minimum; null if none is stated. requiredYearsQuote: the exact short phrase from the post, or null.',
+        'seniority: how the POST describes the role — junior (entry level, students, graduates, 0-1 years), mid, senior, or unknown.',
+        role
+          ? `Judge fit for the role type "${roleName}"${role.notes ? ` — ${role.notes}` : ''}: evaluate the candidate for THIS kind of role, not only as a full stack developer.`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
     },
-    { role: 'user' as const, content: `## Candidate profile\n${candidate}\n\n## Job post\n${post}\n\nReturn the JSON evaluation.` },
+    {
+      role: 'user' as const,
+      content: `## Candidate profile\n${candidate}\n\n${role ? `## Role type\n${roleName}\n\n` : ''}## Job post\n${post}\n\nReturn the JSON evaluation.`,
+    },
   ];
 }
 
 export async function scoreJob(
   job: Pick<Job, 'title' | 'company' | 'location' | 'descriptionText' | 'requirementsText'>,
   candidate: string,
-  opts: { model?: string; cache?: LlmCache; fetchImpl?: typeof fetch } = {},
+  opts: { model?: string; cache?: LlmCache; fetchImpl?: typeof fetch; role?: ScoreRole | null } = {},
 ): Promise<ScoreResult & { model: string; cached: boolean }> {
   const model = opts.model ?? config.OLLAMA_MODEL_ANALYZE;
   const { data, cached } = await chatJson({
     model,
-    messages: buildScoreMessages(job, candidate),
+    messages: buildScoreMessages(job, candidate, opts.role),
     schema: ScoreSchema,
     cache: opts.cache,
     fetchImpl: opts.fetchImpl,

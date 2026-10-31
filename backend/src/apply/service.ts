@@ -11,6 +11,7 @@ import { config } from '../config.js';
 import type { DB } from '../db/index.js';
 import { Repo, type StoredJob } from '../db/repo.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
+import { rankStoredJob } from '../core/rank.js';
 import { getPage, pace } from '../browser/session.js';
 import { startTask } from '../pipeline/runner.js';
 import { ApplyError, fillPanel, installDryRunGuard, openPanel, screenshot, submitPanel, type PanelState } from '../sites/drushim/apply.js';
@@ -53,7 +54,14 @@ async function partialFill(page: Parameters<typeof fillPanel>[0], state: PanelSt
 export function prepareJobs(db: DB, jobIds: string[]): number {
   const repo = new Repo(db);
   const apps = new Applications(db);
-  const jobs = jobIds.map((id) => repo.getJob(id)).filter((j): j is StoredJob => !!j);
+  const prefsNow = loadPrefs();
+  // highest rank first, so the daily limit is spent on the best jobs
+  const jobs = jobIds
+    .map((id) => repo.getJob(id))
+    .filter((j): j is StoredJob => !!j)
+    .map((j) => ({ j, r: rankStoredJob(j, repo.getScore(j.id), prefsNow).rank ?? -Infinity }))
+    .sort((a, b) => b.r - a.r)
+    .map((x) => x.j);
   if (jobs.length === 0) throw new ServiceError(404, 'no such jobs');
   for (const j of jobs) repo.setStatus(j.id, 'queued', 'preparing application');
 
@@ -89,7 +97,7 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
         if (plan.readiness === 'blocked_no') {
           const no = plan.fields.find((f) => f.status === 'resolved' && yesNo(f.value) === 'no');
           apps.update(app.id, { status: 'skipped', error: `statement is false for you: "${no?.field.label}"` });
-          repo.setStatus(job.id, 'skipped', `screening statement answered no: ${no?.field.label}`);
+          repo.setStatus(job.id, 'skipped_screening', `screening statement answered no: ${no?.field.label}`);
           continue;
         }
         await partialFill(page, state, plan);
@@ -126,7 +134,7 @@ function recompute(app: ApplicationRow, apps: Applications, repo: Repo, fields: 
   if (job && plan.readiness === 'blocked_no') {
     const no = fields.find((f) => f.status === 'resolved' && yesNo(f.value) === 'no');
     apps.update(app.id, { status: 'skipped', error: `statement is false for you: "${no?.field.label}"` });
-    repo.setStatus(job.id, 'skipped', `screening statement answered no: ${no?.field.label}`);
+    repo.setStatus(job.id, 'skipped_screening', `screening statement answered no: ${no?.field.label}`);
   }
   return apps.get(app.id)!;
 }

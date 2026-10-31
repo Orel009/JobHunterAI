@@ -7,7 +7,7 @@ import type { Repo, StoredJob } from '../db/repo.js';
 import { loadProfile } from '../profile/facts.js';
 import { AnswersBank, bankTypeFor, yesNo } from './bank.js';
 import { chooseCv } from './cv.js';
-import { makeBankMatcher, makeDrafter } from './draft.js';
+import { makeBankMatcher, makeDrafter, makeYearsClassifier } from './draft.js';
 import { resolveField, type ResolveDeps } from './resolve.js';
 import type { ApplyPlan, CvChoice, FormField, ResolvedField } from './types.js';
 
@@ -42,6 +42,7 @@ export async function buildPlan(job: StoredJob, fields: FormField[], ctx: PlanCo
     bank,
     matchBank: makeBankMatcher({ cache: ctx.repo }),
     draft: makeDrafter(profile, { cache: ctx.repo }),
+    classifyYears: makeYearsClassifier({ cache: ctx.repo }),
     minConfidence: effectiveLimits(ctx.prefs).matchConfidence,
     job: { title: job.title, text: jobText, language: job.language },
     ...ctx.deps,

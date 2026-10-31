@@ -17,6 +17,8 @@ const int = (def: number) => z.coerce.number().int().nonnegative().default(def);
 const EnvSchema = z.object({
   DATA_DIR: z.string().default('data'),
   PREFERENCES_FILE: z.string().default('preferences.yaml'),
+  /** optional: profile file to use instead of data/profile/profile.json (relative to the repo root) */
+  PROFILE_FILE: z.string().default(''),
   PORT: int(8787),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
 

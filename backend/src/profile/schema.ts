@@ -66,6 +66,11 @@ export const ProfileSchema = z.object({
     )
     .default([]),
   languages: z.array(z.object({ id: z.string(), name: Bi, level: Bi })).default([]),
+  /**
+   * Your own statement of total professional development experience. Answers GENERAL years statements only
+   * ("N years of software development"); technology-specific statements never use it.
+   */
+  declaredExperience: z.object({ totalDevYears: z.number().nonnegative(), basis: z.string().min(1) }).nullable().default(null),
 });
 
 export type Profile = z.infer<typeof ProfileSchema>;

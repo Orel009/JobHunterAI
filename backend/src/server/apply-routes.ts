@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import type { DB } from '../db/index.js';
 import { Repo } from '../db/repo.js';
 import { loadPrefs } from '../core/prefs.js';
+import { byRank, rankStoredJob } from '../core/rank.js';
 import { AnswersBank } from '../apply/bank.js';
 import { Applications, type AppStatus } from '../apply/plan.js';
 import { approveApplication, editField, prepareJobs, refreshFromBank, rejectApplication, setCv } from '../apply/service.js';
@@ -28,14 +29,19 @@ export function registerApplyRoutes(app: FastifyInstance, db: DB) {
   const withJob = (a: ReturnType<Applications['get']>) => {
     if (!a) return null;
     const job = repo.getJob(a.jobId);
-    return { ...a, job: job ? { ...job, raw: undefined } : null, score: repo.getScore(a.jobId) };
+    const score = repo.getScore(a.jobId);
+    const rank = job ? rankStoredJob(job, score, loadPrefs()) : rankStoredJob({ title: '', roleTypes: [], requiredYears: null, juniorText: null }, null, loadPrefs());
+    return { ...a, job: job ? { ...job, raw: undefined } : null, score, rank };
   };
 
   // ---------- applications ----------
   app.get('/api/applications', async (req) => {
     const q = z.object({ status: z.string().optional() }).parse(req.query);
     const statuses = q.status ? (q.status.split(',').filter((s) => (APP_STATUSES as readonly string[]).includes(s)) as AppStatus[]) : undefined;
-    return apps.list(statuses).map((a) => withJob(a));
+    return apps
+      .list(statuses)
+      .map((a) => withJob(a)!)
+      .sort(byRank);
   });
 
   app.get<{ Params: { id: string } }>('/api/applications/:id', async (req, reply) => {
@@ -67,7 +73,7 @@ export function registerApplyRoutes(app: FastifyInstance, db: DB) {
 
   app.post('/api/applications/prepare', async (req) => {
     const body = z.object({ jobIds: z.array(z.string()).optional() }).parse(req.body ?? {});
-    const ids = body.jobIds?.length ? body.jobIds : repo.listJobs({ status: 'queued', limit: 50 }).items.map((j) => j.id);
+    const ids = body.jobIds?.length ? body.jobIds : repo.listJobs({ status: 'queued', limit: 500 }).items.map((j) => j.id);
     if (ids.length === 0) return { ok: true, note: 'nothing queued' };
     assertCanApply('drushim');
     return { ok: true, runId: prepareJobs(db, ids), count: ids.length };

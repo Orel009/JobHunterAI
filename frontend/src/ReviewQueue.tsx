@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apply, type Application, type ResolvedField } from './api';
+import { RankBadge } from './RankBadge';
 
 const SOURCE_LABEL: Record<string, string> = {
   profile: 'profile',
   bank: 'answers bank',
-  skill_years: 'skill years',
+  skill_years: 'skill years (work roles)',
+  declared_experience: 'declared experience',
   draft: 'LLM draft',
   user: 'you (this job only)',
   none: '—',
@@ -90,7 +92,7 @@ function AppCard({ app, dryRun, busy, applyDisabled, act }: { app: Application; 
             )}
           </div>
         </div>
-        {app.score && <span className={`score ${app.score.score >= 80 ? 'high' : app.score.score >= 60 ? 'mid' : 'low'}`}>{app.score.score}</span>}
+        <RankBadge rank={app.rank} />
       </div>
       {app.score && (
         <p dir="rtl" className="reasoning">

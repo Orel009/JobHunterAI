@@ -33,6 +33,7 @@ function deps(bank: BankEntry[] = []) {
     bank: { byKey: (k) => bank.find((b) => b.normKey === k) ?? null, active: () => bank },
     matchBank,
     draft,
+    classifyYears: async () => ({ kind: 'technology' as const }),
     minConfidence: 0.85,
     job: { title: 'Dev', text: '', language: 'he' },
     now: NOW,

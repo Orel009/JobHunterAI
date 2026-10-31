@@ -34,6 +34,7 @@ function deps(over: Partial<ResolveDeps> = {}, bank: BankEntry[] = []) {
     bank: { byKey: (k) => bank.find((b) => b.normKey === k) ?? null, active: () => bank.filter((b) => b.status === 'active') },
     matchBank,
     draft,
+    classifyYears: async () => ({ kind: 'technology' as const }),
     minConfidence: 0.85,
     job: { title: 'Full Stack', text: 'React Node', language: 'he' },
     now: NOW,

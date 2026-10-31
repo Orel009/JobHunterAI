@@ -8,9 +8,21 @@ export type JobStatus =
   | 'submitted'
   | 'failed'
   | 'blocked'
-  | 'skipped';
+  | 'skipped'
+  | 'skipped_experience'
+  | 'skipped_screening';
 
-export const STATUSES: JobStatus[] = ['discovered', 'scored', 'queued', 'needs_review', 'ready', 'dry_run_ok', 'submitted', 'failed', 'blocked', 'skipped'];
+export const STATUSES: JobStatus[] = ['discovered', 'scored', 'queued', 'needs_review', 'dry_run_ok', 'submitted', 'failed', 'blocked', 'skipped', 'skipped_experience', 'skipped_screening'];
+
+export interface Rank {
+  rank: number | null;
+  score: number | null;
+  experience: number;
+  tier: number;
+  category: 'junior' | 'years2' | 'years3' | 'above3' | 'unknown';
+  roleType: string | null;
+  roleTier: number | null;
+}
 
 export interface Score {
   score: number;
@@ -19,6 +31,10 @@ export interface Score {
   seniorityFit: string;
   reasoningHe: string;
   model: string;
+  requiredYearsMin?: number | null;
+  requiredYearsQuote?: string | null;
+  seniority?: string | null;
+  roleType?: string | null;
 }
 
 export interface JobItem {
@@ -43,6 +59,12 @@ export interface JobItem {
   duplicateOf: string | null;
   firstSeenAt: string;
   score: Score | null;
+  roleTypes: string[];
+  requiredYears: number | null;
+  requiredYearsSource: 'regex' | 'llm' | null;
+  requiredYearsText: string | null;
+  juniorText: string | null;
+  rank: Rank;
 }
 
 export interface RunInfo {
@@ -65,6 +87,8 @@ export interface Status {
   sites: Array<{ id: string; displayName: string; enabled: boolean }>;
   sessions: Record<string, { state: 'logged_in' | 'logged_out' | 'unknown'; checkedAt: string | null; detail: string }>;
   pendingQuestions: number;
+  roleTypes: Array<{ id: string; label: string; tier: number; enabled: boolean }>;
+  maxRequiredYears: number;
 }
 
 export interface RunRow {
@@ -112,7 +136,7 @@ export interface ResolvedField {
   normKey: string;
   status: 'resolved' | 'draft' | 'pending' | 'empty_optional';
   value: string | null;
-  provenance: { source: 'profile' | 'bank' | 'skill_years' | 'draft' | 'user' | 'none'; ref?: string; confidence?: number; detail?: string; usedFactIds?: string[]; flaggedClaims?: string[] };
+  provenance: { source: 'profile' | 'bank' | 'skill_years' | 'declared_experience' | 'draft' | 'user' | 'none'; ref?: string; confidence?: number; detail?: string; usedFactIds?: string[]; flaggedClaims?: string[] };
   reason?: string;
   category?: string | null;
 }
@@ -138,6 +162,7 @@ export interface Application {
   submittedAt: string | null;
   job: JobItem | null;
   score: Score | null;
+  rank: Rank;
 }
 export interface BankEntry {
   id: number;

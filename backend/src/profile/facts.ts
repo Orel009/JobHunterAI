@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { config } from '../config.js';
+import { ROOT_DIR, config } from '../config.js';
 import { normalizeText } from '../core/text.js';
 import { ProfileSchema, type Profile } from './schema.js';
 
-export const profilePath = () => path.join(config.paths.profileDir, 'profile.json');
+/** PROFILE_FILE (relative to the repo root) overrides data/profile/profile.json, e.g. to score with an unreviewed draft. */
+export const profilePath = () => (config.PROFILE_FILE ? path.resolve(ROOT_DIR, config.PROFILE_FILE) : path.join(config.paths.profileDir, 'profile.json'));
 
 /** Loads data/profile/profile.json (validated). null if it doesn't exist yet. Throws on invalid content. */
 export function loadProfile(file = profilePath()): Profile | null {
@@ -51,14 +52,15 @@ export interface SkillYears {
 }
 
 /**
- * Years for a skill: stated in the CV wins; otherwise derived from the dates of experiences that list the skill.
- * Experiences without both dates are ignored. null when nothing supports a number.
+ * Years for a skill: stated in the CV wins; otherwise derived from the dates of kind=work roles that list the skill.
+ * Projects, military service, volunteering and education never count toward years (they still count for scoring
+ * and matching). Roles without both dates are ignored. null when nothing supports a number.
  */
 export function skillYears(profile: Profile, skillId: string, now = new Date()): SkillYears {
   const skill = profile.skills.find((s) => s.id === skillId);
   if (!skill) return { years: null, source: null, from: [] };
   if (skill.statedYears !== null) return { years: skill.statedYears, source: 'stated', from: [] };
-  const exps = profile.experience.filter((e) => e.skills.includes(skillId) && e.start && e.end);
+  const exps = profile.experience.filter((e) => e.kind === 'work' && e.skills.includes(skillId) && e.start && e.end);
   if (exps.length === 0) return { years: null, source: null, from: [] };
   const months = unionMonths(exps.map((e) => [monthIndex(e.start!, 'start', now), monthIndex(e.end!, 'end', now)]));
   return { years: Math.round((months / 12) * 10) / 10, source: 'derived', from: exps.map((e) => e.id) };
@@ -134,6 +136,9 @@ export function listFacts(p: Profile, now = new Date()): Fact[] {
     f.push({ id: s.id, text: `Skill: ${s.name}${aka}${lvl}${y.years !== null ? ` — ${y.years} years, ${y.source}` : ''}` });
   }
   for (const l of p.languages) f.push({ id: l.id, text: `Language: ${bi(l.name)} — ${bi(l.level)}` });
+  if (p.declaredExperience) {
+    f.push({ id: 'declared.totalDevYears', text: `Declared total professional development experience: ${p.declaredExperience.totalDevYears} years (${p.declaredExperience.basis})` });
+  }
   return f;
 }
 

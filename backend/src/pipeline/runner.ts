@@ -7,8 +7,9 @@ import type { SiteContext } from '../sites/types.js';
 import { BlockedError, closeContext, getPage } from '../browser/session.js';
 import { toJob } from '../core/job.js';
 import { findCrossSiteDuplicate } from '../core/dedupe.js';
-import { prefilter } from '../core/prefilter.js';
-import { effectiveLimits, loadPrefs, searchTerms } from '../core/prefs.js';
+import { prefilter, primaryRole } from '../core/prefilter.js';
+import { effectiveLimits, loadPrefs, searchPlan } from '../core/prefs.js';
+import { experienceInput, extractRequiredYears } from '../core/experience.js';
 import { candidateContext, scoreJob } from '../llm/score.js';
 import { loadProfile, skillAliasGroups } from '../profile/facts.js';
 
@@ -116,21 +117,22 @@ async function discover(repo: Repo, run: ActiveRun, L: typeof log): Promise<void
   const prefs = loadPrefs();
   const limits = effectiveLimits(prefs);
   const adapter = getAdapter(run.site);
-  const terms = searchTerms(prefs);
-  if (terms.length === 0) throw new Error('No search queries: set queries.titles in preferences.yaml');
+  const plan = searchPlan(prefs);
+  if (plan.length === 0) throw new Error('No search queries: add enabled roleTypes (with queries) to preferences.yaml');
 
   const page = await getPage();
   const ctx: SiteContext = { page, maxPages: limits.maxPagesPerRun, signal: run.controller.signal };
 
   run.stage = 'searching';
-  for (const keyword of terms) {
+  for (const { query: keyword, roleIds } of plan) {
     if (run.controller.signal.aborted) return;
     run.stats.queries++;
-    L.info({ keyword }, 'query');
+    L.info({ keyword, roles: roleIds }, 'query');
     for await (const raw of adapter.search({ keyword }, ctx)) {
       run.stats.seen++;
       const job = toJob(raw);
       const { outcome, job: stored } = repo.upsertJob(job);
+      repo.addRoleTypes(stored.id, roleIds);
       if (outcome === 'inserted') {
         run.stats.inserted++;
         const dup = findCrossSiteDuplicate(job, new Date(), repo.dedupeCandidates(job.companyNorm, job.titleNorm, job.site), config.DEDUPE_WINDOW_DAYS);
@@ -181,15 +183,33 @@ async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<void> {
   applyPrefilter(repo, run, prefs);
   const candidate = candidateContext(prefs);
   const todo = repo.jobsNeedingScore(run.site);
-  L.info({ count: todo.length, model: config.OLLAMA_MODEL_ANALYZE }, 'scoring');
+  run.stats.skippedExperience = 0;
+  L.info({ count: todo.length, model: config.OLLAMA_MODEL_ANALYZE, maxRequiredYears: prefs.maxRequiredYears }, 'scoring');
   for (const j of todo) {
     if (run.controller.signal.aborted) return;
+    // experience cap, deterministic first: skip BEFORE the LLM when the text states too many years
+    const ex = extractRequiredYears(experienceInput(j));
+    repo.setExperience(j.id, { years: ex.requiredYears, source: ex.requiredYears !== null ? 'regex' : null, text: ex.text, juniorText: ex.juniorText });
+    if (ex.requiredYears !== null && ex.requiredYears > prefs.maxRequiredYears) {
+      repo.setStatus(j.id, 'skipped_experience', `requires ${ex.requiredYears}y (regex): "${ex.text}"`);
+      run.stats.skippedExperience++;
+      continue;
+    }
     try {
       const t0 = Date.now();
-      const s = await scoreJob(j, candidate, { cache: repo });
-      repo.saveScore(j.id, { ...s, contentHash: j.contentHash });
+      const role = primaryRole(j, prefs);
+      const s = await scoreJob(j, candidate, { cache: repo, role });
+      repo.saveScore(j.id, { ...s, contentHash: j.contentHash, roleType: role?.id ?? null });
       run.stats.scored++;
-      L.info({ job: j.title, company: j.company, score: s.score, ms: Date.now() - t0, cached: s.cached }, 'scored');
+      // LLM fallback only when the regex found nothing (regex wins when both exist)
+      if (ex.requiredYears === null && s.requiredYearsMin !== null) {
+        repo.setExperience(j.id, { years: s.requiredYearsMin, source: 'llm', text: s.requiredYearsQuote, juniorText: ex.juniorText });
+        if (s.requiredYearsMin > prefs.maxRequiredYears) {
+          repo.setStatus(j.id, 'skipped_experience', `requires ${s.requiredYearsMin}y (llm): "${s.requiredYearsQuote ?? ''}"`);
+          run.stats.skippedExperience++;
+        }
+      }
+      L.info({ job: j.title, company: j.company, role: role?.id, score: s.score, ms: Date.now() - t0, cached: s.cached }, 'scored');
     } catch (e) {
       run.stats.scoreErrors++;
       L.error({ job: j.title, err: e instanceof Error ? e.message : String(e) }, 'score failed');
