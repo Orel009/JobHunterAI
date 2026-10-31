@@ -40,7 +40,12 @@ export function RunAndSendPanel({ status }: { status: Status }) {
     return (
       <div className="banner info run-panel">
         <b>Run & send</b> — <b>{p.step}</b>
-        {p.current && <span dir="auto"> · now: {p.current}</span>}
+        {p.current && (
+          <span>
+            {' '}
+            · now: <bdi>{p.current}</bdi>
+          </span>
+        )}
         <ul className="steps">
           {p.steps.map((s, i) => (
             <li key={i}>

@@ -79,12 +79,12 @@ export function ScheduleCard({ onSaved }: { onSaved?: () => void }) {
   };
   return (
     <fieldset className="card">
-      <legend>Schedule</legend>
+      <legend>Schedule (optional)</legend>
       <label className="row">
         <input type="checkbox" checked={s.enabled} onChange={(e) => void save({ enabled: e.target.checked })} /> <b>Run a hunt automatically while JobHunter is running</b>
       </label>
       <p className="muted">
-        A hunt = discover → score → prepare plans. It sends applications only if auto-submit is on and its gate passes. Next:{' '}
+        Not needed for the usual session (turn on, ▶ Run &amp; send, close when it says Done). A scheduled hunt is the same run: discover → score → prepare, sending only what passes the auto-submit gate. Next:{' '}
         {s.enabled ? (s.next ? new Date(s.next).toLocaleString('he-IL') : 'none (no time outside quiet hours)') : 'off'}
       </p>
       <div className="row">

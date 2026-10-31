@@ -129,13 +129,18 @@ function BatchPanel({ batch }: { batch: BatchProgress }) {
     <div className={`banner ${batch.stoppedReason ? 'error' : 'info'}`}>
       <div>
         <b>{batch.finished ? 'Batch finished' : 'Batch running'}</b> {batch.dryRun ? '(DRY RUN — nothing is sent)' : ''} · {batch.done}/{batch.total} done · {sent} {batch.dryRun ? 'dry-run OK' : 'sent'}
-        {batch.current && <span dir="auto"> · now: {batch.current}</span>}
+        {batch.current && (
+          <span>
+            {' '}
+            · now: <bdi>{batch.current}</bdi>
+          </span>
+        )}
       </div>
       {batch.stoppedReason && <div>⛔ {batch.stoppedReason}</div>}
       <ul className="batch-results">
         {batch.results.map((r) => (
-          <li key={r.appId} dir="auto">
-            {BATCH_ICON[r.status] ?? '•'} #{r.appId} {r.title} — {r.company}: <b>{r.status}</b> <span className="muted">{r.detail}</span>
+          <li key={r.appId}>
+            {BATCH_ICON[r.status] ?? '•'} #{r.appId} <bdi>{r.title}</bdi> — <bdi>{r.company}</bdi>: <b>{r.status}</b> <span className="muted">{r.detail}</span>
           </li>
         ))}
       </ul>
@@ -169,7 +174,7 @@ function AppCard({
     <div className={`app-card status-${app.status}`}>
       <div className="app-head">
         <div>
-          <div className="app-title" dir="auto">
+          <div className="app-title">
             <input
               type="checkbox"
               checked={selected}
@@ -177,7 +182,9 @@ function AppCard({
               title={app.batchBlock ? `individual review needed: ${app.batchBlock}` : 'select for batch approval'}
               onChange={onToggle}
             />{' '}
-            {job?.title} — <span dir="auto">{job?.company}</span>
+            <bdi>
+              {job?.title} — <bdi>{job?.company}</bdi>
+            </bdi>
           </div>
           <div className="muted">
             #{app.id} · {job?.site} · {job?.applyType} · {job && <span title={job.salaryText ?? ''}>salary {salaryLabel(job)} · </span>}<span className={`pill status-${app.status}`}>{app.status}</span> · {READINESS[plan.readiness]}

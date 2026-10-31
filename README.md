@@ -26,7 +26,8 @@ _Screenshot: coming soon._
 - **Answers bank**: you answer each question once, and it is reused for every later job.
 - **Field resolution** in this order: profile, then the answers bank, then skill years, then a fact-cited draft. The LLM never answers yes/no, salary, availability, legal and similar questions.
 - **CV per job language**: Hebrew or English, chosen deterministically, with a manual override.
-- **Review queue**: field plan with the source of every answer, inline editing, screenshots, and Approve/Reject.
+- **Run & send**: one session run from the header (or `npm start -- --hunt --send`): discover on every enabled site, score, prepare, and send what passes the auto-submit gate. Live progress, then a "Done. Safe to close / shut down" summary.
+- **Review queue**: field plan with the source of every answer, inline editing, screenshots, Approve/Reject, and **batch approval** (select by rank, sent one by one with normal pacing; stops on a CAPTCHA, a daily cap or a session problem). Drafts, pending answers and flagged claims always need individual review.
 - **History**: every application sent, with its evidence, your own outcome tracking (screening call, interview, offer…), CSV export and response-rate stats.
 - **LinkedIn job alerts (optional add-on, off by default)**: jobs from LinkedIn's alert emails, read over IMAP (read-only, Gmail app password), then scored like the rest. Applying is **assisted only**: the job opens in your own browser, and a helper panel shows the right CV and copy-ready answers. JobHunter never logs in to LinkedIn, never opens it in its automated browser, and never clicks or scrapes anything there. See [the guide](docs/GUIDE.md#תוסף-אופציונלי-התראות-משרות-מ-linkedin).
 - **One command**: `npm start` checks everything, installs what is missing, starts the system and opens the dashboard. `npm run doctor` only reports.
@@ -55,7 +56,7 @@ _Screenshot: coming soon._
    8. your Drushim CV names, plus a login window (a normal Chrome window, so Google sign-in works) where you log in yourself;
    9. standard answers.
 
-After that, `npm start` is all you need. Add `--hunt` for one full pass: `npm start -- --hunt`. Scheduled hunts: Settings → Schedule (while the app runs), or `npm run schedule:install` for a Windows Task Scheduler task (shown before it is created; runs only while you are logged in). Every hunt ends with a summary in the dashboard.
+After that, daily use is one session: `npm start`, click **▶ Run & send**, approve what waits in the review queue, and close when it says **Done. Safe to close / shut down**. From the command line: `npm start -- --hunt --send` (prints the summary and exits). Scheduling is optional: Settings → Schedule (while the app runs), or `npm run schedule:install` for a Windows Task Scheduler task (shown before it is created; runs only while you are logged in).
 If something is wrong, `npm run doctor` tells you what and how to fix it.
 
 ## Choosing a model
