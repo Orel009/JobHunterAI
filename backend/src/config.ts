@@ -16,6 +16,7 @@ const int = (def: number) => z.coerce.number().int().nonnegative().default(def);
 
 const EnvSchema = z.object({
   DATA_DIR: z.string().default('data'),
+  PREFERENCES_FILE: z.string().default('preferences.yaml'),
   PORT: int(8787),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
 
@@ -63,7 +64,7 @@ function load(): Config {
     profileDir: path.join(dataDir, 'profile'),
     investigations: path.join(dataDir, 'investigations'),
     reports: path.join(dataDir, 'reports'),
-    preferences: path.join(ROOT_DIR, 'preferences.yaml'),
+    preferences: path.resolve(ROOT_DIR, env.PREFERENCES_FILE),
   };
   for (const p of [dataDir, paths.logs, paths.screenshots, paths.browserProfile, paths.profileDir, paths.investigations, paths.reports]) {
     fs.mkdirSync(p, { recursive: true });

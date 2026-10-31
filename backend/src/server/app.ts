@@ -11,11 +11,13 @@ import { effectiveLimits, loadPrefs } from '../core/prefs.js';
 import { listLocalModels } from '../llm/ollama.js';
 
 export function buildApp(db: DB) {
-  const app = Fastify({ loggerInstance: log.child({ mod: 'http' }), disableRequestLogging: true });
+  // No per-request logging (the dashboard polls); errors are logged below.
+  const app = Fastify({ logger: false });
   const repo = new Repo(db);
 
-  app.setErrorHandler((err, _req, reply) => {
+  app.setErrorHandler((err, req, reply) => {
     const status = err instanceof z.ZodError ? 400 : (err as { statusCode?: number }).statusCode ?? 500;
+    if (status >= 500) log.error({ url: req.url, err: err instanceof Error ? err.message : String(err) }, 'http error');
     reply.status(status).send({ error: err instanceof z.ZodError ? z.prettifyError(err) : err instanceof Error ? err.message : String(err) });
   });
 

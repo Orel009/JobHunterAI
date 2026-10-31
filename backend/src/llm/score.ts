@@ -26,7 +26,8 @@ const MAX_POST_CHARS = 6000;
 export function candidateContext(prefs: Prefs): string {
   const profileFile = path.join(config.paths.profileDir, 'profile.json');
   if (fs.existsSync(profileFile)) return fs.readFileSync(profileFile, 'utf8');
-  if (prefs.candidateSummary.trim()) return prefs.candidateSummary.trim();
+  const summary = prefs.candidateSummary.trim();
+  if (summary && !summary.startsWith('(fill in)')) return summary;
   throw new Error('No candidate profile: add `candidateSummary` to preferences.yaml (or create data/profile/profile.json).');
 }
 
