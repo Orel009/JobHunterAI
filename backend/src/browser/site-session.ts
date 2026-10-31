@@ -21,8 +21,12 @@ const states: Record<string, SessionInfo> = {
 
 export const getSession = (site: string): SessionInfo => states[site] ?? { state: 'unknown', checkedAt: null, detail: 'unknown site' };
 export const allSessions = () => ({ ...states });
+const validListeners: Array<(site: string) => void> = [];
+/** Called whenever a site's session is confirmed logged in (e.g. to put jobs that failed on "not logged in" back). */
+export const onSessionValid = (fn: (site: string) => void) => void validListeners.push(fn);
 export const setSession = (site: string, s: SessionInfo) => {
   states[site] = s;
+  if (s.state === 'logged_in') for (const fn of validListeners) fn(site);
 };
 
 

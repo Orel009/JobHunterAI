@@ -22,6 +22,8 @@ import { AnswersBank, bankTypeFor, yesNo } from './bank.js';
 import { hebrewRatio } from './cv.js';
 import { Applications, buildPlan, readiness, type ApplicationRow } from './plan.js';
 import { autoSubmitOn, evaluateAutoSubmit } from './auto-submit.js';
+import { getSession, setSession } from '../browser/site-session.js';
+import { excludedCompanyMatch } from '../core/prefilter.js';
 import type { ApplyPlan, ResolvedField } from './types.js';
 
 export class ServiceError extends Error {
@@ -111,6 +113,7 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
       };
       try {
         const state = await openPanel(page, job.url);
+        markLoggedIn();
         const plan = await buildPlan(job, state.fields, { db, repo, prefs });
         plan.notes.push(`panel CVs: ${state.cvs.map((c) => `"${c.name}"`).join(', ') || 'none'}`);
         const app = apps.savePlan(job, plan, 'needs_review');
@@ -273,6 +276,17 @@ function recordSubmitResult(apps: Applications, repo: Repo, appId: number, job: 
  * Auto-submit of a prepared application whose gate passed. The kill switch, DRY_RUN and the site toggle are checked
  * again right before the final click; if any changed, the application goes to the review queue instead.
  */
+/** The job page opened past the session check: the login is valid (requeues jobs that failed on "not logged in"). */
+function markLoggedIn(): void {
+  if (getSession('drushim').state !== 'logged_in') setSession('drushim', { state: 'logged_in', checkedAt: new Date().toISOString(), detail: 'job page opened' });
+}
+
+/** Last check right before the final click: an excluded company never gets an application, even if approved earlier. */
+function excludedNow(job: StoredJob): string | null {
+  const match = excludedCompanyMatch(job.company, loadPrefs().filters.excludeCompanies);
+  return match ? `excluded company: ${job.company} (matches "${match}")` : null;
+}
+
 async function autoSubmitPrepared(o: {
   page: Page;
   state: PanelState;
@@ -292,6 +306,12 @@ async function autoSubmitPrepared(o: {
     apps.update(appId, { status: 'needs_review', screenshotBefore: before, error: 'auto-submit was paused before sending — review it' });
     repo.setStatus(job.id, 'needs_review', 'auto-submit paused before sending');
     L.warn({ job: job.title }, 'auto-submit paused before the final click — left for review');
+    return false;
+  }
+  const excluded = excludedNow(job);
+  if (excluded) {
+    repo.closeForExcludedCompany(job.id, excluded);
+    L.warn({ job: job.title }, `not sent: ${excluded}`);
     return false;
   }
   L.info({ job: job.title }, 'AUTO-SUBMIT: every gate condition passed');
@@ -333,7 +353,14 @@ export function approveApplication(db: DB, appId: number): { runId: number; dryR
     }
     const unguard = dryRun ? await installDryRunGuard(page) : async () => undefined;
     try {
+      const early = excludedNow(job);
+      if (early) {
+        repo.closeForExcludedCompany(job.id, early);
+        L.warn({ job: job.title }, `not sent: ${early}`);
+        return;
+      }
       const state = await openPanel(page, job.url);
+      markLoggedIn();
       // the live form must match what was reviewed
       const planned = new Set(app.plan.fields.map((f) => `${f.field.key}|${f.field.label}`));
       const live = state.fields.filter((f) => f.type !== 'textarea').map((f) => `${f.key}|${f.label}`);
@@ -355,6 +382,12 @@ export function approveApplication(db: DB, appId: number): { runId: number; dryR
         return;
       }
       await pace(1500, 3000);
+      const excluded = excludedNow(job); // preferences may have changed while the panel was filled
+      if (excluded) {
+        repo.closeForExcludedCompany(job.id, excluded);
+        L.warn({ job: job.title }, `not sent: ${excluded}`);
+        return;
+      }
       const r = await submitPanel(page, Number(job.externalId), `app${appId}`);
       recordSubmitResult(apps, repo, appId, job, before, r, L);
     } catch (e) {

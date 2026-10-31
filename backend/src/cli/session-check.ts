@@ -20,4 +20,10 @@ console.log(`browser: ${siteBrowser().label} · profile: ${config.paths.browserP
 const r = await sessionReport(config.paths.browserProfile, site);
 console.log(formatSessionReport(r));
 if (r.session.state === 'logged_out') console.log('\nLog in with: npm run login -- drushim (or the dashboard button)');
+if (r.session.state === 'logged_in') {
+  const { getDb } = await import('../db/index.js');
+  const { Repo } = await import('../db/repo.js');
+  const n = new Repo(await getDb()).requeueLoginFailures(site);
+  if (n) console.log(`${n} job(s) that failed on "not logged in" are back in the queue.`);
+}
 process.exit(0);

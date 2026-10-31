@@ -85,6 +85,10 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     // is the Drushim login still valid? (an expired one keeps this hunt discovery-only)
     const session = await (opts.checkSession ?? checkDrushimSession)().catch((e: unknown): SessionInfo => ({ state: 'unknown', checkedAt: nowIso(), detail: String(e) }));
     const loginNeeded = session.state === 'logged_out';
+    if (session.state === 'logged_in') {
+      const n = repo.requeueLoginFailures('drushim');
+      if (n) L.info({ jobs: n }, 'login valid again — jobs that failed on "not logged in" are back in the queue');
+    }
     L.info({ session: session.state }, 'hunt started');
 
     await runToCompletion(db, 'drushim', 'full');
@@ -99,9 +103,13 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     const apps = new Applications(db);
     const room = Math.max(0, limits.dailyApplyLimit - repo.submittedToday('drushim'));
     // highest rank first: the daily limit is spent on the best jobs. Only sites with an automated apply flow.
-    const candidates = repo
-      .listJobs({ status: 'scored', minScore: limits.autoSubmitMinScore, limit: 2000 })
-      .items.filter((j) => j.site === 'drushim' && !apps.latestForJob(j.id))
+    const open = (j: { id: string }) => ['needs_review', 'ready', 'approved'].includes(apps.latestForJob(j.id)?.status ?? '');
+    const candidates = [
+      ...repo.listJobs({ status: 'scored', minScore: limits.autoSubmitMinScore, limit: 2000 }).items.filter((j) => !apps.latestForJob(j.id)),
+      // queued earlier (e.g. back in the queue after a login failure) and not in review
+      ...repo.listJobs({ status: 'queued', limit: 2000 }).items.filter((j) => !open(j)),
+    ]
+      .filter((j) => j.site === 'drushim')
       .map((j) => ({ ...j, r: rankStoredJob(j, j.score, prefs).rank ?? -Infinity }))
       .sort((a, b) => b.r - a.r)
       .slice(0, room);

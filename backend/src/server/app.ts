@@ -27,7 +27,7 @@ import { registerApplyRoutes } from './apply-routes.js';
 import { registerCvRoutes, registerEditorRoutes } from './editor-routes.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import { allSessions, checkDrushimSession, getSession } from '../browser/site-session.js';
+import { allSessions, checkDrushimSession, getSession, onSessionValid } from '../browser/site-session.js';
 
 const OFF_FIELD = /^(seniority|excluded title|no include keyword|role type disabled|excluded company)/;
 
@@ -36,6 +36,13 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   const app = Fastify({ logger: false });
   const repo = new Repo(db);
   syncSalaries(repo); // posted salary of jobs stored before this version (or whose text changed)
+  // a valid session again → jobs that failed only on "not logged in" go back to the queue
+  const requeue = (site: string) => {
+    const n = repo.requeueLoginFailures(site);
+    if (n) log.info({ site, jobs: n }, 'login valid again — jobs that failed on "not logged in" are back in the queue');
+  };
+  onSessionValid(requeue);
+  if (getSession('drushim').state === 'logged_in') requeue('drushim'); // checked at startup, before this listener
 
   app.setErrorHandler((err, req, reply) => {
     const status = err instanceof z.ZodError ? 400 : err instanceof ServiceError ? err.status : ((err as { statusCode?: number }).statusCode ?? 500);

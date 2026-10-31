@@ -230,6 +230,37 @@ export class Repo {
     return n;
   }
 
+  /**
+   * Jobs that failed ONLY because the site session was not logged in → back to "queued" (the next prepare / hunt picks
+   * them up). Called once the session is known to be valid again. Their stuck applications are closed as failed.
+   */
+  requeueLoginFailures(site: string): number {
+    const LOGIN = `(status_reason LIKE '%not logged in%' OR status_reason LIKE '%login form opened%' OR status_reason LIKE '%login expired%')`;
+    return tx(this.db, () => {
+      const ids = (this.db.prepare(`SELECT id FROM jobs WHERE site = ? AND status = 'failed' AND ${LOGIN}`).all(site) as Array<{ id: string }>).map((r) => r.id);
+      const now = nowIso();
+      for (const id of ids) {
+        this.db.prepare("UPDATE jobs SET status = 'queued', status_reason = 'back in the queue: the login is valid again', updated_at = ? WHERE id = ?").run(now, id);
+        this.db.prepare("UPDATE applications SET status = 'failed', updated_at = ? WHERE job_id = ? AND status IN ('approved','ready')").run(now, id);
+      }
+      return ids.length;
+    });
+  }
+
+  /** An excluded company: the job → skipped_company, its open applications → skipped with the reason. */
+  closeForExcludedCompany(jobId: string, reason: string): void {
+    const now = nowIso();
+    tx(this.db, () => {
+      this.db.prepare("UPDATE jobs SET status = 'skipped_company', status_reason = ?, prefilter_pass = 0, prefilter_reason = ?, updated_at = ? WHERE id = ?").run(reason, reason, now, jobId);
+      this.db.prepare("UPDATE applications SET status = 'skipped', error = ?, updated_at = ? WHERE job_id = ? AND status IN ('needs_review','ready','approved','dry_run_ok')").run(reason, now, jobId);
+    });
+  }
+
+  /** Jobs waiting in the apply flow (queued / in review): the excluded-company rule still applies to them. */
+  openApplyJobs(): StoredJob[] {
+    return (this.db.prepare(`SELECT * FROM jobs WHERE duplicate_of IS NULL AND status IN ('queued','needs_review','dry_run_ok')`).all() as unknown as JobRow[]).map(fromRow);
+  }
+
   /** Failed jobs whose recorded error already says "applied before" → skipped already_applied (no site access needed). */
   reclassifyAlreadyAppliedFailures(): number {
     return Number(

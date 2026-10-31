@@ -7,7 +7,7 @@ import type { SiteContext } from '../sites/types.js';
 import { BlockedError, closeContext, getPage } from '../browser/session.js';
 import { toJob } from '../core/job.js';
 import { findCrossSiteDuplicate } from '../core/dedupe.js';
-import { prefilter, scoringRole } from '../core/prefilter.js';
+import { excludedCompanyMatch, prefilter, scoringRole } from '../core/prefilter.js';
 import { jobSalary } from '../core/salary.js';
 import { effectiveLimits, loadPrefs, searchPlan } from '../core/prefs.js';
 import { experienceInput, extractRequiredYears } from '../core/experience.js';
@@ -259,6 +259,14 @@ export function refilterExisting(repo: Repo, prefs = loadPrefs()): { checked: nu
     if (!r.pass && !wasSkipped) out.newlySkipped++;
     if (r.pass && wasSkipped) out.restored++;
     repo.refilter(j.id, r.pass, r.reason, r.status);
+  }
+  // jobs already in the apply flow: an excluded company takes them out (and closes their open applications)
+  for (const j of repo.openApplyJobs()) {
+    const match = excludedCompanyMatch(j.company, prefs.filters.excludeCompanies);
+    if (!match) continue;
+    out.checked++;
+    out.newlySkipped++;
+    repo.closeForExcludedCompany(j.id, `excluded company: ${j.company} (matches "${match}")`);
   }
   return out;
 }
