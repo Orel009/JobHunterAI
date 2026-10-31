@@ -16,7 +16,8 @@
     "model:bench": "npm run bench -w backend --",
     "db:migrate": "npm run migrate -w backend",
     "test": "npm test -w backend",
-    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend"
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
+    "session:check": "npm run session:check -w backend --"
   },
   "engines": {
     "node": ">=22.13"

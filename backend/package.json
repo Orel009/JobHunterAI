@@ -11,7 +11,9 @@
     "bench": "tsx src/cli/bench.ts",
     "migrate": "tsx src/cli/migrate.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "investigate:apply": "tsx src/cli/investigate-apply.ts",
+    "session:check": "tsx src/cli/session-check.ts"
   },
   "dependencies": {
     "dotenv": "^18.0.9",
