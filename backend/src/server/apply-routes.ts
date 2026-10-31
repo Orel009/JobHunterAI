@@ -9,7 +9,7 @@ import { loadPrefs } from '../core/prefs.js';
 import { byRank, rankStoredJob } from '../core/rank.js';
 import { AnswersBank } from '../apply/bank.js';
 import { Applications, type AppStatus } from '../apply/plan.js';
-import { approveApplication, editField, prepareJobs, refreshFromBank, rejectApplication, setCv } from '../apply/service.js';
+import { approveApplication, approveBatch, batchBlock, batchProgress, editField, prepareJobs, refreshFromBank, rejectApplication, setCv } from '../apply/service.js';
 import { candidateGender, listFacts, loadProfile, profilePath } from '../profile/facts.js';
 import { assertCanApply } from './app.js';
 
@@ -31,7 +31,7 @@ export function registerApplyRoutes(app: FastifyInstance, db: DB) {
     const job = repo.getJob(a.jobId);
     const score = repo.getScore(a.jobId);
     const rank = job ? rankStoredJob(job, score, loadPrefs()) : rankStoredJob({ title: '', roleTypes: [], requiredYears: null, juniorText: null }, null, loadPrefs());
-    return { ...a, job: job ? { ...job, raw: undefined } : null, score, rank };
+    return { ...a, job: job ? { ...job, raw: undefined } : null, score, rank, batchBlock: batchBlock(a) };
   };
 
   // ---------- applications ----------
@@ -64,6 +64,14 @@ export function registerApplyRoutes(app: FastifyInstance, db: DB) {
     if (a) assertCanApply(a.site || 'drushim');
     return approveApplication(db, Number(req.params.id));
   });
+
+  // batch approval: sequential sends with normal pacing; stops on a CAPTCHA, a daily cap or a session problem
+  app.post('/api/applications/approve-batch', async (req) => {
+    const body = z.object({ ids: z.array(z.number().int()).min(1).max(200) }).parse(req.body);
+    assertCanApply('drushim');
+    return approveBatch(db, body.ids);
+  });
+  app.get('/api/applications/batch', async () => batchProgress());
 
   app.post<{ Params: { id: string } }>('/api/applications/:id/reject', async (req) => {
     const body = z.object({ reason: z.string().optional() }).parse(req.body ?? {});

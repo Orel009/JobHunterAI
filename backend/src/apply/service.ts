@@ -13,7 +13,7 @@ import { Repo, type StoredJob } from '../db/repo.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
 import { candidateGender } from '../profile/facts.js';
 import { rankStoredJob } from '../core/rank.js';
-import { getPage, pace } from '../browser/session.js';
+import { BlockedError, getPage, pace } from '../browser/session.js';
 import type { Page } from 'playwright';
 import type { log } from '../log.js';
 import { startTask } from '../pipeline/runner.js';
@@ -253,23 +253,34 @@ export function rejectApplication(db: DB, appId: number, reason = 'rejected in r
 }
 
 // ---------- submit outcome (manual approval and auto-submit) ----------
-function recordSubmitResult(apps: Applications, repo: Repo, appId: number, job: StoredJob, before: string, r: SubmitResult, L: typeof log): boolean {
+/** why a batch (or a run) must stop: bot protection / CAPTCHA, a daily cap, or the site session */
+export type SendStop = 'captcha' | 'daily_cap' | 'session';
+export interface SendResult {
+  appId: number;
+  title: string;
+  company: string;
+  /** submitted | dry_run_ok | skipped | failed | needs_review | not_sent */
+  status: string;
+  detail: string;
+  stop?: SendStop;
+}
+
+function recordSubmitResult(apps: Applications, repo: Repo, appId: number, job: StoredJob, before: string, r: SubmitResult, L: typeof log): Omit<SendResult, 'appId' | 'title' | 'company'> {
   if (r.outcome.kind === 'submitted') {
     apps.update(appId, { status: 'submitted', screenshotBefore: before, screenshotAfter: r.screenshotAfter, confirmationText: r.confirmationText, submitted: true, error: null });
     repo.setStatus(job.id, 'submitted', 'submitted');
     L.info({ job: job.title }, 'SUBMITTED');
-    return true;
+    return { status: 'submitted', detail: r.confirmationText ?? 'sent' };
   }
   if (r.outcome.kind === 'already_applied') {
     const reason = `already_applied: the site answered "sent ${r.outcome.sentDate}"`;
     apps.update(appId, { status: 'skipped', screenshotBefore: before, screenshotAfter: r.screenshotAfter, error: reason });
     repo.setStatus(job.id, 'skipped', reason);
-    return false;
+    return { status: 'skipped', detail: reason };
   }
   apps.update(appId, { status: 'failed', screenshotBefore: before, screenshotAfter: r.screenshotAfter, confirmationText: r.confirmationText, error: r.outcome.message });
   repo.setStatus(job.id, 'failed', r.outcome.message);
-  if (r.outcome.fatalForDay || r.outcome.needsLogin) throw new Error(r.outcome.message);
-  return false;
+  return { status: 'failed', detail: r.outcome.message, stop: r.outcome.fatalForDay ? 'daily_cap' : r.outcome.needsLogin ? 'session' : undefined };
 }
 
 /**
@@ -316,97 +327,205 @@ async function autoSubmitPrepared(o: {
   }
   L.info({ job: job.title }, 'AUTO-SUBMIT: every gate condition passed');
   const r = await submitPanel(page, Number(job.externalId), `app${appId}`);
-  return recordSubmitResult(apps, repo, appId, job, before, r, L);
+  const res = recordSubmitResult(apps, repo, appId, job, before, r, L);
+  if (res.stop) throw new Error(res.detail); // daily cap / session: stop the run
+  return res.status === 'submitted';
 }
 
 // ---------- approve ----------
-export function approveApplication(db: DB, appId: number): { runId: number; dryRun: boolean } {
+/** The checks an application must pass to be approved (one by one or in a batch). */
+function approvable(db: DB, appId: number): { app: ApplicationRow; job: StoredJob } {
   const apps = new Applications(db);
-  const repo = new Repo(db);
   const app = apps.get(appId);
   if (!app) throw new ServiceError(404, 'application not found');
   if (!(OPEN as readonly string[]).includes(app.status)) throw new ServiceError(409, `application is ${app.status}`);
   if (app.plan.fields.some((f) => f.status === 'pending')) throw new ServiceError(409, 'answer all pending questions first');
   if (app.plan.readiness === 'blocked_no') throw new ServiceError(409, 'a required statement is false for you');
   if (!app.plan.cv) throw new ServiceError(409, 'no CV chosen (set cv.he / cv.en in preferences.yaml)');
-  const job = repo.getJob(app.jobId);
+  const job = new Repo(db).getJob(app.jobId);
   if (!job) throw new ServiceError(404, 'job not found');
-  const dryRun = config.DRY_RUN;
-  if (!dryRun) {
-    const limits = effectiveLimits(loadPrefs());
-    if (repo.submittedToday() >= limits.dailyApplyLimit) throw new ServiceError(429, `daily apply limit reached (${limits.dailyApplyLimit})`);
+  return { app, job };
+}
+
+const dailyLimitReached = (repo: Repo, site: string) => repo.submittedToday(site) >= effectiveLimits(loadPrefs()).dailyApplyLimit;
+
+/**
+ * Sends one approved application (or, in DRY_RUN, fills it and stops before the final click). Never throws: the
+ * result says what happened and whether a batch must stop (bot protection, a daily cap, the session).
+ */
+async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boolean, L: typeof log, applied: Map<string, string | null> | null): Promise<SendResult> {
+  const apps = new Applications(db);
+  const repo = new Repo(db);
+  const app = apps.get(appId)!;
+  const done = (status: string, detail: string, stop?: SendStop): SendResult => ({ appId, title: job.title, company: job.company, status, detail, stop });
+  if (!dryRun && dailyLimitReached(repo, job.site)) {
+    apps.update(appId, { status: 'needs_review', error: 'not sent: the daily limit was reached' });
+    return done('not_sent', `daily apply limit reached (${effectiveLimits(loadPrefs()).dailyApplyLimit})`, 'daily_cap');
   }
   apps.update(appId, { status: 'approved', reviewed: true, dryRun });
+  // applied on the site in the meantime (by hand, or another device)? → skipped, never failed
+  if (applied?.has(job.externalId)) {
+    const when = applied.get(job.externalId);
+    const reason = `already_applied: on drushim${when ? ` (sent ${when.slice(0, 10)})` : ''}`;
+    apps.update(appId, { status: 'skipped', error: reason });
+    repo.setStatus(job.id, 'skipped', reason);
+    L.info({ job: job.title }, reason);
+    return done('skipped', reason);
+  }
+  const page = await getPage();
+  const unguard = dryRun ? await installDryRunGuard(page) : async () => undefined;
+  try {
+    const early = excludedNow(job);
+    if (early) {
+      repo.closeForExcludedCompany(job.id, early);
+      L.warn({ job: job.title }, `not sent: ${early}`);
+      return done('skipped', early);
+    }
+    const state = await openPanel(page, job.url);
+    markLoggedIn();
+    // the live form must match what was reviewed
+    const planned = new Set(app.plan.fields.map((f) => `${f.field.key}|${f.field.label}`));
+    const live = state.fields.filter((f) => f.type !== 'textarea').map((f) => `${f.key}|${f.label}`);
+    const changed = live.filter((k) => !planned.has(k));
+    if (changed.length) {
+      const plan = await buildPlan(job, state.fields, { db, repo, prefs: loadPrefs() }, app.plan.cv);
+      apps.savePlan(job, plan, 'needs_review');
+      repo.setStatus(job.id, 'needs_review', 'the form changed since review');
+      L.warn({ changed }, 'form changed since review — back to the review queue');
+      return done('needs_review', 'the form changed since review — back to the review queue');
+    }
+    await fillPanel(page, state, app.plan);
+    const before = await screenshotPanel(page, `app${appId}-${dryRun ? 'dryrun' : 'before-submit'}`);
+    savePlanFile(appId, app.plan);
+    if (dryRun) {
+      apps.update(appId, { status: 'dry_run_ok', screenshotBefore: before, error: null });
+      repo.setStatus(job.id, 'dry_run_ok', 'DRY_RUN: stopped before the final click');
+      L.info({ job: job.title }, 'DRY_RUN ok — stopped before submit');
+      return done('dry_run_ok', 'DRY_RUN: filled, stopped before the final click');
+    }
+    await pace(1500, 3000);
+    const excluded = excludedNow(job); // preferences may have changed while the panel was filled
+    if (excluded) {
+      repo.closeForExcludedCompany(job.id, excluded);
+      L.warn({ job: job.title }, `not sent: ${excluded}`);
+      return done('skipped', excluded);
+    }
+    const r = await submitPanel(page, Number(job.externalId), `app${appId}`);
+    const res = recordSubmitResult(apps, repo, appId, job, before, r, L);
+    return done(res.status, res.detail, res.stop);
+  } catch (e) {
+    const err = e instanceof Error ? e.message : String(e);
+    if (e instanceof ApplyError && e.code === 'already_applied') {
+      apps.update(appId, { status: 'skipped', error: `already_applied: ${err}` });
+      repo.setStatus(job.id, 'skipped', `already_applied: ${err}`);
+      return done('skipped', `already_applied: ${err}`);
+    }
+    if (apps.get(appId)?.status === 'approved') {
+      apps.update(appId, { status: 'failed', error: err });
+      repo.setStatus(job.id, 'failed', err);
+    }
+    const stop: SendStop | undefined =
+      e instanceof BlockedError ? 'captcha' : e instanceof ApplyError && e.code === 'not_logged_in' ? 'session' : e instanceof ApplyError && e.code === 'daily_limit' ? 'daily_cap' : undefined;
+    L.error({ job: job.title, err }, 'send failed');
+    return done('failed', err, stop);
+  } finally {
+    await unguard();
+  }
+}
 
+export function approveApplication(db: DB, appId: number): { runId: number; dryRun: boolean } {
+  const { job } = approvable(db, appId);
+  const repo = new Repo(db);
+  const dryRun = config.DRY_RUN;
+  if (!dryRun && dailyLimitReached(repo, job.site)) throw new ServiceError(429, `daily apply limit reached (${effectiveLimits(loadPrefs()).dailyApplyLimit})`);
+  new Applications(db).update(appId, { status: 'approved', reviewed: true, dryRun });
   const runId = startTask(db, 'drushim', dryRun ? 'dry_run' : 'submit', async (run, _repo, L) => {
     run.stage = `${dryRun ? 'dry run' : 'SUBMIT'}: ${job.title}`;
-    const page = await getPage();
-    // applied on the site in the meantime (by hand, or another device)? → skipped, never failed
-    const applied = await fetchAppliedJobs(page).catch(() => null);
-    if (applied?.has(job.externalId)) {
-      const when = applied.get(job.externalId);
-      const reason = `already_applied: on drushim${when ? ` (sent ${when.slice(0, 10)})` : ''}`;
-      apps.update(appId, { status: 'skipped', error: reason });
-      repo.setStatus(job.id, 'skipped', reason);
-      L.info({ job: job.title }, reason);
-      return;
-    }
-    const unguard = dryRun ? await installDryRunGuard(page) : async () => undefined;
-    try {
-      const early = excludedNow(job);
-      if (early) {
-        repo.closeForExcludedCompany(job.id, early);
-        L.warn({ job: job.title }, `not sent: ${early}`);
-        return;
-      }
-      const state = await openPanel(page, job.url);
-      markLoggedIn();
-      // the live form must match what was reviewed
-      const planned = new Set(app.plan.fields.map((f) => `${f.field.key}|${f.field.label}`));
-      const live = state.fields.filter((f) => f.type !== 'textarea').map((f) => `${f.key}|${f.label}`);
-      const changed = live.filter((k) => !planned.has(k));
-      if (changed.length) {
-        const plan = await buildPlan(job, state.fields, { db, repo, prefs: loadPrefs() }, app.plan.cv);
-        apps.savePlan(job, plan, 'needs_review');
-        repo.setStatus(job.id, 'needs_review', 'the form changed since review');
-        L.warn({ changed }, 'form changed since review — back to the review queue');
-        return;
-      }
-      await fillPanel(page, state, app.plan);
-      const before = await screenshotPanel(page, `app${appId}-${dryRun ? 'dryrun' : 'before-submit'}`);
-      savePlanFile(appId, app.plan);
-      if (dryRun) {
-        apps.update(appId, { status: 'dry_run_ok', screenshotBefore: before, error: null });
-        repo.setStatus(job.id, 'dry_run_ok', 'DRY_RUN: stopped before the final click');
-        L.info({ job: job.title }, 'DRY_RUN ok — stopped before submit');
-        return;
-      }
-      await pace(1500, 3000);
-      const excluded = excludedNow(job); // preferences may have changed while the panel was filled
-      if (excluded) {
-        repo.closeForExcludedCompany(job.id, excluded);
-        L.warn({ job: job.title }, `not sent: ${excluded}`);
-        return;
-      }
-      const r = await submitPanel(page, Number(job.externalId), `app${appId}`);
-      recordSubmitResult(apps, repo, appId, job, before, r, L);
-    } catch (e) {
-      const err = e instanceof Error ? e.message : String(e);
-      const cur = apps.get(appId);
-      if (cur?.status === 'approved') {
-        if (e instanceof ApplyError && e.code === 'already_applied') {
-          apps.update(appId, { status: 'skipped', error: `already_applied: ${err}` });
-          repo.setStatus(job.id, 'skipped', `already_applied: ${err}`);
-          return; // not a failure of the run
-        }
-        apps.update(appId, { status: 'failed', error: err });
-        repo.setStatus(job.id, 'failed', err);
-      }
-      if (e instanceof ApplyError && e.code === 'already_applied') return;
-      throw e;
-    } finally {
-      await unguard();
-    }
+    const applied = await fetchAppliedJobs(await getPage()).catch(() => null);
+    const r = await sendApproved(db, appId, job, dryRun, L, applied);
+    if (r.stop) throw new Error(r.detail); // bot protection / daily cap / session: the run failed
   });
   return { runId, dryRun };
+}
+
+// ---------- batch approval ----------
+/**
+ * Why an application cannot be approved in a batch (null = it can): drafts, pending answers and flagged claims need
+ * your individual review, and so does anything not ready.
+ */
+export function batchBlock(app: ApplicationRow): string | null {
+  if (!(OPEN as readonly string[]).includes(app.status)) return `application is ${app.status}`;
+  if (!app.plan.cv) return 'no CV chosen';
+  const f = app.plan.fields.find((x) => x.status === 'pending' || x.status === 'draft' || (x.provenance.flaggedClaims?.length ?? 0) > 0);
+  if (f) return `"${f.field.label}": ${f.status === 'pending' ? 'answer pending' : f.status === 'draft' ? 'draft written by the model' : 'flagged claims'} — review it on its own`;
+  if (app.plan.readiness !== 'ready') return `plan is ${app.plan.readiness}`;
+  return null;
+}
+
+export interface BatchProgress {
+  runId: number;
+  dryRun: boolean;
+  startedAt: string;
+  total: number;
+  done: number;
+  current: string | null;
+  results: SendResult[];
+  stoppedReason: string | null;
+  finished: boolean;
+}
+let batch: BatchProgress | null = null;
+export const batchProgress = () => batch;
+
+const STOP_TEXT: Record<SendStop, string> = {
+  captcha: 'the site showed a CAPTCHA / bot protection — stopped (never bypassed); open the site yourself and try later',
+  daily_cap: 'a daily cap was reached — stopped; the rest stay in the review queue',
+  session: 'the site session is not logged in — stopped; log in again, the rest stay in the review queue',
+};
+
+/** Approves the selected applications and sends them one after another (normal pacing), stopping on a stop condition. */
+export function approveBatch(db: DB, appIds: number[]): { runId: number; dryRun: boolean; accepted: number; refused: Array<{ appId: number; reason: string }> } {
+  const apps = new Applications(db);
+  const repo = new Repo(db);
+  const prefs = loadPrefs();
+  const refused: Array<{ appId: number; reason: string }> = [];
+  const accepted: Array<{ app: ApplicationRow; job: StoredJob; rank: number }> = [];
+  for (const id of [...new Set(appIds)]) {
+    const app = apps.get(id);
+    const block = app ? batchBlock(app) : 'not found';
+    const job = app ? repo.getJob(app.jobId) : null;
+    if (block || !app || !job) refused.push({ appId: id, reason: block ?? 'job not found' });
+    else accepted.push({ app, job, rank: rankStoredJob(job, repo.getScore(job.id), prefs).rank ?? -Infinity });
+  }
+  if (!accepted.length) throw new ServiceError(409, `nothing to approve: ${refused.map((r) => `#${r.appId} ${r.reason}`).join('; ')}`);
+  accepted.sort((a, b) => b.rank - a.rank); // the best first, in case a cap stops the batch
+  const dryRun = config.DRY_RUN;
+  const runId = startTask(db, 'drushim', dryRun ? 'dry_run_batch' : 'submit_batch', async (run, _repo, L) => {
+    const page = await getPage();
+    const applied = await fetchAppliedJobs(page).catch(() => null);
+    for (const [i, { app, job }] of accepted.entries()) {
+      if (run.controller.signal.aborted) {
+        batch!.stoppedReason = 'stopped by you';
+        break;
+      }
+      batch!.current = `${i + 1}/${accepted.length}: ${job.title} — ${job.company}`;
+      run.stage = `${dryRun ? 'dry run' : 'SUBMIT'} ${batch!.current}`;
+      const fresh = apps.get(app.id);
+      const still = fresh ? batchBlock(fresh) : 'gone';
+      const r: SendResult = still ? { appId: app.id, title: job.title, company: job.company, status: 'not_sent', detail: `changed since you selected it: ${still}` } : await sendApproved(db, app.id, job, dryRun, L, applied);
+      batch!.results.push(r);
+      batch!.done++;
+      run.stats.sent = (run.stats.sent ?? 0) + (r.status === 'submitted' ? 1 : 0);
+      if (r.stop) {
+        batch!.stoppedReason = STOP_TEXT[r.stop];
+        for (const rest of accepted.slice(i + 1)) batch!.results.push({ appId: rest.app.id, title: rest.job.title, company: rest.job.company, status: 'not_sent', detail: 'not sent: the batch stopped' });
+        L.warn({ stop: r.stop }, `batch stopped: ${STOP_TEXT[r.stop]}`);
+        break;
+      }
+      if (i < accepted.length - 1) await pace();
+    }
+    batch!.current = null;
+    batch!.finished = true;
+  });
+  batch = { runId, dryRun, startedAt: new Date().toISOString(), total: accepted.length, done: 0, current: null, results: [], stoppedReason: null, finished: false };
+  return { runId, dryRun, accepted: accepted.length, refused };
 }

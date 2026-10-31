@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apply, type Application, type ResolvedField, salaryLabel } from './api';
+import { apply, type Application, type BatchProgress, type ResolvedField, salaryLabel } from './api';
 import { RankBadge } from './RankBadge';
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -24,13 +24,47 @@ export function ReviewQueue({ dryRun, busy, applyDisabled = false, onChanged }: 
   const [items, setItems] = useState<Application[]>([]);
   const [filter, setFilter] = useState(OPEN);
   const [msg, setMsg] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [minRank, setMinRank] = useState(90);
+  const [batch, setBatch] = useState<BatchProgress | null>(null);
 
-  const load = useCallback(async () => setItems(await apply.list(filter)), [filter]);
+  const load = useCallback(async () => {
+    const list = await apply.list(filter);
+    setItems(list);
+    // drop selections that are no longer eligible (sent, edited into a draft, …)
+    setSelected((cur) => new Set([...cur].filter((id) => list.some((a) => a.id === id && !a.batchBlock))));
+  }, [filter]);
   useEffect(() => {
     void load();
     const t = setInterval(() => void load(), 4000);
     return () => clearInterval(t);
   }, [load]);
+  const running = !!batch && !batch.finished;
+  useEffect(() => {
+    void apply.batch().then(setBatch).catch(() => undefined);
+    const t = setInterval(() => void apply.batch().then(setBatch).catch(() => undefined), running ? 1500 : 5000);
+    return () => clearInterval(t);
+  }, [running]);
+
+  const eligible = items.filter((a) => !a.batchBlock);
+  const toggle = (id: number) =>
+    setSelected((cur) => {
+      const n = new Set(cur);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const selectByRank = () => setSelected(new Set(eligible.filter((a) => (a.rank.rank ?? -1) >= minRank).map((a) => a.id)));
+  const approveSelected = async () => {
+    const ids = [...selected];
+    if (!dryRun && !window.confirm(`DRY_RUN is OFF. This will REALLY submit ${ids.length} application(s), one after another. Continue?`)) return;
+    await act(async () => {
+      const r = await apply.approveBatch(ids);
+      setSelected(new Set());
+      setBatch(await apply.batch());
+      if (r.refused.length) setMsg(`${r.accepted} started; ${r.refused.length} refused: ${r.refused.map((x) => `#${x.appId} ${x.reason}`).join('; ')}`);
+    }, dryRun ? 'batch dry run started' : 'batch submit started');
+  };
 
   const act = async (fn: () => Promise<unknown>, ok?: string) => {
     setMsg(null);
@@ -61,15 +95,73 @@ export function ReviewQueue({ dryRun, busy, applyDisabled = false, onChanged }: 
         <span className="muted">{items.length} applications</span>
         {msg && <span className="note">{msg}</span>}
       </div>
+      <div className="filters batch-bar">
+        <b>Batch approval</b>
+        <span className="muted">select all with rank ≥</span>
+        <input type="number" min={0} max={100} value={minRank} onChange={(e) => setMinRank(Number(e.target.value))} style={{ width: '4.5em' }} />
+        <button className="secondary" disabled={running} onClick={selectByRank}>
+          select
+        </button>
+        <button className="link" disabled={!selected.size} onClick={() => setSelected(new Set())}>
+          clear
+        </button>
+        <button className={dryRun ? '' : 'danger'} disabled={!selected.size || busy || running || applyDisabled} onClick={() => void approveSelected()}>
+          {dryRun ? `Approve selected (${selected.size}) → DRY RUN` : `Approve selected (${selected.size}) → SUBMIT`}
+        </button>
+        <span className="muted">
+          {eligible.length} of {items.length} can be batch-approved; drafts, pending answers and flagged claims need individual review
+        </span>
+      </div>
+      {batch && <BatchPanel batch={batch} />}
       {items.length === 0 && <p className="muted">Nothing here. Use “apply” on the Jobs screen to prepare a plan.</p>}
       {items.map((a) => (
-        <AppCard key={a.id} app={a} dryRun={dryRun} busy={busy} applyDisabled={applyDisabled} act={act} />
+        <AppCard key={a.id} app={a} dryRun={dryRun} busy={busy} applyDisabled={applyDisabled} act={act} selected={selected.has(a.id)} onToggle={() => toggle(a.id)} batchLocked={running} />
       ))}
     </section>
   );
 }
 
-function AppCard({ app, dryRun, busy, applyDisabled, act }: { app: Application; dryRun: boolean; busy: boolean; applyDisabled: boolean; act: (fn: () => Promise<unknown>, ok?: string) => Promise<void> }) {
+const BATCH_ICON: Record<string, string> = { submitted: '✔', dry_run_ok: '✔', skipped: '↷', needs_review: '↩', failed: '✗', not_sent: '–' };
+
+function BatchPanel({ batch }: { batch: BatchProgress }) {
+  const sent = batch.results.filter((r) => r.status === 'submitted' || r.status === 'dry_run_ok').length;
+  return (
+    <div className={`banner ${batch.stoppedReason ? 'error' : 'info'}`}>
+      <div>
+        <b>{batch.finished ? 'Batch finished' : 'Batch running'}</b> {batch.dryRun ? '(DRY RUN — nothing is sent)' : ''} · {batch.done}/{batch.total} done · {sent} {batch.dryRun ? 'dry-run OK' : 'sent'}
+        {batch.current && <span dir="auto"> · now: {batch.current}</span>}
+      </div>
+      {batch.stoppedReason && <div>⛔ {batch.stoppedReason}</div>}
+      <ul className="batch-results">
+        {batch.results.map((r) => (
+          <li key={r.appId} dir="auto">
+            {BATCH_ICON[r.status] ?? '•'} #{r.appId} {r.title} — {r.company}: <b>{r.status}</b> <span className="muted">{r.detail}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function AppCard({
+  app,
+  dryRun,
+  busy,
+  applyDisabled,
+  act,
+  selected,
+  onToggle,
+  batchLocked,
+}: {
+  app: Application;
+  dryRun: boolean;
+  busy: boolean;
+  applyDisabled: boolean;
+  act: (fn: () => Promise<unknown>, ok?: string) => Promise<void>;
+  selected: boolean;
+  onToggle: () => void;
+  batchLocked: boolean;
+}) {
   const { plan, job } = app;
   const pending = plan.fields.filter((f) => f.status === 'pending').length;
   const canApprove = !busy && !applyDisabled && pending === 0 && plan.readiness !== 'blocked_no' && !!plan.cv && ['needs_review', 'dry_run_ok', 'failed'].includes(app.status);
@@ -78,6 +170,13 @@ function AppCard({ app, dryRun, busy, applyDisabled, act }: { app: Application; 
       <div className="app-head">
         <div>
           <div className="app-title" dir="auto">
+            <input
+              type="checkbox"
+              checked={selected}
+              disabled={!!app.batchBlock || batchLocked}
+              title={app.batchBlock ? `individual review needed: ${app.batchBlock}` : 'select for batch approval'}
+              onChange={onToggle}
+            />{' '}
             {job?.title} — <span dir="auto">{job?.company}</span>
           </div>
           <div className="muted">
@@ -187,6 +286,7 @@ function AppCard({ app, dryRun, busy, applyDisabled, act }: { app: Application; 
           Reject / skip job
         </button>
         {pending > 0 && <span className="note">{pending} pending answer(s)</span>}
+        {app.batchBlock && ['needs_review', 'dry_run_ok', 'failed'].includes(app.status) && <span className="muted">not for batch: {app.batchBlock}</span>}
       </div>
     </div>
   );

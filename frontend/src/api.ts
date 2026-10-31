@@ -211,6 +211,27 @@ export interface Application {
   job: JobItem | null;
   score: Score | null;
   rank: Rank;
+  /** why this one can't be approved in a batch (drafts, pending answers, flagged claims…); null = it can */
+  batchBlock: string | null;
+}
+export interface SendResult {
+  appId: number;
+  title: string;
+  company: string;
+  status: string;
+  detail: string;
+  stop?: 'captcha' | 'daily_cap' | 'session';
+}
+export interface BatchProgress {
+  runId: number;
+  dryRun: boolean;
+  startedAt: string;
+  total: number;
+  done: number;
+  current: string | null;
+  results: SendResult[];
+  stoppedReason: string | null;
+  finished: boolean;
 }
 export interface BankEntry {
   id: number;
@@ -231,6 +252,9 @@ export const apply = {
     req<Application>('PATCH', `/api/applications/${id}/fields/${encodeURIComponent(key)}`, { value, saveToBank }),
   setCv: (id: number, lang: 'he' | 'en') => req<Application>('PUT', `/api/applications/${id}/cv`, { lang }),
   approve: (id: number) => req<{ runId: number; dryRun: boolean }>('POST', `/api/applications/${id}/approve`),
+  approveBatch: (ids: number[]) =>
+    req<{ runId: number; dryRun: boolean; accepted: number; refused: Array<{ appId: number; reason: string }> }>('POST', '/api/applications/approve-batch', { ids }),
+  batch: () => req<BatchProgress | null>('GET', '/api/applications/batch'),
   reject: (id: number, reason?: string) => req('POST', `/api/applications/${id}/reject`, { reason }),
   prepareQueued: () => req<{ note?: string; count?: number }>('POST', '/api/applications/prepare', {}),
   screenshotUrl: (file: string) => `/api/screenshots/${encodeURIComponent(file)}`,
