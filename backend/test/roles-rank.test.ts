@@ -186,6 +186,7 @@ describe('title excludes for support / courses', () => {
     ['Helpdesk Developer', false],
     ['AI software engineer - הכשרה והשמה למשרות פיתוח', false],
     ['מסלול הכשרה למפתחים', false],
+    ['הכשרה+עבודה כמפתח/ת אינפורמטיקה', false],
     ['Full Stack Developer course', false],
     ['מפתח/ת תוכנה', true],
     ['תמיכה טכנית אפליקטיבית למפתחים', true],

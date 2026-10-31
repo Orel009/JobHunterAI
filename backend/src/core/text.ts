@@ -35,6 +35,7 @@ export function normalizeText(s: string): string {
     .replace(/[֑-ׇ]/g, '') // niqqud / cantillation
     .replace(/([א-ת])\s*[/.\\(]\s*(ת|ית|ה|ות|יות|ים)\)?(?=[\s,\-–|)]|$)/g, '$1')
     .replace(/["'`׳״]/g, '')
+    .replace(/(?<=[א-ת])\+|\+(?=[א-ת])/g, ' ') // "הכשרה+עבודה" is two words; "C++" keeps its plus
     .replace(/[^\p{L}\p{N}+#]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
