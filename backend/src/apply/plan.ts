@@ -58,7 +58,7 @@ export async function buildPlan(job: StoredJob, fields: FormField[], ctx: PlanCo
   let cv: CvChoice | null = cvOverride ?? null;
   if (!cv) {
     if (!ctx.prefs.cv.he || !ctx.prefs.cv.en) notes.push('cv.he / cv.en are not set in preferences.yaml');
-    else cv = chooseCv(job, ctx.prefs.cv, config.ENGLISH_CV_MAX_HEBREW_RATIO);
+    else cv = chooseCv(job, ctx.prefs.cv, ctx.prefs.cv.englishMaxHebrewRatio ?? config.ENGLISH_CV_MAX_HEBREW_RATIO);
   }
   return { jobId: job.id, site: job.site, createdAt: nowIso(), cv, fields: resolved, readiness: readiness(resolved), notes };
 }

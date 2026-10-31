@@ -5,11 +5,15 @@ import { Controls } from './Controls';
 import { JobsScreen } from './JobsScreen';
 import { LogPanel } from './LogPanel';
 import { ReviewQueue } from './ReviewQueue';
+import { PreferencesEditor } from './PreferencesEditor';
+import { ProfileScreen } from './ProfileScreen';
 
 const TABS = [
   { id: 'jobs', label: 'Jobs', enabled: true },
   { id: 'review', label: 'Review queue', enabled: true },
   { id: 'answers', label: 'Answers bank', enabled: true },
+  { id: 'profile', label: 'Profile', enabled: true },
+  { id: 'prefs', label: 'Preferences', enabled: true },
   { id: 'history', label: 'History (Phase 3)', enabled: false },
 ] as const;
 
@@ -76,6 +80,8 @@ export function App() {
       {tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} roleTypes={status?.roleTypes ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
       {tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} onChanged={refresh} />}
       {tab === 'answers' && <AnswersBank onChanged={refresh} />}
+      {tab === 'profile' && <ProfileScreen onChanged={refresh} />}
+      {tab === 'prefs' && <PreferencesEditor onSaved={refresh} />}
       <LogPanel />
     </div>
   );

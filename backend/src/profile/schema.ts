@@ -9,7 +9,27 @@ const Bi = z.object({ he: z.string().nullable().default(null), en: z.string().nu
 export type Bilingual = z.infer<typeof Bi>;
 const Src = z.array(z.enum(['he', 'en']));
 
+/**
+ * USER-OWNED fields are never changed by a CV update (profile:init / CV upload diff):
+ * gender, blockedSkills, declaredExperience, skills[].level, skills[].aliases, experience[].skills (skill links),
+ * experience[]/education[].datesLocked dates (and any month-precise date you added).
+ */
+export const USER_OWNED_FIELDS = [
+  'gender',
+  'blockedSkills',
+  'declaredExperience',
+  'skills[].level',
+  'skills[].aliases',
+  'experience[].skills',
+  'experience[].datesLocked',
+  'education[].datesLocked',
+] as const;
+
 export const ProfileSchema = z.object({
+  /** USER-OWNED: drives Hebrew grammatical gender in every prompt that writes Hebrew */
+  gender: z.enum(['male', 'female']).nullable().default(null),
+  /** USER-OWNED: skills you removed; CV updates never re-add them (matched by name/alias key) */
+  blockedSkills: z.array(z.string()).default([]),
   meta: z.object({ generatedAt: z.string(), sources: z.record(z.string(), z.string()), model: z.string() }).partial().default({}),
   contact: z.object({
     name: Bi,
@@ -23,7 +43,7 @@ export const ProfileSchema = z.object({
     .array(
       z.object({
         id: z.string(),
-        kind: z.enum(['work', 'military', 'volunteer', 'project', 'other']).default('work'),
+        kind: z.enum(['work', 'project', 'education', 'military', 'volunteer', 'other']).default('work'),
         company: Bi,
         title: Bi,
         start: DateStr.nullable(),
@@ -32,6 +52,8 @@ export const ProfileSchema = z.object({
         skills: z.array(z.string()).default([]),
         highlights: z.object({ he: z.array(z.string()).default([]), en: z.array(z.string()).default([]) }).default({ he: [], en: [] }),
         sources: Src.default([]),
+        /** USER-OWNED: set when you edit the dates; CV updates never propose date changes for this role */
+        datesLocked: z.boolean().default(false),
       }),
     )
     .default([]),
@@ -45,6 +67,8 @@ export const ProfileSchema = z.object({
         start: DateStr.nullable(),
         end: DateStr.nullable(),
         sources: Src.default([]),
+        /** USER-OWNED: see experience[].datesLocked */
+        datesLocked: z.boolean().default(false),
       }),
     )
     .default([]),

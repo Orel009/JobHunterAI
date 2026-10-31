@@ -16,7 +16,8 @@ const int = (def: number) => z.coerce.number().int().nonnegative().default(def);
 
 const EnvSchema = z.object({
   DATA_DIR: z.string().default('data'),
-  PREFERENCES_FILE: z.string().default('preferences.yaml'),
+  /** empty = data/preferences.yaml (or a legacy preferences.yaml in the repo root, if that is where yours is) */
+  PREFERENCES_FILE: z.string().default(''),
   /** optional: profile file to use instead of data/profile/profile.json (relative to the repo root) */
   PROFILE_FILE: z.string().default(''),
   PORT: int(8787),
@@ -56,6 +57,14 @@ export type Config = z.infer<typeof EnvSchema> & {
   };
 };
 
+/** Real preferences live in data/ (gitignored). A legacy repo-root preferences.yaml keeps working. */
+function resolvePreferences(explicit: string, dataDir: string): string {
+  if (explicit) return path.resolve(ROOT_DIR, explicit);
+  const inData = path.join(dataDir, 'preferences.yaml');
+  const legacy = path.join(ROOT_DIR, 'preferences.yaml');
+  return !fs.existsSync(inData) && fs.existsSync(legacy) ? legacy : inData;
+}
+
 function load(): Config {
   const env = EnvSchema.parse(process.env);
   const dataDir = path.resolve(ROOT_DIR, env.DATA_DIR);
@@ -67,7 +76,7 @@ function load(): Config {
     profileDir: path.join(dataDir, 'profile'),
     investigations: path.join(dataDir, 'investigations'),
     reports: path.join(dataDir, 'reports'),
-    preferences: path.resolve(ROOT_DIR, env.PREFERENCES_FILE),
+    preferences: resolvePreferences(env.PREFERENCES_FILE, dataDir),
   };
   // `npm run doctor` sets JOBHUNTER_READONLY=1: report only, create nothing
   if (process.env.JOBHUNTER_READONLY !== '1') {

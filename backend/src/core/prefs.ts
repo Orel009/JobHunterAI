@@ -86,7 +86,14 @@ export const PrefsSchema = z.object({
     })
     .prefault({}),
   /** CV names exactly as they appear in the site's CV list (kept here, not .env, because of Hebrew). */
-  cv: z.object({ he: z.string().default(''), en: z.string().default('') }).prefault({}),
+  cv: z
+    .object({
+      he: z.string().default(''),
+      en: z.string().default(''),
+      /** English CV only when Hebrew letters are below this share of the post (overrides ENGLISH_CV_MAX_HEBREW_RATIO) */
+      englishMaxHebrewRatio: z.number().min(0).max(1).optional(),
+    })
+    .prefault({}),
   standardAnswers: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
 });
 

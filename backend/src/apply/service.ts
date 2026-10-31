@@ -177,7 +177,7 @@ export function setCv(db: DB, appId: number, lang: 'he' | 'en'): ApplicationRow 
     lang,
     cvName: prefs.cv[lang],
     hebrewRatio: Math.round(hebrewRatio(`${job.title}\n${job.descriptionText}\n${job.requirementsText}`) * 1000) / 1000,
-    threshold: config.ENGLISH_CV_MAX_HEBREW_RATIO,
+    threshold: prefs.cv.englishMaxHebrewRatio ?? config.ENGLISH_CV_MAX_HEBREW_RATIO,
     overridden: true,
   };
   return recompute(app, apps, new Repo(db), app.plan.fields, cv);

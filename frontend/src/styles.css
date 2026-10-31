@@ -120,3 +120,20 @@ tr.pending-row { background: #fff8e1; }
 .status-skipped_experience, .status-skipped_screening { background: #f1f1f1; color: #888; }
 .prov-declared_experience { background: #fce4ec; }
 .status-skipped_not_a_job { background: #f1f1f1; color: #888; }
+
+/* ---------- editors ---------- */
+.editor fieldset { border: 1px solid #e1e4ea; border-radius: 8px; margin: 12px 0; padding: 8px 12px; background: #fff; }
+.editor legend { font-weight: 700; padding: 0 6px; }
+.field { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
+.field-label { font-size: 12px; color: #4a5263; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 16px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 16px; }
+.edit-table td { vertical-align: top; }
+.edit-table input, .edit-table textarea, .edit-table select { width: 100%; margin-bottom: 2px; }
+.edit-table input.date { width: 120px; }
+.role-links { display: flex; flex-wrap: wrap; gap: 2px 10px; max-width: 420px; font-size: 12px; }
+.role-links label { display: inline-flex; gap: 3px; align-items: center; }
+.sticky { position: sticky; top: 0; background: #f5f6f8; z-index: 2; padding: 6px 0; }
+tr.disabled-row { opacity: 0.55; }
+textarea { font: inherit; }
