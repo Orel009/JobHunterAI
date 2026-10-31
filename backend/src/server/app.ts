@@ -11,7 +11,8 @@ import { effectiveLimits, loadPrefs } from '../core/prefs.js';
 import { listLocalModels } from '../llm/ollama.js';
 import { prepareJobs, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
-import fastifyStatic from '@fastify/static';
+import fs from 'node:fs';
+import path from 'node:path';
 import { allSessions, checkDrushimSession, getSession } from '../browser/site-session.js';
 
 export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
@@ -131,16 +132,32 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   });
 
   if (opts.staticDir) {
-    // production (npm start): the built dashboard on the same port; SPA fallback for non-API paths
-    void app.register(fastifyStatic, { root: opts.staticDir, wildcard: false });
+    // production (npm start): the built dashboard on the same port; SPA fallback for non-API paths.
+    // A tiny handler instead of @fastify/static (fewer deps; only one folder of built files to serve).
+    const root = path.resolve(opts.staticDir);
     app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith('/api/')) return reply.status(404).send({ error: 'not found' });
-      return reply.sendFile('index.html');
+      if (req.method !== 'GET' || req.url.startsWith('/api/')) return reply.status(404).send({ error: 'not found' });
+      const rel = decodeURIComponent(req.url.split('?')[0]!).replace(/^\/+/, '');
+      let file = path.resolve(root, rel);
+      if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(root, 'index.html');
+      const type = MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+      return reply.type(type).header('cache-control', file.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000, immutable').send(fs.createReadStream(file));
     });
   }
 
   return app;
 }
+
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.json': 'application/json',
+  '.woff2': 'font/woff2',
+};
 
 /** Applying is disabled while the site is known to be logged out (unknown = let the adapter find out). */
 export function assertCanApply(site: string): void {

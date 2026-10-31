@@ -12,6 +12,7 @@ import type { Page, Request } from 'playwright';
 import { config } from '../config.js';
 import { closeContext, detectBlock, getPage, pace } from '../browser/session.js';
 import { extractNextData, ssrSearchJobs } from '../sites/drushim/normalize.js';
+import cfg from '../sites/drushim/selectors.json' with { type: 'json' };
 
 const [mode, ...rest] = process.argv.slice(2);
 const outDir = path.join(config.paths.investigations, `drushim-apply-${new Date().toISOString().replace(/[:.]/g, '-')}`);
@@ -118,7 +119,7 @@ try {
       if (blocked) throw new Error(`blocked: ${blocked}`);
       const before = await dumpApplyUi(page, `${tag}-before`);
       console.log('  apply-like buttons:', before.buttons.map((b) => b.text));
-      const btn = page.getByRole('button', { name: /שלח\/י קורות חיים|הגש/ }).or(page.getByRole('link', { name: /שלח\/י קורות חיים|הגש/ })).first();
+      const btn = page.locator(cfg.apply.applyButton).first();
       if (!(await btn.isVisible().catch(() => false))) {
         console.log('  no apply button visible');
         continue;
