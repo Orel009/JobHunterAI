@@ -112,3 +112,32 @@ describe('plan readiness + Drushim fields', () => {
     expect(fields[0]).toMatchObject({ key: 'screening.0', type: 'yes_no', required: true });
   });
 });
+
+describe('standard questions follow the candidate gender', () => {
+  const prefs = PrefsSchema.parse({ standardAnswers: { availability: '', fullTime: true, shifts: 'לא', applyConsent: true } });
+  it('female, male and neutral forms', () => {
+    const f = new AnswersBank(openDb(':memory:'));
+    f.seed(prefs, 'female');
+    const qf = f.list().map((e) => e.question);
+    expect(qf).toEqual(expect.arrayContaining(['מתי תוכלי להתחיל לעבוד?', 'האם את מעוניינת במשרה מלאה?', 'האם את מוכנה לעבוד במשמרות?']));
+    expect(qf.some((q) => q.startsWith('אני מאשרת'))).toBe(true);
+    expect(qf.join(' ')).not.toMatch(/אתה|תוכל |מעוניין |מוכן /);
+    const m = new AnswersBank(openDb(':memory:'));
+    m.seed(prefs, 'male');
+    expect(m.list().map((e) => e.question)).toContain('האם אתה מעוניין במשרה מלאה?');
+    const n = new AnswersBank(openDb(':memory:'));
+    n.seed(prefs);
+    expect(n.list().map((e) => e.question)).toContain('האם את/ה מעוניין/ת במשרה מלאה?');
+  });
+  it('changing the gender replaces the seeded questions, keeps user answers', () => {
+    const bank = new AnswersBank(openDb(':memory:'));
+    bank.seed(prefs, 'male');
+    const shifts = bank.list().find((e) => e.question.includes('משמרות'))!;
+    bank.update(shifts.id, { answer: 'כן' }); // user-edited: stays as is
+    bank.seed(prefs, 'female');
+    const qs = bank.list().map((e) => e.question);
+    expect(qs).toContain('האם את מעוניינת במשרה מלאה?');
+    expect(qs).not.toContain('האם אתה מעוניין במשרה מלאה?');
+    expect(bank.list().filter((e) => e.question.includes('משרה מלאה'))).toHaveLength(1);
+  });
+});

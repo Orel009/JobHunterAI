@@ -149,3 +149,20 @@ export function profileForScoring(p: Profile): string {
     .map((x) => `- ${x.text}`)
     .join('\n');
 }
+
+/**
+ * The candidate's grammatical gender for Hebrew text, without requiring a valid profile: profile.json, else the
+ * draft, else what the setup wizard stored before a draft existed. null = gender-neutral forms.
+ */
+export function candidateGender(): 'male' | 'female' | null {
+  const files = [profilePath(), path.join(config.paths.profileDir, 'profile.draft.json'), path.join(config.dataDir, 'onboarding.json')];
+  for (const f of files) {
+    try {
+      const g = (JSON.parse(fs.readFileSync(f, 'utf8')) as { gender?: unknown }).gender;
+      if (g === 'male' || g === 'female') return g;
+    } catch {
+      /* missing or unreadable: try the next */
+    }
+  }
+  return null;
+}

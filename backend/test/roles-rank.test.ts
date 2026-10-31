@@ -105,7 +105,7 @@ const profile = ProfileSchema.parse({
     { id: 'exp.proj', kind: 'project', company: {}, title: {}, start: '2020-01', end: '2023-12', skills: ['skill.react', 'skill.vue'] },
   ],
   skills: [{ id: 'skill.react', name: 'React' }, { id: 'skill.vue', name: 'Vue' }],
-  declaredExperience: { totalDevYears: 2, basis: 'Konimbo web development (2024–2025) + Matrix (2025–present)' },
+  declaredExperience: { totalDevYears: 2, basis: 'Acme web development (2024–2025) + Globex (2025–present)' },
 });
 const q = (label: string, type: FormField['type'] = 'yes_no'): FormField => ({ key: 'k', label, type, required: true });
 const deps = (kind: 'general' | 'technology' | 'unsure', p = profile): ResolveDeps => ({
@@ -128,7 +128,7 @@ describe('years of experience', () => {
   it('general statement ≤ declared → yes, with the basis as provenance', async () => {
     const r = await resolveField(q('האם יש לך לפחות שנתיים ניסיון בפיתוח תוכנה?'), deps('general'));
     expect(r).toMatchObject({ status: 'resolved', value: 'yes', provenance: { source: 'declared_experience', ref: 'declared.totalDevYears' } });
-    expect(r.provenance.detail).toContain('Konimbo web development');
+    expect(r.provenance.detail).toContain('Acme web development');
   });
 
   it('general statement > declared → no → the application is blocked (skipped_screening)', async () => {
@@ -163,14 +163,14 @@ describe('years of experience', () => {
 });
 
 describe('locations: city or the site region field', () => {
-  const p = PrefsSchema.parse({ locations: ['נתניה', 'השרון', 'תל אביב'], filters: { remoteKeywords: ['remote', 'היברידי'] } });
+  const p = PrefsSchema.parse({ locations: ['חיפה', 'השרון', 'תל אביב'], filters: { remoteKeywords: ['remote', 'היברידי'] } });
   const job = (location: string, regions: string[] = []) => ({ title: 'x', company: 'c', location, regions });
   it('matches the city, the region field (both directions) or remote words', () => {
-    expect(prefilter(job('נתניה'), p).pass).toBe(true);
+    expect(prefilter(job('חיפה'), p).pass).toBe(true);
     expect(prefilter(job('תל אביב יפו'), p).pass).toBe(true);
-    expect(prefilter(job('אבן יהודה', ['נתניה / אבן יהודה']), p).pass).toBe(true);
+    expect(prefilter(job('קריית ביאליק', ['חיפה / קריות']), p).pass).toBe(true);
     expect(prefilter(job('צור יגאל', ['שרון']), p).pass).toBe(true); // "השרון" ↔ "שרון"
-    expect(prefilter(job('חיפה', ['חיפה', 'צפון']), p).reason).toBe('location: חיפה (regions: חיפה, צפון)');
+    expect(prefilter(job('אילת', ['אילת', 'דרום']), p).reason).toBe('location: אילת (regions: אילת, דרום)');
     expect(prefilter(job('Remote'), p).pass).toBe(true);
   });
 });

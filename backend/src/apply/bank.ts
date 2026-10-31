@@ -141,16 +141,23 @@ export class AnswersBank {
     this.db.prepare('UPDATE answers SET usage_count = usage_count + 1, last_used_at = ? WHERE id = ?').run(nowIso(), id);
   }
 
-  /** Seeds standard answers from preferences.yaml. Never overwrites an answer the user edited. */
-  seed(prefs: Pick<Prefs, 'standardAnswers'>): number {
+  /**
+   * Seeds standard answers from preferences.yaml, with the questions in the candidate's grammatical gender.
+   * Never overwrites an answer the user edited. Seeds in another gender form (gender changed) are replaced.
+   */
+  seed(prefs: Pick<Prefs, 'standardAnswers'>, gender: Gender = null): number {
     let n = 0;
     for (const [key, value] of Object.entries(prefs.standardAnswers)) {
       const def = SEED_QUESTIONS[key];
-      const question = def?.question ?? key;
+      const question = def ? def.question[genderKey(gender)] : key;
       const type: BankType = def?.type ?? (typeof value === 'boolean' ? 'yes_no' : typeof value === 'number' ? 'number' : 'text');
       const answer = typeof value === 'boolean' ? (value ? 'כן' : 'לא') : String(value ?? '').trim();
       const existing = this.byKey(questionKey(question));
       if (existing && existing.source !== 'seed') continue;
+      for (const other of Object.values(def?.question ?? {})) {
+        const old = other !== question ? this.byKey(questionKey(other)) : null;
+        if (old && old.id !== existing?.id && old.source === 'seed') this.delete(old.id);
+      }
       this.upsert({ question, answer: answer || null, type, source: 'seed', language: 'he' });
       n++;
     }
@@ -158,19 +165,34 @@ export class AnswersBank {
   }
 }
 
-/** Canonical Hebrew questions for known preferences.yaml standardAnswers keys. */
-export const SEED_QUESTIONS: Record<string, { question: string; type: BankType }> = {
-  city: { question: 'עיר מגורים', type: 'text' },
-  salaryExpectation: { question: 'מהן ציפיות השכר שלך?', type: 'text' },
-  noticePeriod: { question: 'מהי תקופת ההודעה המוקדמת שלך?', type: 'text' },
-  availability: { question: 'מתי תוכל להתחיל לעבוד?', type: 'text' },
-  fullTime: { question: 'האם אתה מעוניין במשרה מלאה?', type: 'yes_no' },
-  drivingLicense: { question: 'האם יש לך רישיון נהיגה?', type: 'yes_no' },
-  shifts: { question: 'האם אתה מוכן לעבוד במשמרות?', type: 'yes_no' },
-  weekends: { question: 'האם אתה מוכן לעבוד בסופי שבוע?', type: 'yes_no' },
-  relocation: { question: 'האם אתה מוכן לרילוקיישן?', type: 'yes_no' },
-  militaryService: { question: 'האם שירתת בצבא?', type: 'yes_no' },
-  securityClearance: { question: 'האם יש לך סיווג ביטחוני?', type: 'yes_no' },
-  hybridOk: { question: 'האם אתה מוכן לעבוד מהמשרד ללא אפשרות לעבודה היברידית?', type: 'yes_no' },
-  applyConsent: { question: 'אני מאשר/ת את תנאי השימוש ומדיניות הפרטיות בעת הגשת מועמדות', type: 'yes_no' },
+export type Gender = 'male' | 'female' | null;
+const genderKey = (g: Gender) => g ?? 'neutral';
+type Forms = { male: string; female: string; neutral: string };
+const same = (q: string): Forms => ({ male: q, female: q, neutral: q });
+
+/** Canonical Hebrew questions for known preferences.yaml standardAnswers keys, per grammatical gender. */
+export const SEED_QUESTIONS: Record<string, { question: Forms; type: BankType }> = {
+  city: { question: same('עיר מגורים'), type: 'text' },
+  salaryExpectation: { question: same('מהן ציפיות השכר שלך?'), type: 'text' },
+  noticePeriod: { question: same('מהי תקופת ההודעה המוקדמת שלך?'), type: 'text' },
+  availability: { question: { male: 'מתי תוכל להתחיל לעבוד?', female: 'מתי תוכלי להתחיל לעבוד?', neutral: 'מתי תוכל/י להתחיל לעבוד?' }, type: 'text' },
+  fullTime: { question: { male: 'האם אתה מעוניין במשרה מלאה?', female: 'האם את מעוניינת במשרה מלאה?', neutral: 'האם את/ה מעוניין/ת במשרה מלאה?' }, type: 'yes_no' },
+  drivingLicense: { question: same('האם יש לך רישיון נהיגה?'), type: 'yes_no' },
+  shifts: { question: { male: 'האם אתה מוכן לעבוד במשמרות?', female: 'האם את מוכנה לעבוד במשמרות?', neutral: 'האם את/ה מוכן/ה לעבוד במשמרות?' }, type: 'yes_no' },
+  weekends: { question: { male: 'האם אתה מוכן לעבוד בסופי שבוע?', female: 'האם את מוכנה לעבוד בסופי שבוע?', neutral: 'האם את/ה מוכן/ה לעבוד בסופי שבוע?' }, type: 'yes_no' },
+  relocation: { question: { male: 'האם אתה מוכן לרילוקיישן?', female: 'האם את מוכנה לרילוקיישן?', neutral: 'האם את/ה מוכן/ה לרילוקיישן?' }, type: 'yes_no' },
+  militaryService: { question: same('האם שירתת בצבא?'), type: 'yes_no' },
+  securityClearance: { question: same('האם יש לך סיווג ביטחוני?'), type: 'yes_no' },
+  hybridOk: {
+    question: {
+      male: 'האם אתה מוכן לעבוד מהמשרד ללא אפשרות לעבודה היברידית?',
+      female: 'האם את מוכנה לעבוד מהמשרד ללא אפשרות לעבודה היברידית?',
+      neutral: 'האם את/ה מוכן/ה לעבוד מהמשרד ללא אפשרות לעבודה היברידית?',
+    },
+    type: 'yes_no',
+  },
+  applyConsent: {
+    question: { male: 'אני מאשר את תנאי השימוש ומדיניות הפרטיות בעת הגשת מועמדות', female: 'אני מאשרת את תנאי השימוש ומדיניות הפרטיות בעת הגשת מועמדות', neutral: 'אני מאשר/ת את תנאי השימוש ומדיניות הפרטיות בעת הגשת מועמדות' },
+    type: 'yes_no',
+  },
 };

@@ -11,6 +11,7 @@ import { config } from '../config.js';
 import type { DB } from '../db/index.js';
 import { Repo, type StoredJob } from '../db/repo.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
+import { candidateGender } from '../profile/facts.js';
 import { rankStoredJob } from '../core/rank.js';
 import { getPage, pace } from '../browser/session.js';
 import { startTask } from '../pipeline/runner.js';
@@ -67,7 +68,7 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
 
   return startTask(db, 'drushim', 'prepare', async (run, _repo, L) => {
     const prefs = loadPrefs();
-    new AnswersBank(db).seed(prefs);
+    new AnswersBank(db).seed(prefs, candidateGender());
     run.stats.prepared = 0;
     for (const job of jobs) {
       if (run.controller.signal.aborted) return;

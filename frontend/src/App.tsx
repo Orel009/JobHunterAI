@@ -8,6 +8,7 @@ import { ReviewQueue } from './ReviewQueue';
 import { PreferencesEditor } from './PreferencesEditor';
 import { ProfileScreen } from './ProfileScreen';
 import { SettingsScreen } from './SettingsScreen';
+import { Wizard } from './Wizard';
 
 const TABS = [
   { id: 'jobs', label: 'Jobs', enabled: true },
@@ -28,6 +29,17 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<string>('jobs');
   const [tick, setTick] = useState(0);
+  const [onboarding, setOnboarding] = useState<boolean | null>(null);
+  const checkOnboarding = useCallback(async () => {
+    try {
+      setOnboarding(((await (await fetch('/api/onboarding')).json()) as { needed: boolean }).needed);
+    } catch {
+      setOnboarding(false);
+    }
+  }, []);
+  useEffect(() => {
+    void checkOnboarding();
+  }, [checkOnboarding]);
 
   const refresh = useCallback(async () => {
     try {
@@ -55,7 +67,7 @@ export function App() {
         <h1>JobHunter</h1>
         <nav>
           {TABS.map((t) => (
-            <button key={t.id} className={tab === t.id ? 'tab active' : 'tab'} disabled={!t.enabled} onClick={() => setTab(t.id)}>
+            <button key={t.id} className={tab === t.id ? 'tab active' : 'tab'} disabled={!t.enabled || !!onboarding} onClick={() => setTab(t.id)}>
               {t.label}
             </button>
           ))}
@@ -63,21 +75,25 @@ export function App() {
       </header>
       {status?.dryRun === false && <div className="banner live-banner">DRY_RUN is OFF — approving in the review queue submits real applications.</div>}
       {error && <div className="banner error">{error} — is JobHunter running (npm start)?</div>}
-      {status?.sessions.drushim?.state === 'logged_out' && (
+      {status?.sessions.drushim?.state === 'logged_out' && onboarding === false && (
         <div className="banner error">
-          <div dir="rtl">לא מחובר לדרושים — ההגשה מושבתת. הרץ בטרמינל את הפקודה למטה, התחבר, סגור את החלון ולחץ “re-check login”.</div>
+          <div dir="rtl">לא מחובר לדרושים — ההגשה מושבתת. פתח את חלון ההתחברות, התחבר בעצמך וסגור את החלון.</div>
           <div dir="ltr">
-            Not logged in to Drushim — applying is disabled. Run <code>npm run login -- drushim</code>, log in, close the window, then click “re-check login”.
+            Not logged in to Drushim — applying is disabled.{' '}
+            <button className="link" onClick={() => void fetch('/api/session/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })}>
+              Open the login window
+            </button>
+            , log in yourself, then close the window (or run <code>npm run login -- drushim</code>).
           </div>
         </div>
       )}
-      {profile && !profile.valid && (
+      {profile && !profile.valid && onboarding === false && (
         <div className="banner warn">
           {profile.exists
             ? `profile.json is invalid: ${profile.error}`
             : profile.draftExists
-              ? 'profile.draft.json is waiting for your review: resolve data/profile/profile.conflicts.md, then rename it to profile.json.'
-              : 'No profile yet: put cv-he.pdf / cv-en.pdf in data/profile and run npm run profile:init.'}
+              ? 'Your profile draft is waiting for your review: check it on the Profile screen and click “Approve draft”.'
+              : 'No profile yet: upload your CV on the Profile screen.'}
         </div>
       )}
       {cvInfo &&
@@ -97,13 +113,22 @@ export function App() {
               </div>
             </div>
           ))}
-      {status && <Controls status={status} onChange={refresh} />}
-      {tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} roleTypes={status?.roleTypes ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
-      {tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} onChanged={refresh} />}
-      {tab === 'answers' && <AnswersBank onChanged={refresh} />}
-      {tab === 'profile' && <ProfileScreen onChanged={refresh} />}
-      {tab === 'prefs' && <PreferencesEditor onSaved={refresh} />}
-      {tab === 'settings' && <SettingsScreen onSaved={refresh} />}
+      {onboarding && (
+        <Wizard
+          status={status}
+          onDone={() => {
+            void checkOnboarding();
+            void refresh();
+          }}
+        />
+      )}
+      {onboarding === false && status && <Controls status={status} onChange={refresh} />}
+      {onboarding === false && tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} roleTypes={status?.roleTypes ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
+      {onboarding === false && tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} onChanged={refresh} />}
+      {onboarding === false && tab === 'answers' && <AnswersBank onChanged={refresh} />}
+      {onboarding === false && tab === 'profile' && <ProfileScreen onChanged={refresh} />}
+      {onboarding === false && tab === 'prefs' && <PreferencesEditor onSaved={refresh} />}
+      {onboarding === false && tab === 'settings' && <SettingsScreen onSaved={refresh} />}
       <LogPanel />
     </div>
   );

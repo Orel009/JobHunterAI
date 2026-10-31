@@ -7,7 +7,7 @@ import { ProfileSchema, type Profile } from '../src/profile/schema.js';
 
 const NOW = new Date('2026-10-31T00:00:00Z');
 const profile: Profile = ProfileSchema.parse({
-  contact: { name: { he: 'ישראל ישראלי', en: 'Israel Israeli' }, email: 'a@b.co', phone: '050-0000000', city: { he: 'נתניה', en: 'Netanya' } },
+  contact: { name: { he: 'ישראל ישראלי', en: 'Israel Israeli' }, email: 'a@b.co', phone: '050-0000000', city: { he: 'חיפה', en: 'Haifa' } },
   links: [{ id: 'link.linkedin', label: 'linkedin', url: 'https://linkedin.com/in/x' }],
   experience: [
     { id: 'exp.acme', company: { en: 'Acme' }, title: { en: 'Developer' }, start: '2021-01', end: '2024-12', skills: ['skill.react', 'skill.node'] },

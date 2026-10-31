@@ -120,7 +120,7 @@ export function fromApiJob(j: DrushimApiJob): RawJob {
     language: j.JobInfo.Lang === 2 ? 'en' : detectLanguage(`${title} ${descriptionText}`),
     detailsFetched: true, // the API returns full description + requirements + HasFilter
     raw: { shape: 'api-search', code: j.Code, hash: j.JobInfo.Hash, hasFilter: j.JobInfo.HasFilter, allowNoCv: j.JobInfo.AllowNoCV, externalLink: external, experience: j.JobContent.Experience?.NameInHebrew ?? null,
-      // the site's region/zone names (e.g. "נתניה / אבן יהודה", "שרון"), matched by the location filter as well as the city
+      // the site's region/zone names (e.g. "חיפה / קריות", "שרון"), matched by the location filter as well as the city
       regions: [...new Set([...(j.JobContent.Regions ?? []), ...(j.JobContent.Zones ?? [])].map((r) => r.NameInHebrew?.trim() ?? '').filter(Boolean))] },
   };
 }

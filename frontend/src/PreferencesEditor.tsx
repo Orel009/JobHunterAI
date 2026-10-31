@@ -23,13 +23,14 @@ export interface Prefs {
   [k: string]: unknown;
 }
 
-export function PreferencesEditor({ sections, onSaved }: { sections?: string[]; onSaved?: () => void }) {
+export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sections?: string[]; onSaved?: () => void; onDirtyChange?: (dirty: boolean) => void }) {
   const [p, setP] = useState<Prefs | null>(null);
   const [envRatio, setEnvRatio] = useState(0.2);
   const [path, setPath] = useState('');
   const [issues, setIssues] = useState<string[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
   const show = (s: string) => !sections || sections.includes(s);
 
   const load = useCallback(async () => {

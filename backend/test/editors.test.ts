@@ -2,8 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import { openDb } from '../src/db/index.js';
 import { buildApp } from '../src/server/app.js';
-import { draftPath, validateProfile } from '../src/profile/store.js';
-import { profilePath } from '../src/profile/facts.js';
+import { draftPath, validateProfile, writeProfileFile } from '../src/profile/store.js';
+import path from 'node:path';
+import { config } from '../src/config.js';
+import { candidateGender, profilePath } from '../src/profile/facts.js';
 
 const app = buildApp(openDb(':memory:'));
 const clean = () => {
@@ -54,5 +56,41 @@ describe('profile editor API', () => {
     const r = await app.inject({ method: 'PUT', url: '/api/preferences', payload: { preferences: { maxRequiredYears: -1, roleTypes: [{ id: 'x', tier: 7 }] } } });
     expect(r.statusCode).toBe(400);
     expect(r.json().issues.join('\n')).toMatch(/maxRequiredYears|tier/);
+  });
+});
+
+describe('setup wizard', () => {
+  const stateFile = () => path.join(config.dataDir, 'onboarding.json');
+  const reset = () => {
+    clean();
+    if (fs.existsSync(stateFile())) fs.rmSync(stateFile());
+  };
+  beforeAll(reset);
+  afterAll(reset);
+
+  it('opens on a fresh installation, not when a profile or draft already exists', async () => {
+    reset();
+    expect((await app.inject({ method: 'GET', url: '/api/onboarding' })).json().needed).toBe(true);
+    writeProfileFile(draftPath(), minimal); // an existing user's draft
+    expect((await app.inject({ method: 'GET', url: '/api/onboarding' })).json().needed).toBe(false);
+    reset();
+  });
+
+  it('name + gender from the wizard go into the draft; finish approves it and ends the wizard', async () => {
+    reset();
+    await app.inject({ method: 'PUT', url: '/api/onboarding', payload: { name: 'Maya Levi', gender: 'female', step: 1 } });
+    expect(candidateGender()).toBe('female'); // before any profile exists
+    writeProfileFile(draftPath(), { contact: { name: { he: null, en: 'M. L.' }, city: {} } }); // CV extraction result
+    expect((await app.inject({ method: 'GET', url: '/api/onboarding' })).json().needed).toBe(true); // in progress
+    await app.inject({ method: 'PUT', url: '/api/onboarding', payload: { name: 'Maya Levi', gender: 'female', step: 3 } });
+    const draft = JSON.parse(fs.readFileSync(draftPath(), 'utf8'));
+    expect(draft).toMatchObject({ gender: 'female', contact: { name: { en: 'Maya Levi' } } });
+    const fin = await app.inject({ method: 'POST', url: '/api/onboarding/finish' });
+    expect(fin.statusCode).toBe(200);
+    expect(fs.existsSync(profilePath())).toBe(true);
+    expect((await app.inject({ method: 'GET', url: '/api/onboarding' })).json().needed).toBe(false);
+    const qs = (await app.inject({ method: 'GET', url: '/api/onboarding/standard-questions' })).json() as Array<{ question: string }>;
+    expect(qs.map((q) => q.question)).toContain('האם את מעוניינת במשרה מלאה?');
+    reset();
   });
 });

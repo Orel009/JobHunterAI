@@ -12,7 +12,7 @@ import { effectiveLimits, loadPrefs, searchPlan } from '../core/prefs.js';
 import { experienceInput, extractRequiredYears } from '../core/experience.js';
 import { candidateContext, scoreJob } from '../llm/score.js';
 import { LlmPausedError } from '../llm/types.js';
-import { loadProfile, skillAliasGroups } from '../profile/facts.js';
+import { candidateGender, loadProfile, skillAliasGroups } from '../profile/facts.js';
 
 /** enrich = fetch missing details for prefilter-passing jobs, then score (no searching) */
 export type RunKind = 'discover' | 'score' | 'full' | 'enrich';
@@ -207,7 +207,7 @@ async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<void> {
   const prefs = loadPrefs();
   applyPrefilter(repo, run, prefs);
   const candidate = candidateContext(prefs);
-  const gender = loadProfile()?.gender ?? null;
+  const gender = candidateGender();
   const todo = repo.jobsNeedingScore(run.site);
   run.stats.skippedExperience = 0;
   L.info({ count: todo.length, model: config.OLLAMA_MODEL_ANALYZE, maxRequiredYears: prefs.maxRequiredYears }, 'scoring');

@@ -66,12 +66,13 @@ const uniq = (base: string, taken: string[]) => {
 };
 const roleLabel = (r: Role) => r.title.en || r.title.he || r.company.en || r.company.he || r.id;
 
-export function ProfileEditor({ compact = false, sections, onSaved }: { compact?: boolean; sections?: string[]; onSaved?: () => void }) {
+export function ProfileEditor({ compact = false, sections, onSaved, onDirtyChange }: { compact?: boolean; sections?: string[]; onSaved?: () => void; onDirtyChange?: (dirty: boolean) => void }) {
   const [data, setData] = useState<Loaded | null>(null);
   const [p, setP] = useState<ProfileDoc | null>(null);
   const [issues, setIssues] = useState<string[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
   const show = (s: string) => !sections || sections.includes(s);
 
   const load = useCallback(async () => {

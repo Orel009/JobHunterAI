@@ -19,7 +19,7 @@ describe('pdf text rebuild', () => {
 });
 
 describe('verification against CV text', () => {
-  const cv = 'Software Developer | MATRIX\n2025 – Present\nSkills: React.js, Node.js, CSS3/SCSS\nPractical Software Engineer | ORT Hermelin College\n2021 – 2024';
+  const cv = 'Software Developer | ACME\n2025 – Present\nSkills: React.js, Node.js, CSS3/SCSS\nPractical Software Engineer | Example College\n2021 – 2024';
   it('foundIn: exact normalized substring or ≥80% token coverage', () => {
     expect(foundIn(cv, 'react.js')).toBe(true);
     expect(foundIn(cv, 'Kubernetes')).toBe(false);
@@ -34,7 +34,7 @@ describe('verification against CV text', () => {
   it('drops facts that are not in the CV', () => {
     const x: Extracted = {
       name: 'Someone Else', city: null, summary: null,
-      experience: [{ kind: 'work', company: 'MATRIX', title: 'Software Developer', start: '2025-01', end: 'present', skills: ['React.js', 'Kubernetes'], highlights: [] }],
+      experience: [{ kind: 'work', company: 'ACME', title: 'Software Developer', start: '2025-01', end: 'present', skills: ['React.js', 'Kubernetes'], highlights: [] }],
       education: [], skills: [{ name: 'Node.js', statedYears: 5 }, { name: 'Go', statedYears: null }], languages: [],
     };
     const { clean, dropped } = verifyExtraction(x, cv, 'en');
@@ -45,7 +45,7 @@ describe('verification against CV text', () => {
     expect(dropped.map((d) => d.value)).toEqual(expect.arrayContaining(['Someone Else', 'Kubernetes', 'Go', '5']));
   });
   it('recall check finds dated lines nobody extracted', () => {
-    const x: Extracted = { name: null, city: null, summary: null, experience: [{ kind: 'work', company: 'MATRIX', title: 'Software Developer', start: '2025', end: 'present', skills: [], highlights: [] }], education: [], skills: [], languages: [] };
+    const x: Extracted = { name: null, city: null, summary: null, experience: [{ kind: 'work', company: 'ACME', title: 'Software Developer', start: '2025', end: 'present', skills: [], highlights: [] }], education: [], skills: [], languages: [] };
     expect(uncoveredDateLines(cv, x)).toEqual(['2021 – 2024']);
   });
   it('splits compound skills, keeps short pairs, filters prose', () => {
@@ -64,10 +64,10 @@ describe('verification against CV text', () => {
 describe('merge: contradictions listed, never resolved', () => {
   const base: Extracted = { name: 'N', city: null, summary: null, experience: [], education: [], skills: [], languages: [] };
   it('date conflicts become CONFLICT values; year vs month in same year agree', () => {
-    const he: Extracted = { ...base, experience: [{ kind: 'work', company: 'מטריקס', title: 'מפתח', start: '2021', end: '2023', skills: [], highlights: [] }] };
-    const en: Extracted = { ...base, experience: [{ kind: 'work', company: 'Matrix', title: 'Developer', start: '2021-03', end: '2024', skills: [], highlights: [] }] };
+    const he: Extracted = { ...base, experience: [{ kind: 'work', company: 'אקמה', title: 'מפתח', start: '2021', end: '2023', skills: [], highlights: [] }] };
+    const en: Extracted = { ...base, experience: [{ kind: 'work', company: 'Acme', title: 'Developer', start: '2021-03', end: '2024', skills: [], highlights: [] }] };
     const { profile, conflicts } = mergeProfiles({ he, en, heText: '', enText: '', links: [] }, { experience: [{ he: 0, en: 0, titleMismatch: false, note: '' }], education: [] });
-    expect(profile.experience[0]).toMatchObject({ id: 'exp.matrix', start: '2021-03', end: 'CONFLICT he=2023 en=2024' });
+    expect(profile.experience[0]).toMatchObject({ id: 'exp.acme', start: '2021-03', end: 'CONFLICT he=2023 en=2024' });
     expect(conflicts.filter((c) => c.kind === 'contradiction')).toHaveLength(1);
   });
   it('contact conflicts from deterministic regex', () => {

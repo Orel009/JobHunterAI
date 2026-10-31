@@ -10,7 +10,7 @@ import { byRank, rankStoredJob } from '../core/rank.js';
 import { AnswersBank } from '../apply/bank.js';
 import { Applications, type AppStatus } from '../apply/plan.js';
 import { approveApplication, editField, prepareJobs, refreshFromBank, rejectApplication, setCv } from '../apply/service.js';
-import { listFacts, loadProfile, profilePath } from '../profile/facts.js';
+import { candidateGender, listFacts, loadProfile, profilePath } from '../profile/facts.js';
 import { assertCanApply } from './app.js';
 
 const APP_STATUSES = ['needs_review', 'ready', 'approved', 'dry_run_ok', 'submitted', 'skipped', 'failed', 'blocked', 'rejected'] as const;
@@ -98,7 +98,7 @@ export function registerApplyRoutes(app: FastifyInstance, db: DB) {
     return e;
   });
   app.delete<{ Params: { id: string } }>('/api/answers/:id', async (req) => ({ ok: bank.delete(Number(req.params.id)) }));
-  app.post('/api/answers/seed', async () => ({ seeded: bank.seed(loadPrefs()), refreshed: refreshFromBank(db) }));
+  app.post('/api/answers/seed', async () => ({ seeded: bank.seed(loadPrefs(), candidateGender()), refreshed: refreshFromBank(db) }));
 
   // ---------- evidence ----------
   app.get<{ Params: { file: string } }>('/api/screenshots/:file', async (req, reply) => {

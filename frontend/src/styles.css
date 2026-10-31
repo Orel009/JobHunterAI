@@ -150,3 +150,13 @@ textarea { font: inherit; }
 .banner.ok-banner { background: #e3f4e6; color: #1e6b2e; }
 .editor div.row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; margin: 4px 0; }
 .editor div.row .field { min-width: 220px; }
+
+/* ---------- setup wizard ---------- */
+.wizard { background: #fff; border: 1px solid #e1e4ea; border-radius: 10px; padding: 12px 16px; margin: 12px 0; }
+.wizard-head h2 { margin: 0 0 6px; }
+.wizard-steps { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0; margin: 0 0 10px; list-style: none; font-size: 12px; color: #8a90a0; counter-reset: s; }
+.wizard-steps li { counter-increment: s; }
+.wizard-steps li::before { content: counter(s) '. '; }
+.wizard-steps li.done { color: #2e7d32; }
+.wizard-steps li.current { color: #1a237e; font-weight: 700; }
+.wizard-nav { display: flex; gap: 10px; align-items: center; margin-top: 12px; border-top: 1px solid #eef0f4; padding-top: 10px; }

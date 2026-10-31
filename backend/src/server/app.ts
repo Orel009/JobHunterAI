@@ -13,6 +13,7 @@ import { listLocalModels } from '../llm/llm.js';
 import { taskConfig } from '../llm/settings.js';
 import { usageReport } from '../llm/usage.js';
 import { registerLlmRoutes } from './llm-routes.js';
+import { registerOnboardingRoutes } from './onboarding-routes.js';
 import { prepareJobs, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
 import { registerCvRoutes, registerEditorRoutes } from './editor-routes.js';
@@ -117,6 +118,7 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   registerApplyRoutes(app, db);
   registerEditorRoutes(app);
   registerLlmRoutes(app);
+  registerOnboardingRoutes(app, db);
   registerCvRoutes(app, {
     cache: repo,
     rescore: () => {
