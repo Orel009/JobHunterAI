@@ -185,3 +185,16 @@ describe('jobnet apply (real send form, local copy)', () => {
     expect(posts).toEqual([]);
   });
 });
+
+describe('evidence of the request', () => {
+  it('the exact send request is kept with the screenshots, with the check result', async () => {
+    await setup();
+    const state = await openPanel(page, JOB);
+    await fillPanel(page, state, plan());
+    await submitPanel(page, JOB, 'jn-evidence', 'Noa Test - Resume.pdf');
+    const saved = fs.readFileSync(`${config.paths.screenshots}/jn-evidence-request.txt`, 'utf8');
+    expect(saved).toMatch(/^POST https:\/\/www\.jobnet\.co\.il\/Newstyle\/InternalPages\/SendCv\.aspx/);
+    expect(saved).toMatch(/checked: no opt-in in the request; CV "Noa Test - Resume\.pdf"/);
+    expect(saved).toContain('name="ucSendCV$file_name"');
+  });
+});

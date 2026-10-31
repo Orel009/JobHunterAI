@@ -220,3 +220,15 @@ describe('jobmaster apply (real popup, local copy)', () => {
     expect(r.outcome).toEqual({ kind: 'failed', message: 'JobMaster: missing params' });
   });
 });
+
+describe('evidence of the request', () => {
+  it('the exact send request is kept with the screenshots, with the check result', async () => {
+    await setup({ multiSend: true });
+    const state = await openPanel(page, JOB);
+    await fillPanel(page, state, plan());
+    await submitPanel(page, JOB, 'jm-evidence');
+    const saved = fs.readFileSync(path.join(config.paths.screenshots, 'jm-evidence-request.txt'), 'utf8');
+    expect(saved).toMatch(/^POST https:\/\/www\.jobmaster\.co\.il\/api\/korot\/send-korot\/sendkorot\.api\.asp\nchecked: no multi-send in the request/);
+    expect(saved).toContain('korotVersionNum=5550001');
+  });
+});

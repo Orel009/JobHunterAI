@@ -190,6 +190,9 @@ export async function submitPanel(page: Page, job: { externalId: string }, shotN
   // the payload check: the request is inspected before it leaves the browser
   let unsafe = false;
   const guard = async (route: Route) => {
+    // evidence: the exact request, as it was about to leave (kept locally with the screenshots)
+    const verdict = payloadHasMultiSend(route.request().postData()) ? 'ABORTED: multi-send in the request' : 'checked: no multi-send in the request';
+    fs.writeFileSync(path.join(config.paths.screenshots, `${shotName}-request.txt`), `${route.request().method()} ${route.request().url()}\n${verdict}\n\n${route.request().postData() ?? ''}`);
     if (payloadHasMultiSend(route.request().postData())) {
       unsafe = true;
       log.error({ job: job.externalId }, 'JobMaster send carried "send to similar categories" — aborted');

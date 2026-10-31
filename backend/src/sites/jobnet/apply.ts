@@ -260,6 +260,11 @@ export async function submitPanel(page: Page, job: { externalId: string }, shotN
     if (payloadOptIns(body)) unsafe = '"send my CV to similar jobs" / job alerts was in the send request';
     const file = payloadFileName(body);
     if (!unsafe && wantCv && file !== null && clean(file) !== clean(wantCv)) unsafe = `the send request carried another CV ("${file}")`;
+    // evidence: the exact request, as it was about to leave (kept locally with the screenshots)
+    fs.writeFileSync(
+      path.join(config.paths.screenshots, `${shotName}-request.txt`),
+      `POST ${route.request().url()}\n${unsafe ? `ABORTED: ${unsafe}` : `checked: no opt-in in the request; CV "${file ?? '(not in the request)'}"`}\n\n${body ?? ''}`,
+    );
     if (unsafe) {
       log.error({ job: job.externalId }, `Jobnet send aborted: ${unsafe}`);
       return route.abort('blockedbyclient');
