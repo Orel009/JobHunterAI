@@ -64,6 +64,10 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
     .sort((a, b) => b.r - a.r)
     .map((x) => x.j);
   if (jobs.length === 0) throw new ServiceError(404, 'no such jobs');
+  // LinkedIn is assisted-only: a LinkedIn job reaches the review queue only as an external link the user pasted
+  if (jobs.some((j) => j.site === 'linkedin' && !(j.applyType === 'external' && j.applyTarget))) {
+    throw new ServiceError(400, 'LinkedIn jobs are applied to by hand: use the LinkedIn screen (Open in my browser)');
+  }
   for (const j of jobs) repo.setStatus(j.id, 'queued', 'preparing application');
 
   return startTask(db, 'drushim', 'prepare', async (run, _repo, L) => {

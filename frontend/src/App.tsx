@@ -9,6 +9,7 @@ import { PreferencesEditor } from './PreferencesEditor';
 import { ProfileScreen } from './ProfileScreen';
 import { SettingsScreen } from './SettingsScreen';
 import { Wizard } from './Wizard';
+import { LinkedInScreen } from './LinkedInScreen';
 
 const TABS = [
   { id: 'jobs', label: 'Jobs', enabled: true },
@@ -16,6 +17,7 @@ const TABS = [
   { id: 'answers', label: 'Answers bank', enabled: true },
   { id: 'profile', label: 'Profile', enabled: true },
   { id: 'prefs', label: 'Preferences', enabled: true },
+  { id: 'linkedin', label: 'LinkedIn', enabled: true },
   { id: 'settings', label: 'Settings', enabled: true },
   { id: 'history', label: 'History (Phase 3)', enabled: false },
 ] as const;
@@ -66,7 +68,7 @@ export function App() {
       <header>
         <h1>JobHunter</h1>
         <nav>
-          {TABS.map((t) => (
+          {TABS.filter((t) => t.id !== 'linkedin' || status?.linkedin.enabled).map((t) => (
             <button key={t.id} className={tab === t.id ? 'tab active' : 'tab'} disabled={!t.enabled || !!onboarding} onClick={() => setTab(t.id)}>
               {t.label}
             </button>
@@ -123,11 +125,12 @@ export function App() {
         />
       )}
       {onboarding === false && status && <Controls status={status} onChange={refresh} />}
-      {onboarding === false && tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} roleTypes={status?.roleTypes ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
+      {onboarding === false && tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} linkedinEnabled={!!status?.linkedin.enabled} roleTypes={status?.roleTypes ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
       {onboarding === false && tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} onChanged={refresh} />}
       {onboarding === false && tab === 'answers' && <AnswersBank onChanged={refresh} />}
       {onboarding === false && tab === 'profile' && <ProfileScreen onChanged={refresh} />}
       {onboarding === false && tab === 'prefs' && <PreferencesEditor onSaved={refresh} />}
+      {onboarding === false && tab === 'linkedin' && status?.linkedin.enabled && <LinkedInScreen busy={!!status.activeRun} onChanged={refresh} />}
       {onboarding === false && tab === 'settings' && <SettingsScreen onSaved={refresh} />}
       <LogPanel />
     </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type RunRow, type Status } from './api';
+import { api, linkedin, type RunRow, type Status } from './api';
 
 export function Controls({ status, onChange }: { status: Status; onChange: () => void }) {
   const [busy, setBusy] = useState(false);
@@ -59,6 +59,11 @@ export function Controls({ status, onChange }: { status: Status; onChange: () =>
             )}
           </span>
         ))}
+        {status.linkedin.enabled && (
+          <button disabled={!!run || busy} onClick={() => act(linkedin.fetch)} title="read new LinkedIn job-alert emails → prefilter → score (LinkedIn itself is never opened)">
+            Fetch LinkedIn alerts
+          </button>
+        )}
         {run && (
           <>
             <button className="danger" onClick={() => act(api.stopRun)}>

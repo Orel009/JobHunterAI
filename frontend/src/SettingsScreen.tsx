@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { llm, type LlmSettings, type TaskCfg, type UsageReport } from './api';
 import { Field, Num } from './forms';
+import { LinkedInSettingsCard } from './LinkedInScreen';
 
 const TASKS = [
   { id: 'analyze', label: 'Analyze', hint: 'scoring, matching, classification, CV extraction — many calls, needs reliable JSON' },
@@ -297,6 +298,7 @@ export function SettingsScreen({ onSaved }: { onSaved?: () => void }) {
           </table>
         </fieldset>
       )}
+      <LinkedInSettingsCard onSaved={onSaved} />
     </div>
   );
 }

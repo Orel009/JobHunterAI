@@ -14,6 +14,8 @@ import { taskConfig } from '../llm/settings.js';
 import { usageReport } from '../llm/usage.js';
 import { registerLlmRoutes } from './llm-routes.js';
 import { registerOnboardingRoutes } from './onboarding-routes.js';
+import { registerLinkedInRoutes } from './linkedin-routes.js';
+import { linkedInEnabled } from '../linkedin/settings.js';
 import { prepareJobs, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
 import { registerCvRoutes, registerEditorRoutes } from './editor-routes.js';
@@ -59,6 +61,8 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
         tokenLimit: usage?.limit ?? 0,
       },
       sites: SITES,
+      /** optional LinkedIn job alerts (email); the LinkedIn screen and filter exist only while this is on */
+      linkedin: { enabled: linkedInEnabled() },
       sessions: allSessions(),
       roleTypes: loadPrefs().roleTypes.map((r) => ({ id: r.id, label: r.label ?? r.id, tier: r.tier, enabled: r.enabled })),
       maxRequiredYears: loadPrefs().maxRequiredYears,
@@ -119,6 +123,7 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   registerEditorRoutes(app);
   registerLlmRoutes(app);
   registerOnboardingRoutes(app, db);
+  registerLinkedInRoutes(app, db);
   registerCvRoutes(app, {
     cache: repo,
     rescore: () => {

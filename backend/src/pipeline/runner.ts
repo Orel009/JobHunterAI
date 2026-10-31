@@ -186,7 +186,7 @@ async function details(repo: Repo, run: ActiveRun, L: typeof log, prefs: ReturnT
   applyPrefilter(repo, run, prefs);
 }
 
-function applyPrefilter(repo: Repo, run: ActiveRun, prefs: ReturnType<typeof loadPrefs>): void {
+export function applyPrefilter(repo: Repo, run: ActiveRun, prefs: ReturnType<typeof loadPrefs>): void {
   let aliasGroups: string[][] = [];
   try {
     aliasGroups = skillAliasGroups(loadProfile());
@@ -202,7 +202,8 @@ function applyPrefilter(repo: Repo, run: ActiveRun, prefs: ReturnType<typeof loa
   }
 }
 
-async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<void> {
+/** Prefilter + experience cap + LLM score for the run's site (no browser). */
+export async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<void> {
   run.stage = 'scoring';
   const prefs = loadPrefs();
   applyPrefilter(repo, run, prefs);

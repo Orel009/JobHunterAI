@@ -58,7 +58,7 @@ export function buildScoreMessages(
     `כותרת: ${job.title}`,
     `חברה: ${job.company || 'לא צוין'}`,
     `מיקום: ${job.location || 'לא צוין'}`,
-    `תיאור:\n${job.descriptionText}`,
+    job.descriptionText ? `תיאור:\n${job.descriptionText}` : '(Only the title, company and location are known — the description is not available.)',
     job.requirementsText ? `דרישות:\n${job.requirementsText}` : '',
   ]
     .filter(Boolean)
@@ -80,6 +80,9 @@ export function buildScoreMessages(
         'seniority: how the POST describes the role — junior (entry level, students, graduates, 0-1 years), mid, senior, or unknown.',
         'devContentScore: 0-100, how much of the daily work is real software development (writing code, APIs, databases, debugging). Call-center / customer service / IT helpdesk / hardware support ≈ 0-20.',
         'isTrainingProgram: true if the post is a course, bootcamp, "הכשרה והשמה" or any training program the candidate would join as a student, not a job.',
+        job.descriptionText
+          ? ''
+          : 'The description is NOT available: judge from the title, company and location alone, score conservatively (never above 75), say in reasoningHe that the description was missing, and use null / unknown for anything the title does not state.',
         role
           ? `Judge fit for the role type "${roleName}"${role.notes ? ` — ${role.notes}` : ''}: evaluate the candidate for THIS kind of role, not only as a full stack developer.`
           : '',

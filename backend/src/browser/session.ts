@@ -1,6 +1,7 @@
 import { chromium, type BrowserContext, type Page } from 'playwright';
 import { config } from '../config.js';
 import { log } from '../log.js';
+import { isLinkedInHost } from '../linkedin/parse.js';
 
 let ctxPromise: Promise<BrowserContext> | null = null;
 
@@ -17,7 +18,9 @@ export function getContext(opts: { headless?: boolean } = {}): Promise<BrowserCo
         timezoneId: 'Asia/Jerusalem',
         viewport: { width: 1366, height: 860 },
       })
-      .then((ctx) => {
+      .then(async (ctx) => {
+        // LinkedIn is never automated: any request to it from this browser is aborted, whatever code path asks
+        await ctx.route((u) => isLinkedInHost(u.href), (route) => route.abort('blockedbyclient'));
         ctx.on('close', () => {
           ctxPromise = null;
         });

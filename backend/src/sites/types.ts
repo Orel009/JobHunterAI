@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 
-export type SiteId = 'drushim' | 'alljobs' | 'jobmaster';
+/** linkedin: jobs from LinkedIn job-alert emails only (never opened by the automated browser; applying is manual) */
+export type SiteId = 'drushim' | 'alljobs' | 'jobmaster' | 'linkedin';
 export type ApplyType = 'site_one_click' | 'site_questionnaire' | 'external' | 'email';
 
 export const JOB_STATUSES = [
@@ -11,6 +12,8 @@ export const JOB_STATUSES = [
   'ready',
   'dry_run_ok',
   'submitted',
+  /** applied by hand (LinkedIn assisted apply): "I applied" */
+  'submitted_manual',
   'failed',
   'blocked',
   'skipped',

@@ -6,6 +6,7 @@ export type JobStatus =
   | 'ready'
   | 'dry_run_ok'
   | 'submitted'
+  | 'submitted_manual'
   | 'failed'
   | 'blocked'
   | 'skipped'
@@ -13,7 +14,7 @@ export type JobStatus =
   | 'skipped_screening'
   | 'skipped_not_a_job';
 
-export const STATUSES: JobStatus[] = ['discovered', 'scored', 'queued', 'needs_review', 'dry_run_ok', 'submitted', 'failed', 'blocked', 'skipped', 'skipped_experience', 'skipped_screening', 'skipped_not_a_job'];
+export const STATUSES: JobStatus[] = ['discovered', 'scored', 'queued', 'needs_review', 'dry_run_ok', 'submitted', 'submitted_manual', 'failed', 'blocked', 'skipped', 'skipped_experience', 'skipped_screening', 'skipped_not_a_job'];
 
 export interface Rank {
   rank: number | null;
@@ -93,6 +94,8 @@ export interface Status {
     tokenLimit: number;
   };
   sites: Array<{ id: string; displayName: string; enabled: boolean }>;
+  /** optional LinkedIn job alerts (email): the LinkedIn screen and filter exist only while enabled */
+  linkedin: { enabled: boolean };
   sessions: Record<string, { state: 'logged_in' | 'logged_out' | 'unknown'; checkedAt: string | null; detail: string }>;
   pendingQuestions: number;
   roleTypes: Array<{ id: string; label: string; tier: number; enabled: boolean }>;
@@ -242,4 +245,40 @@ export const llm = {
   models: (provider: string) => req<{ models: string[]; error?: string }>('GET', `/api/llm/models?provider=${encodeURIComponent(provider)}`),
   test: (provider: string, model: string) => req<{ ok: boolean; ms: number; error?: string }>('POST', '/api/llm/test', { provider, model }),
   usage: () => req<UsageReport>('GET', '/api/llm/usage'),
+};
+
+// ---------- LinkedIn job alerts (optional) + assisted apply ----------
+export interface LinkedInSettings {
+  enabled: boolean;
+  windowDays: number;
+  mailbox: string;
+  imap: { host: string; port: number; user: string; password: string | null };
+  configured: boolean;
+}
+export interface HelperItem {
+  label: string;
+  value: string;
+  source: string;
+}
+export interface ApplyHelper {
+  cv: { lang: 'he' | 'en'; reason: string; file: string | null; exists: boolean };
+  contact: HelperItem[];
+  answers: HelperItem[];
+  declared: { totalDevYears: number; basis: string } | null;
+  skillYears: HelperItem[];
+  incompleteInfo: boolean;
+}
+export const linkedin = {
+  settings: () => req<LinkedInSettings>('GET', '/api/linkedin/settings'),
+  save: (b: Partial<{ enabled: boolean; windowDays: number; mailbox: string; host: string; port: number; user: string; password: string | null }>) =>
+    req<LinkedInSettings>('PUT', '/api/linkedin/settings', b),
+  test: () => req<{ ok: boolean; mailbox: string; alerts: number; windowDays: number }>('POST', '/api/linkedin/test', {}),
+  fetch: () => req<{ runId: number }>('POST', '/api/linkedin/fetch', {}),
+  helper: (id: string) => req<ApplyHelper>('GET', `/api/linkedin/jobs/${id}/helper`),
+  open: (id: string) => req('POST', `/api/linkedin/jobs/${id}/open`, {}),
+  showCv: (id: string) => req('POST', `/api/linkedin/jobs/${id}/show-cv`, {}),
+  applied: (id: string) => req<{ appliedAt: string }>('POST', `/api/linkedin/jobs/${id}/applied`, {}),
+  skip: (id: string) => req('POST', `/api/linkedin/jobs/${id}/skip`, {}),
+  description: (id: string, text: string) => req<{ note: string }>('POST', `/api/linkedin/jobs/${id}/description`, { text }),
+  external: (id: string, url: string) => req<{ kind: 'site' | 'manual'; note: string }>('POST', `/api/linkedin/jobs/${id}/external`, { url }),
 };

@@ -239,6 +239,27 @@ if (fs.existsSync(profileFile)) {
   warn('אין פרופיל — אשף ההגדרה ייפתח ב-dashboard', 'No profile yet — the setup wizard opens in the dashboard', 'יש להשלים את אשף ההגדרה', 'Complete the setup wizard');
 }
 
+// ---------- optional: LinkedIn job alerts (email) — checked only when turned on ----------
+const { linkedInEnabled, imapConfig, imapConfigured } = await import('../linkedin/settings.js');
+if (linkedInEnabled()) {
+  if (!imapConfigured()) {
+    warn(
+      'התראות המשרות מ-LinkedIn מופעלות, אבל פרטי המייל (IMAP) חסרים',
+      'LinkedIn job alerts are on, but the email (IMAP) settings are missing',
+      'יש להזין כתובת מייל וסיסמת אפליקציה במסך Settings, או לכבות את האפשרות',
+      'Enter the email address and app password on the Settings screen, or turn the option off',
+    );
+  } else {
+    const { testImap } = await import('../linkedin/imap.js');
+    try {
+      const t = await testImap();
+      ok(`LinkedIn alerts: ${imapConfig().user} — ${t.alerts} alert email(s) in the last ${t.windowDays} days`);
+    } catch (e) {
+      warn('אין חיבור לתיבת המייל של התראות LinkedIn', `LinkedIn alerts: ${(e as Error).message}`, 'יש לבדוק את סיסמת האפליקציה במסך Settings (Test connection)', 'Check the app password on the Settings screen (Test connection)');
+    }
+  }
+}
+
 // ---------- check 5: DB migrations ----------
 const migDir = path.join(BACKEND, 'src', 'db', 'migrations');
 const allMigrations = fs.readdirSync(migDir).filter((f) => f.endsWith('.sql')).sort();
@@ -327,7 +348,7 @@ const { log } = await import('../log.js');
 const { Repo } = await import('../db/repo.js');
 const { buildApp } = await import('../server/app.js');
 const { closeContext } = await import('../browser/session.js');
-const { stopRun, waitIdle, runToCompletion, getActiveRun } = await import('../pipeline/runner.js');
+const { stopRun, waitIdle } = await import('../pipeline/runner.js');
 const { effectiveLimits, loadPrefs } = await import('../core/prefs.js');
 const repo = new Repo(db!);
 repo.failOrphanRuns();
@@ -385,37 +406,17 @@ if (!NO_OPEN) {
 
 // ---------- --hunt ----------
 if (HUNT) {
-  const { prepareJobs } = await import('../apply/service.js');
+  const { runHunt } = await import('../pipeline/hunt.js');
   const { Applications } = await import('../apply/plan.js');
   console.log(c.bold('\n--hunt: discover → score → prepare plans (nothing is submitted)'));
-  const before = repo.statusCounts();
-  await runToCompletion(db!, 'drushim', 'full');
-  const run = repo.listRuns(1)[0] as { status?: string; reason?: string | null; stats?: Record<string, number> } | undefined;
-  console.log(`  run: ${run?.status}${run?.reason ? ` (${run.reason})` : ''} · new ${run?.stats?.inserted ?? 0} · scored ${run?.stats?.scored ?? 0}`);
-  const apps = new Applications(db!);
-  const room = Math.max(0, limits.dailyApplyLimit - repo.submittedToday());
-  const { rankStoredJob } = await import('../core/rank.js');
-  const huntPrefs = loadPrefs();
-  // highest rank first: the daily limit is spent on the best jobs
-  const candidates = repo
-    .listJobs({ status: 'scored', minScore: limits.autoSubmitMinScore, limit: 2000 })
-    .items.filter((j) => j.site === 'drushim' && !apps.latestForJob(j.id))
-    .map((j) => ({ ...j, r: rankStoredJob(j, j.score, huntPrefs).rank ?? -Infinity }))
-    .sort((a, b) => b.r - a.r)
-    .slice(0, room);
-  if (getSession('drushim').state === 'logged_out') {
-    console.log(c.yellow(`  ${candidates.length} job(s) ≥ ${limits.autoSubmitMinScore} — not preparing: not logged in to Drushim`));
-  } else if (candidates.length === 0) {
-    console.log(`  no new jobs with score ≥ ${limits.autoSubmitMinScore}`);
-  } else if (!getActiveRun()) {
-    console.log(`  preparing ${candidates.length} plan(s)…`);
-    prepareJobs(db!, candidates.map((j) => j.id));
-    await waitIdle();
-  }
-  const after = repo.statusCounts();
+  const h = await runHunt(db!);
+  for (const r of h.runs) console.log(`  ${r.site} run: ${r.status}${r.reason ? ` (${r.reason})` : ''} · new ${r.inserted} · scored ${r.scored}`);
+  if (h.note) console.log(c.yellow(`  ${h.note}`));
+  else console.log(`  prepared ${h.prepared} plan(s)`);
+  const { before, after } = h;
   const diff = Object.keys(after)
     .map((k) => `${k} ${after[k]}${before[k] !== after[k] ? ` (${(after[k] ?? 0) - (before[k] ?? 0) >= 0 ? '+' : ''}${(after[k] ?? 0) - (before[k] ?? 0)})` : ''}`)
     .join(' · ');
   const pendingNow = (db!.prepare("SELECT COUNT(*) AS n FROM answers WHERE status = 'pending'").get() as { n: number }).n;
-  console.log(`\n${c.bold('hunt summary')}: ${diff}\n  pending answers: ${pendingNow} · review queue: ${apps.list(['needs_review']).length}\n  Approve in the dashboard → Review queue (${url})\n`);
+  console.log(`\n${c.bold('hunt summary')}: ${diff}\n  pending answers: ${pendingNow} · review queue: ${new Applications(db!).list(['needs_review']).length}\n  Approve in the dashboard → Review queue (${url})\n`);
 }

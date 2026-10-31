@@ -45,8 +45,21 @@ export function migrate(db: DB): string[] {
   return ran;
 }
 
+const txDepth = new WeakMap<DB, number>();
+
+/** Runs fn in a transaction; a nested call joins the outer transaction. */
 export function tx<T>(db: DB, fn: () => T): T {
+  const depth = txDepth.get(db) ?? 0;
+  if (depth > 0) {
+    txDepth.set(db, depth + 1);
+    try {
+      return fn();
+    } finally {
+      txDepth.set(db, depth);
+    }
+  }
   db.exec('BEGIN');
+  txDepth.set(db, 1);
   try {
     const out = fn();
     db.exec('COMMIT');
@@ -54,6 +67,8 @@ export function tx<T>(db: DB, fn: () => T): T {
   } catch (e) {
     db.exec('ROLLBACK');
     throw e;
+  } finally {
+    txDepth.set(db, 0);
   }
 }
 

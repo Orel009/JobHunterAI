@@ -27,6 +27,7 @@ _Screenshot: coming soon._
 - **Field resolution** in this order: profile, then the answers bank, then skill years, then a fact-cited draft. The LLM never answers yes/no, salary, availability, legal and similar questions.
 - **CV per job language**: Hebrew or English, chosen deterministically, with a manual override.
 - **Review queue**: field plan with the source of every answer, inline editing, screenshots, and Approve/Reject.
+- **LinkedIn job alerts (optional add-on, off by default)**: jobs from LinkedIn's alert emails, read over IMAP (read-only, Gmail app password), then scored like the rest. Applying is **assisted only**: the job opens in your own browser, and a helper panel shows the right CV and copy-ready answers. JobHunter never logs in to LinkedIn, never opens it in its automated browser, and never clicks or scrapes anything there. See [the guide](docs/GUIDE.md#תוסף-אופציונלי-התראות-משרות-מ-linkedin).
 - **One command**: `npm start` checks everything, installs what is missing, starts the system and opens the dashboard. `npm run doctor` only reports.
 
 ## Quick start (Windows 11)
@@ -87,6 +88,7 @@ The **Profile**, **Preferences** and **Settings** screens edit everything in for
 
 - **`DRY_RUN=true` by default**: the agent goes up to the final submit click, takes a screenshot, and stops. Real submission needs
   `DRY_RUN=false` **and** your explicit approval in the review queue. There is no auto-submit.
+- **LinkedIn is never automated**: any request to linkedin.com from the automated browser is blocked, and LinkedIn jobs cannot enter the automated apply flow.
 - **No bypassing**: CAPTCHA, bot protection and rate limits are never circumvented, and login is never automated. A challenge stops the run with status `blocked`.
 - **No invented facts**: every value sent traces back to your profile or the answers bank, and its provenance is stored per field.
   LLM drafts must cite profile facts, are checked by a second pass, and are always shown to you before anything is sent.

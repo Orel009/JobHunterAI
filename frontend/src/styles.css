@@ -160,3 +160,16 @@ textarea { font: inherit; }
 .wizard-steps li.done { color: #2e7d32; }
 .wizard-steps li.current { color: #1a237e; font-weight: 700; }
 .wizard-nav { display: flex; gap: 10px; align-items: center; margin-top: 12px; border-top: 1px solid #eef0f4; padding-top: 10px; }
+
+/* ---------- LinkedIn (assisted apply) ---------- */
+.banner.info { background: #e8f0fe; color: #1a3d7c; }
+.status-submitted_manual { background: #d6f2dc; }
+.li-grid { display: grid; grid-template-columns: minmax(320px, 2fr) 3fr; gap: 12px; align-items: start; }
+.li-grid > table td { vertical-align: top; }
+.li-panel { position: sticky; top: 8px; }
+.li-panel h3 { margin: 0 0 4px; }
+.li-panel h4 { margin: 12px 0 4px; }
+.li-panel textarea { width: 100%; margin: 6px 0; }
+.li-panel .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+.li-panel .row input { flex: 1; min-width: 240px; }
+.helper-table td { padding: 3px 8px 3px 0; font-size: 13px; }
