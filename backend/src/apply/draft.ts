@@ -5,9 +5,9 @@
  *  3. ANALYZE model verification pass lists claims not supported by the cited facts → flaggedClaims (kept as draft)
  */
 import { z } from 'zod';
-import { config } from '../config.js';
+import { hebrewFirstPersonRule, type Gender } from '../core/gender.js';
 import { normalizeText } from '../core/text.js';
-import { chatJson, type LlmCache } from '../llm/ollama.js';
+import { chatJson, type LlmCache } from '../llm/llm.js';
 import { listFacts, type Fact } from '../profile/facts.js';
 import type { Profile } from '../profile/schema.js';
 import type { BankEntry } from './bank.js';
@@ -43,10 +43,13 @@ export function checkDraftCitations(d: z.infer<typeof DraftSchema>, known: Set<s
   return null;
 }
 
+/** Draft-writing instructions; Hebrew grammatical gender comes from the profile. */
+export const writeSystem = (language: 'he' | 'en', gender: Gender): string => WRITE_SYSTEM[language].replace('{GENDER_RULE}', hebrewFirstPersonRule(gender));
+
 const WRITE_SYSTEM: Record<'he' | 'en', string> = {
   he: [
     'אתה כותב תשובה לשאלה פתוחה בטופס מועמדות, בשם המועמד, בגוף ראשון.',
-    'המועמד גבר: לשון זכר תקנית ("עבדתי", "אני מתעניין").',
+    '{GENDER_RULE}',
     'מותר להשתמש אך ורק בעובדות שברשימה (כל עובדה עם מזהה בסוגריים מרובעים). אסור להוסיף שום פרט שלא מופיע בהן: לא שנים, לא זמינות, לא נכונות, לא תכונות אופי, לא טכנולוגיות.',
     'אם אי אפשר לענות מתוך העובדות — unanswerable=true ו-text ריק.',
     'usedFactIds: מזהי כל העובדות שהתשובה נשענת עליהן. 2-4 משפטים, עברית טבעית ותקנית.',
@@ -66,12 +69,12 @@ export function makeDrafter(profile: Profile | null, opts: { cache?: LlmCache; n
     const facts = relevantFacts(all, field.label, ctx.jobText);
     const factBlock = facts.map((f) => `[${f.id}] ${f.text}`).join('\n');
     const { data } = await chatJson({
-      model: config.OLLAMA_MODEL_WRITE,
+      task: 'write',
       schema: DraftSchema,
       temperature: 0.2,
       cache: opts.cache,
       messages: [
-        { role: 'system', content: WRITE_SYSTEM[ctx.language] },
+        { role: 'system', content: writeSystem(ctx.language, profile.gender) },
         { role: 'user', content: `Facts:\n${factBlock}\n\nJob: ${ctx.jobTitle}\n${ctx.jobText.slice(0, 2500)}\n\nQuestion: ${field.label}` },
       ],
     });
@@ -86,7 +89,7 @@ export function makeDrafter(profile: Profile | null, opts: { cache?: LlmCache; n
 /** Verification pass: claims in `text` not supported by `facts` (ANALYZE model). */
 export async function judgeClaims(text: string, facts: Fact[], opts: { cache?: LlmCache; model?: string } = {}): Promise<string[]> {
   const { data } = await chatJson({
-    model: opts.model ?? config.OLLAMA_MODEL_ANALYZE,
+    ...(opts.model ? { model: opts.model } : { task: 'analyze' as const }),
     schema: VerifySchema,
     cache: opts.cache,
     messages: [
@@ -106,7 +109,7 @@ export async function judgeClaims(text: string, facts: Fact[], opts: { cache?: L
 export function makeBankMatcher(opts: { cache?: LlmCache } = {}) {
   return async (question: string, candidates: BankEntry[]) => {
     const { data } = await chatJson({
-      model: config.OLLAMA_MODEL_ANALYZE,
+      task: 'analyze',
       schema: MatchSchema,
       cache: opts.cache,
       messages: [
@@ -132,7 +135,7 @@ export const YearsClassSchema = z.object({ kind: z.enum(['general', 'technology'
 export function makeYearsClassifier(opts: { cache?: LlmCache } = {}) {
   return async (question: string) => {
     const { data } = await chatJson({
-      model: config.OLLAMA_MODEL_ANALYZE,
+      task: 'analyze',
       schema: YearsClassSchema,
       cache: opts.cache,
       messages: [

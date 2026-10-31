@@ -4,7 +4,7 @@
  */
 import fs from 'node:fs';
 import type { z } from 'zod';
-import { chatJson, type LlmCache } from '../llm/ollama.js';
+import { chatJson, type LlmCache } from '../llm/llm.js';
 import { pdfToText } from './pdf.js';
 import {
   AlignSchema,

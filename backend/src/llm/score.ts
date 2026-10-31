@@ -1,9 +1,10 @@
 import { z } from 'zod';
-import { config } from '../config.js';
+import { taskConfig } from './settings.js';
+import { hebrewThirdPersonRule, type Gender } from '../core/gender.js';
 import type { Prefs } from '../core/prefs.js';
 import { loadProfile, profileForScoring } from '../profile/facts.js';
 import type { Job } from '../sites/types.js';
-import { chatJson, type LlmCache } from './ollama.js';
+import { chatJson, type LlmCache } from './llm.js';
 
 // No length caps in the schema: Ollama compiles them into the sampling grammar, which truncates Hebrew text mid-word.
 // Lists/text are clamped after validation instead.
@@ -50,6 +51,7 @@ export function buildScoreMessages(
   job: Pick<Job, 'title' | 'company' | 'location' | 'descriptionText' | 'requirementsText'>,
   candidate: string,
   role?: ScoreRole | null,
+  gender?: Gender,
 ) {
   const roleName = role ? `${role.label ?? role.id} (tier ${role.tier})` : '';
   const post = [
@@ -73,6 +75,7 @@ export function buildScoreMessages(
         'matchedSkills: requirements from the post the candidate clearly has. missingRequirements: mandatory requirements the candidate lacks or that the profile does not show.',
         'seniorityFit: compare required years/seniority to the candidate.',
         'reasoningHe: exactly 2 short sentences in natural, grammatical Hebrew explaining the score.',
+        hebrewThirdPersonRule(gender),
         'requiredYearsMin: minimum years of experience the post REQUIRES (ignore anything marked יתרון / advantage / nice to have); a range counts as its minimum; several requirements → the highest minimum; null if none is stated. requiredYearsQuote: the exact short phrase from the post, or null.',
         'seniority: how the POST describes the role — junior (entry level, students, graduates, 0-1 years), mid, senior, or unknown.',
         'devContentScore: 0-100, how much of the daily work is real software development (writing code, APIs, databases, debugging). Call-center / customer service / IT helpdesk / hardware support ≈ 0-20.',
@@ -94,15 +97,17 @@ export function buildScoreMessages(
 export async function scoreJob(
   job: Pick<Job, 'title' | 'company' | 'location' | 'descriptionText' | 'requirementsText'>,
   candidate: string,
-  opts: { model?: string; cache?: LlmCache; fetchImpl?: typeof fetch; role?: ScoreRole | null } = {},
+  opts: { model?: string; cache?: LlmCache; fetchImpl?: typeof fetch; role?: ScoreRole | null; gender?: Gender } = {},
 ): Promise<ScoreResult & { model: string; cached: boolean }> {
-  const model = opts.model ?? config.OLLAMA_MODEL_ANALYZE;
+  const cfg = taskConfig('analyze');
+  const model = opts.model ?? cfg.model;
   const { data, cached } = await chatJson({
-    model,
-    messages: buildScoreMessages(job, candidate, opts.role),
+    task: 'analyze',
+    ...(opts.model ? { model: opts.model } : {}),
+    messages: buildScoreMessages(job, candidate, opts.role, opts.gender),
     schema: ScoreSchema,
     cache: opts.cache,
     fetchImpl: opts.fetchImpl,
   });
-  return { ...data, model, cached };
+  return { ...data, model: opts.model ? model : `${cfg.provider}:${model}`, cached };
 }

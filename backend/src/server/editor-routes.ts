@@ -68,7 +68,7 @@ export function registerEditorRoutes(app: FastifyInstance) {
 }
 
 // ---------- CV uploads + profile update (registered separately: needs the DB for re-scoring) ----------
-export function registerCvRoutes(app: FastifyInstance, deps: { cache: import('../llm/ollama.js').LlmCache; rescore: () => { runId: number } }) {
+export function registerCvRoutes(app: FastifyInstance, deps: { cache: import('../llm/llm.js').LlmCache; rescore: () => { runId: number } }) {
   app.addContentTypeParser('application/pdf', { parseAs: 'buffer', bodyLimit: 20 * 1024 * 1024 }, (_req, body, done) => done(null, body));
 
   app.get('/api/profile/cv', async () => {

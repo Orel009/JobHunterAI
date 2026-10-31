@@ -84,8 +84,14 @@ export interface Status {
   today: { submitted: number };
   limits: { dailyApplyLimit: number; autoSubmitMinScore: number; maxPagesPerRun: number };
   counts: Record<string, number>;
-  models: { analyze: string; write: string };
-  ollama: { ok: boolean; models: string[]; analyzeAvailable: boolean };
+  llm: {
+    analyze: { provider: string; model: string };
+    write: { provider: string; model: string };
+    ollama: { ok: boolean; missing: string[] } | null;
+    cloud: boolean;
+    tokensToday: number;
+    tokenLimit: number;
+  };
   sites: Array<{ id: string; displayName: string; enabled: boolean }>;
   sessions: Record<string, { state: 'logged_in' | 'logged_out' | 'unknown'; checkedAt: string | null; detail: string }>;
   pendingQuestions: number;
@@ -200,3 +206,40 @@ export const answers = {
 
 export const profileStatus = () =>
   req<{ exists: boolean; valid: boolean; draftExists: boolean; facts?: number; error?: string }>('GET', '/api/profile/status');
+
+// ---------- LLM settings ----------
+export interface TaskCfg {
+  provider: string;
+  model: string;
+}
+export interface LlmSettings {
+  analyze: TaskCfg;
+  write: TaskCfg;
+  /** masked ("sk-a…wxyz") or null; the full key is never sent to the browser */
+  keys: Record<string, string | null>;
+  dailyTokenLimit: number;
+  prices: Record<string, { input: number; output: number }>;
+  providers: Array<{ id: string; label: string; local: boolean; needsKey: boolean }>;
+}
+export interface UsageRow {
+  day: string;
+  provider: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  calls: number;
+  cost: number | null;
+}
+export interface UsageReport {
+  rows: UsageRow[];
+  today: { tokens: number; apiTokens: number; cost: number | null };
+  limit: number;
+}
+export const llm = {
+  settings: () => req<LlmSettings>('GET', '/api/llm/settings'),
+  save: (b: Partial<{ analyze: TaskCfg; write: TaskCfg; keys: Record<string, string | null>; dailyTokenLimit: number; prices: LlmSettings['prices'] }>) =>
+    req<LlmSettings>('PUT', '/api/llm/settings', b),
+  models: (provider: string) => req<{ models: string[]; error?: string }>('GET', `/api/llm/models?provider=${encodeURIComponent(provider)}`),
+  test: (provider: string, model: string) => req<{ ok: boolean; ms: number; error?: string }>('POST', '/api/llm/test', { provider, model }),
+  usage: () => req<UsageReport>('GET', '/api/llm/usage'),
+};

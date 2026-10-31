@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
 import { log } from '../log.js';
-import type { LlmCache } from '../llm/ollama.js';
+import type { LlmCache } from '../llm/llm.js';
 import { conflictsMarkdown, type Lang } from './merge.js';
 import { extractProfile } from './extract.js';
 import { applyDiff, diffProfiles, type DiffEntry } from './diff.js';

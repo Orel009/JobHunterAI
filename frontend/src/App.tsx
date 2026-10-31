@@ -7,6 +7,7 @@ import { LogPanel } from './LogPanel';
 import { ReviewQueue } from './ReviewQueue';
 import { PreferencesEditor } from './PreferencesEditor';
 import { ProfileScreen } from './ProfileScreen';
+import { SettingsScreen } from './SettingsScreen';
 
 const TABS = [
   { id: 'jobs', label: 'Jobs', enabled: true },
@@ -14,6 +15,7 @@ const TABS = [
   { id: 'answers', label: 'Answers bank', enabled: true },
   { id: 'profile', label: 'Profile', enabled: true },
   { id: 'prefs', label: 'Preferences', enabled: true },
+  { id: 'settings', label: 'Settings', enabled: true },
   { id: 'history', label: 'History (Phase 3)', enabled: false },
 ] as const;
 
@@ -101,6 +103,7 @@ export function App() {
       {tab === 'answers' && <AnswersBank onChanged={refresh} />}
       {tab === 'profile' && <ProfileScreen onChanged={refresh} />}
       {tab === 'prefs' && <PreferencesEditor onSaved={refresh} />}
+      {tab === 'settings' && <SettingsScreen onSaved={refresh} />}
       <LogPanel />
     </div>
   );

@@ -7,7 +7,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
-import { ollamaChat } from '../llm/ollama.js';
+import { generateText } from '../llm/llm.js';
+import { taskConfig } from '../llm/settings.js';
+import { hebrewFirstPersonRule } from '../core/gender.js';
 import { listFacts, loadProfile } from '../profile/facts.js';
 import { ProfileSchema, type Profile } from '../profile/schema.js';
 import { judgeClaims, makeDrafter } from '../apply/draft.js';
@@ -21,9 +23,9 @@ interface BenchQ {
   type: string;
 }
 
-const OLD_WRITE_SYSTEM = [
+const oldWriteSystem = (gender: 'male' | 'female' | null) => [
   'אתה כותב תשובות לשאלוני מועמדות למשרות בשם המועמד, בגוף ראשון.',
-  'המועמד הוא גבר: השתמש בלשון זכר תקנית (למשל "אני מגיע", "עבדתי", "אני מתעניין").',
+  hebrewFirstPersonRule(gender),
   'השתמש אך ורק בעובדות שמופיעות בפרופיל. אם חסר מידע — אל תמציא; כתוב תשובה כללית יותר או ציין שאפרט בראיון.',
   'עברית טבעית, תקנית וזורמת. 2-4 משפטים לשאלות פתוחות, תשובה קצרה לשאלות סגורות. החזר רק את נוסח התשובה.',
 ].join('\n');
@@ -69,16 +71,15 @@ export async function runDraftComparison(): Promise<{ markdown: string; before: 
   for (const q of data.questions) {
     const field: FormField = { key: 'q', label: q.q, type: benchType(q.type), required: true };
     // before
-    const old = await ollamaChat({
-      model: config.OLLAMA_MODEL_WRITE,
-      think: false,
-      options: { temperature: 0.3, num_ctx: 8192 },
+    const old = await generateText({
+      task: 'write',
+      temperature: 0.3,
       messages: [
-        { role: 'system', content: OLD_WRITE_SYSTEM },
+        { role: 'system', content: oldWriteSystem(profile.gender) },
         { role: 'user', content: `פרופיל המועמד:\n${profileText}\n\nמשרה: ${job.title}\n\nשאלה (${q.type}): ${q.q}` },
       ],
     });
-    const oldText = old.message?.content?.trim() ?? '';
+    const oldText = old.text.trim();
     const oldClaims = oldText ? await judgeClaims(oldText, facts) : [];
     before += oldClaims.length;
 
@@ -118,9 +119,9 @@ export async function runDraftComparison(): Promise<{ markdown: string; before: 
   }
   process.stdout.write('\n');
   const markdown = [
-    `## 4. Draft hallucinations — Phase 1 prompt vs Phase 2 pipeline (${config.OLLAMA_MODEL_WRITE})`,
+    `## 4. Draft hallucinations — Phase 1 prompt vs Phase 2 pipeline (${`${taskConfig('write').provider}:${taskConfig('write').model}`})`,
     '',
-    `Profile: ${source}. Judge: ${config.OLLAMA_MODEL_ANALYZE} verification pass against all ${facts.length} profile facts.`,
+    `Profile: ${source}. Judge: ${`${taskConfig('analyze').provider}:${taskConfig('analyze').model}`} verification pass against all ${facts.length} profile facts.`,
     '',
     `| | unsupported claims (10 questions) |`,
     `|---|---|`,

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { chatJson } from '../src/llm/ollama.js';
+import { chatJson } from '../src/llm/llm.js';
 import { ScoreSchema } from '../src/llm/score.js';
 
 const reply = (content: string) => new Response(JSON.stringify({ message: { content } }), { status: 200 });

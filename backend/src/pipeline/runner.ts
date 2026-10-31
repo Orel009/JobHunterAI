@@ -11,6 +11,7 @@ import { prefilter, scoringRole } from '../core/prefilter.js';
 import { effectiveLimits, loadPrefs, searchPlan } from '../core/prefs.js';
 import { experienceInput, extractRequiredYears } from '../core/experience.js';
 import { candidateContext, scoreJob } from '../llm/score.js';
+import { LlmPausedError } from '../llm/types.js';
 import { loadProfile, skillAliasGroups } from '../profile/facts.js';
 
 /** enrich = fetch missing details for prefilter-passing jobs, then score (no searching) */
@@ -206,6 +207,7 @@ async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<void> {
   const prefs = loadPrefs();
   applyPrefilter(repo, run, prefs);
   const candidate = candidateContext(prefs);
+  const gender = loadProfile()?.gender ?? null;
   const todo = repo.jobsNeedingScore(run.site);
   run.stats.skippedExperience = 0;
   L.info({ count: todo.length, model: config.OLLAMA_MODEL_ANALYZE, maxRequiredYears: prefs.maxRequiredYears }, 'scoring');
@@ -222,7 +224,7 @@ async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<void> {
     try {
       const t0 = Date.now();
       const role = scoringRole(j, prefs);
-      const s = await scoreJob(j, candidate, { cache: repo, role });
+      const s = await scoreJob(j, candidate, { cache: repo, role, gender });
       repo.saveScore(j.id, { ...s, contentHash: j.contentHash, roleType: role?.id ?? null });
       run.stats.scored++;
       if (s.isTrainingProgram) {
@@ -242,7 +244,8 @@ async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<void> {
     } catch (e) {
       run.stats.scoreErrors++;
       L.error({ job: j.title, err: e instanceof Error ? e.message : String(e) }, 'score failed');
-      if (e instanceof Error && /ECONNREFUSED|fetch failed/.test(e.message)) throw new Error(`Ollama not reachable at ${config.OLLAMA_URL}`);
+      if (e instanceof LlmPausedError) throw e; // daily token limit: stop the run, don't skip jobs
+      if (e instanceof Error && /ECONNREFUSED|fetch failed/.test(e.message)) throw new Error(`LLM provider not reachable (${e.message})`);
     }
   }
 }

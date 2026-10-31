@@ -148,3 +148,5 @@ textarea { font: inherit; }
 .diff-removed .pill { background: #fdecea; }
 .pill.ok { background: #d6f2dc; }
 .banner.ok-banner { background: #e3f4e6; color: #1e6b2e; }
+.editor div.row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; margin: 4px 0; }
+.editor div.row .field { min-width: 220px; }

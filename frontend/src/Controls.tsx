@@ -38,9 +38,7 @@ export function Controls({ status, onChange }: { status: Status; onChange: () =>
           re-check login
         </button>
         <span className={status.pendingQuestions ? 'badge warn' : 'badge'}>pending answers: {status.pendingQuestions}</span>
-        <span className={status.ollama.ok && status.ollama.analyzeAvailable ? 'badge ok' : 'badge warn'}>
-          Ollama: {status.ollama.ok ? (status.ollama.analyzeAvailable ? status.models.analyze : `${status.models.analyze} not pulled`) : 'offline'}
-        </span>
+        <LlmBadge llm={status.llm} />
         {Object.entries(status.counts).map(([k, v]) => (
           <span key={k} className={`badge status-${k}`}>
             {k}: {v}
@@ -81,5 +79,20 @@ export function Controls({ status, onChange }: { status: Status; onChange: () =>
       </div>
       {msg && <div className="banner error">{msg}</div>}
     </section>
+  );
+}
+
+function LlmBadge({ llm }: { llm: Status['llm'] }) {
+  const label = (t: { provider: string; model: string }) => `${t.provider}:${t.model || '?'}`;
+  const same = llm.analyze.provider === llm.write.provider && llm.analyze.model === llm.write.model;
+  const text = same ? label(llm.analyze) : `analyze ${label(llm.analyze)} · write ${label(llm.write)}`;
+  const paused = llm.tokenLimit > 0 && llm.tokensToday >= llm.tokenLimit;
+  const problem = paused ? 'paused: daily token limit' : llm.ollama && !llm.ollama.ok ? 'Ollama offline' : llm.ollama?.missing.length ? `not pulled: ${llm.ollama.missing.join(', ')}` : null;
+  return (
+    <span className={problem ? 'badge warn' : 'badge ok'} title={llm.cloud ? `API tokens today: ${llm.tokensToday.toLocaleString()}${llm.tokenLimit ? ` / ${llm.tokenLimit.toLocaleString()}` : ''}` : 'local model'}>
+      LLM: {text}
+      {problem && ` — ${problem}`}
+      {llm.cloud && !problem && ` · ${llm.tokensToday.toLocaleString()} tokens today`}
+    </span>
   );
 }

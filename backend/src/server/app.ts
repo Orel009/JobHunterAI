@@ -9,7 +9,10 @@ import { JOB_STATUSES } from '../sites/types.js';
 import { getActiveRun, startRun, startTask, stopRun } from '../pipeline/runner.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
 import { byRank, rankStoredJob } from '../core/rank.js';
-import { listLocalModels } from '../llm/ollama.js';
+import { listLocalModels } from '../llm/llm.js';
+import { taskConfig } from '../llm/settings.js';
+import { usageReport } from '../llm/usage.js';
+import { registerLlmRoutes } from './llm-routes.js';
 import { prepareJobs, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
 import { registerCvRoutes, registerEditorRoutes } from './editor-routes.js';
@@ -30,22 +33,29 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
 
   app.get('/api/status', async () => {
     const prefs = loadPrefs();
+    const tasks = { analyze: taskConfig('analyze'), write: taskConfig('write') };
+    const usesOllama = tasks.analyze.provider === 'ollama' || tasks.write.provider === 'ollama';
     let ollama: { ok: boolean; models: string[] } = { ok: false, models: [] };
-    try {
-      ollama = { ok: true, models: await listLocalModels() };
-    } catch {
-      /* offline */
+    if (usesOllama) {
+      try {
+        ollama = { ok: true, models: await listLocalModels() };
+      } catch {
+        /* offline */
+      }
     }
+    const usage = await usageReport(1).catch(() => null);
     return {
       dryRun: config.DRY_RUN,
       activeRun: getActiveRun(),
       today: { submitted: repo.submittedToday() },
       limits: effectiveLimits(prefs),
       counts: repo.statusCounts(),
-      models: { analyze: config.OLLAMA_MODEL_ANALYZE, write: config.OLLAMA_MODEL_WRITE },
-      ollama: {
-        ...ollama,
-        analyzeAvailable: ollama.models.some((m) => m === config.OLLAMA_MODEL_ANALYZE || m === `${config.OLLAMA_MODEL_ANALYZE}:latest`),
+      llm: {
+        ...tasks,
+        ollama: usesOllama ? { ok: ollama.ok, missing: (['analyze', 'write'] as const).filter((t) => tasks[t].provider === 'ollama' && !ollama.models.some((m) => m === tasks[t].model || m === `${tasks[t].model}:latest`)) } : null,
+        cloud: tasks.analyze.provider !== 'ollama' || tasks.write.provider !== 'ollama',
+        tokensToday: usage?.today.apiTokens ?? 0,
+        tokenLimit: usage?.limit ?? 0,
       },
       sites: SITES,
       sessions: allSessions(),
@@ -106,6 +116,7 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
 
   registerApplyRoutes(app, db);
   registerEditorRoutes(app);
+  registerLlmRoutes(app);
   registerCvRoutes(app, {
     cache: repo,
     rescore: () => {

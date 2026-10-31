@@ -53,10 +53,25 @@ async function ask(question: string): Promise<boolean> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// ---------- check 4a: .env (before anything imports config) ----------
+/** Total VRAM in MB of the largest NVIDIA GPU (nvidia-smi), or null when unavailable. */
+function gpuMemoryMb(): number | null {
+  try {
+    const out = execSync('nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits', { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString();
+    const vals = out.split(/\r?\n/).map((l) => Number(l.trim())).filter((n) => n > 0);
+    return vals.length ? Math.max(...vals) : null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------- check: .env (before anything imports config) ----------
 const envFile = path.join(ROOT, '.env');
 if (!fs.existsSync(envFile)) {
-  fail('קובץ ‎.env חסר', '.env is missing', 'צור אותו מהדוגמה: copy .env.example .env', 'Create it from the example: copy .env.example .env');
+  if (DOCTOR) warn('קובץ ‎.env חסר — ייווצר אוטומטית בהפעלה הראשונה', '.env is missing — npm start creates it from .env.example');
+  else {
+    fs.copyFileSync(path.join(ROOT, '.env.example'), envFile);
+    ok('.env created from .env.example (first run)');
+  }
 }
 let config: typeof import('../config.js').config;
 try {
@@ -73,103 +88,155 @@ try {
 }
 ok('.env valid');
 
-// ---------- check 2: Ollama ----------
-const ollamaUp = async () => {
-  try {
-    const r = await fetch(`${config.OLLAMA_URL}/api/version`, { signal: AbortSignal.timeout(2000) });
-    return r.ok;
-  } catch {
-    return false;
+// ---------- profile state decides onboarding mode ----------
+const { loadProfile, profilePath } = await import('../profile/facts.js');
+const profileFile = profilePath();
+const draftFile = path.join(config.paths.profileDir, 'profile.draft.json');
+const ONBOARDING = !fs.existsSync(profileFile) && !fs.existsSync(draftFile);
+/** in onboarding mode the wizard configures the LLM: problems are warnings, not stops */
+const llmProblem = (he: string, en: string, fixHe: string, fixEn: string) => (ONBOARDING ? warn(he, en, fixHe, fixEn) : fail(he, en, fixHe, fixEn));
+
+// ---------- check: LLM provider(s) for each task ----------
+const { taskConfig, apiKey } = await import('../llm/settings.js');
+const { getProvider } = await import('../llm/llm.js');
+const tasks = { analyze: taskConfig('analyze'), write: taskConfig('write') };
+const providers = [...new Set([tasks.analyze.provider, tasks.write.provider])];
+console.log(`… LLM: analyze = ${tasks.analyze.provider}:${tasks.analyze.model || '(no model)'} · write = ${tasks.write.provider}:${tasks.write.model || '(no model)'}`);
+
+if (providers.includes('ollama')) {
+  const ollamaUp = async () => {
+    try {
+      return (await fetch(`${config.OLLAMA_URL}/api/version`, { signal: AbortSignal.timeout(2000) })).ok;
+    } catch {
+      return false;
+    }
+  };
+  let up = await ollamaUp();
+  if (up) ok(`Ollama reachable at ${config.OLLAMA_URL}`);
+  else if (!DOCTOR) {
+    const app = path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Ollama', 'ollama app.exe');
+    if (process.platform === 'win32' && fs.existsSync(app)) {
+      console.log('… Ollama not running → starting the Ollama app');
+      spawn(app, [], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      console.log('… Ollama not running → starting `ollama serve` (detached)');
+      try {
+        spawn('ollama', ['serve'], { detached: true, stdio: 'ignore', shell: process.platform === 'win32' }).unref();
+      } catch {
+        /* reported below */
+      }
+    }
+    for (let i = 0; i < 30 && !up; i++) {
+      await sleep(1000);
+      up = await ollamaUp();
+    }
+    if (up) ok('Ollama started');
   }
-};
-if (await ollamaUp()) ok(`Ollama reachable at ${config.OLLAMA_URL}`);
-else if (DOCTOR) fail('Ollama לא רץ', `Ollama is not reachable at ${config.OLLAMA_URL}`, 'פתח את אפליקציית Ollama (או npm start ינסה להפעיל אותה)', 'Start the Ollama app (npm start will try to start it for you)');
-else {
-  const app = path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Ollama', 'ollama app.exe');
-  if (process.platform === 'win32' && fs.existsSync(app)) {
-    console.log('… Ollama not running → starting the Ollama app');
-    spawn(app, [], { detached: true, stdio: 'ignore' }).unref();
+  if (!up) {
+    llmProblem(
+      'Ollama לא רץ',
+      `Ollama is not reachable at ${config.OLLAMA_URL}`,
+      'פתח את אפליקציית Ollama (או התקן מ-https://ollama.com/download), או בחר ספק API במסך Settings',
+      'Open the Ollama app (or install it from https://ollama.com/download), or choose an API provider on the Settings screen',
+    );
   } else {
-    console.log('… Ollama not running → starting `ollama serve` (detached)');
-    try {
-      spawn('ollama', ['serve'], { detached: true, stdio: 'ignore', shell: process.platform === 'win32' }).unref();
-    } catch {
-      /* reported below */
+    const { ollamaModelsWithSize } = await import('../llm/providers/ollama.js');
+    const required = [...new Set((['analyze', 'write'] as const).filter((t) => tasks[t].provider === 'ollama').map((t) => tasks[t].model).filter(Boolean))];
+    const have = (list: Array<{ name: string; size: number }>, m: string) => list.find((x) => x.name === m || x.name === `${m}:latest`);
+    let models = await ollamaModelsWithSize().catch(() => [] as Array<{ name: string; size: number }>);
+    for (const m of required.filter((x) => !have(models, x))) {
+      if (!DOCTOR && (await ask(`Model ${m} is not pulled. Pull it now? / המודל ${m} לא מותקן. להוריד עכשיו?`))) {
+        try {
+          execSync(`ollama pull ${m}`, { stdio: 'inherit' });
+        } catch {
+          /* re-checked below */
+        }
+        models = await ollamaModelsWithSize().catch(() => [] as Array<{ name: string; size: number }>);
+      }
+      if (!have(models, m)) llmProblem(`המודל ${m} לא מותקן`, `Model ${m} is not installed`, `הרץ: ollama pull ${m}`, `Run: ollama pull ${m}`);
+    }
+    if (required.length && required.every((m) => have(models, m))) ok(`local model(s): ${required.join(', ')}`);
+    // does the model fit the GPU?
+    const vram = gpuMemoryMb();
+    for (const m of required) {
+      const sizeMb = (have(models, m)?.size ?? 0) / 1024 / 1024;
+      if (!sizeMb) continue;
+      if (vram === null) {
+        warn('לא נמצא GPU של NVIDIA (nvidia-smi) — מודל מקומי ירוץ לאט על המעבד', `No NVIDIA GPU found (nvidia-smi) — ${m} will run slowly on the CPU`, 'בחר מודל קטן יותר או ספק API במסך Settings', 'Pick a smaller model or an API provider on the Settings screen');
+      } else if (sizeMb > vram * 0.9) {
+        warn(
+          `המודל ${m} (${(sizeMb / 1024).toFixed(1)}GB) גדול מזיכרון ה-GPU (${(vram / 1024).toFixed(1)}GB)`,
+          `${m} (${(sizeMb / 1024).toFixed(1)} GB) does not fit the GPU (${(vram / 1024).toFixed(1)} GB VRAM)`,
+          'בחר מודל מקומי קטן יותר (למשל גרסת 4B) או ספק API במסך Settings',
+          'Choose a smaller local model (e.g. a 4B variant) or an API provider on the Settings screen',
+        );
+      } else ok(`${m} fits the GPU (${(sizeMb / 1024).toFixed(1)} of ${(vram / 1024).toFixed(1)} GB)`);
     }
   }
-  let up = false;
-  for (let i = 0; i < 30 && !up; i++) {
-    await sleep(1000);
-    up = await ollamaUp();
-  }
-  if (up) ok('Ollama started');
-  else fail('לא הצלחתי להפעיל את Ollama תוך 30 שניות', 'Could not start Ollama within 30s', 'פתח את אפליקציית Ollama ידנית, או התקן מ-https://ollama.com/download', 'Open the Ollama app manually, or install it from https://ollama.com/download');
 }
-
-// ---------- check 3: models ----------
-const required = [...new Set([config.OLLAMA_MODEL_ANALYZE, config.OLLAMA_MODEL_WRITE])];
-const installedModels = async (): Promise<string[]> => {
+for (const p of providers.filter((x) => x !== 'ollama')) {
+  if (p === 'fake') {
+    warn('מצב ניסוי: אין מודל — התשובות ריקות', 'Test mode provider: no model, answers are empty placeholders', 'בחר ספק אמיתי במסך Settings', 'Choose a real provider on the Settings screen');
+    continue;
+  }
+  if (!apiKey(p)) {
+    llmProblem(`חסר מפתח API עבור ${p}`, `No API key for ${p}`, 'הזן מפתח במסך Settings (נשמר רק ב-.env)', 'Enter the key on the Settings screen (stored only in .env)');
+    continue;
+  }
   try {
-    const r = await fetch(`${config.OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(3000) });
-    return ((await r.json()) as { models?: Array<{ name: string }> }).models?.map((m) => m.name) ?? [];
-  } catch {
-    return [];
+    const list = await getProvider(p).listModels();
+    const wanted = (['analyze', 'write'] as const).filter((t) => tasks[t].provider === p).map((t) => tasks[t].model);
+    const missing = wanted.filter((m) => m && list.length && !list.includes(m));
+    if (missing.length) warn(`המודל ${missing.join(', ')} לא מופיע ברשימת ${p}`, `${missing.join(', ')} is not in ${p}'s model list`, 'בדוק את שם המודל במסך Settings', 'Check the model name on the Settings screen');
+    else ok(`${p} API reachable (${list.length} models)`);
+  } catch (e) {
+    llmProblem(`לא ניתן להתחבר ל-${p}`, `Cannot reach ${p}: ${(e as Error).message}`, 'בדוק את המפתח והחיבור במסך Settings (Test connection)', 'Check the key and connection on the Settings screen (Test connection)');
   }
-};
-const have = (list: string[], m: string) => list.includes(m) || list.includes(`${m}:latest`);
-let models = await installedModels();
-for (const m of required.filter((x) => !have(models, x))) {
-  if (!DOCTOR && (await ask(`Model ${m} is not pulled. Pull it now? / המודל ${m} לא מותקן. להוריד עכשיו?`))) {
-    try {
-      execSync(`ollama pull ${m}`, { stdio: 'inherit' });
-    } catch {
-      /* re-checked below */
-    }
-    models = await installedModels();
-  }
-  if (!have(models, m)) fail(`המודל ${m} לא מותקן`, `Model ${m} is not installed`, `הרץ: ollama pull ${m}`, `Run: ollama pull ${m}`);
 }
-if (required.every((m) => have(models, m))) ok(`model(s): ${required.join(', ')}`);
 
-// ---------- check 4b/4c: preferences.yaml, profile.json ----------
+// ---------- check: preferences ----------
 const { PrefsSchema } = await import('../core/prefs.js');
 const YAML = (await import('yaml')).default;
 const prefsFile = config.paths.preferences;
 if (!fs.existsSync(prefsFile)) {
-  fail('הקובץ preferences.yaml חסר', `${path.basename(prefsFile)} is missing`, 'צור אותו מהדוגמה: copy preferences.example.yaml preferences.yaml וערוך', 'Create it: copy preferences.example.yaml preferences.yaml, then edit it');
-} else {
+  if (DOCTOR) warn('קובץ ההעדפות חסר — ייווצר מהדוגמה בהפעלה', `${path.relative(ROOT, prefsFile)} is missing — npm start creates it from preferences.example.yaml`);
+  else {
+    fs.mkdirSync(path.dirname(prefsFile), { recursive: true });
+    fs.copyFileSync(path.join(ROOT, 'preferences.example.yaml'), prefsFile);
+    ok(`${path.relative(ROOT, prefsFile)} created from preferences.example.yaml — edit it on the Preferences screen`);
+  }
+}
+if (fs.existsSync(prefsFile)) {
   const parsed = PrefsSchema.safeParse(YAML.parse(fs.readFileSync(prefsFile, 'utf8')) ?? {});
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
-    fail(`preferences.yaml לא תקין: ${msg}`, `preferences.yaml is invalid: ${msg}`, 'תקן לפי preferences.example.yaml', 'Fix it (see preferences.example.yaml)');
+    fail(`קובץ ההעדפות לא תקין: ${msg}`, `preferences are invalid: ${msg}`, 'תקן במסך Preferences או לפי preferences.example.yaml', 'Fix them on the Preferences screen (or see preferences.example.yaml)');
   } else {
-    ok('preferences.yaml valid');
+    ok(`${path.relative(ROOT, prefsFile)} valid`);
     const p = parsed.data;
-    if (!p.cv.he || !p.cv.en || /^</.test(p.cv.he) || /^</.test(p.cv.en)) {
-      warn('שמות קורות החיים (cv.he / cv.en) לא מוגדרים — לא ניתן להגיש', 'cv.he / cv.en are not set — applying will fail', 'הגדר את השמות בדיוק כפי שהם מופיעים באתר', 'Set the CV names exactly as shown on the site');
-    }
-    if (p.queries.titles.length === 0) warn('אין שאילתות חיפוש (queries.titles)', 'No search queries (queries.titles)', 'הוסף כותרות משרה ב-preferences.yaml', 'Add job titles to preferences.yaml');
+    if (!p.cv.he && !p.cv.en) warn('שמות קורות החיים בדרושים לא מוגדרים — לא ניתן להגיש', 'Drushim CV names (cv.he / cv.en) are not set — applying will fail', 'הגדר אותם במסך Preferences', 'Set them on the Preferences screen');
+    else if (/^</.test(p.cv.he) || /^</.test(p.cv.en)) warn('שמות קורות החיים עדיין בערכי הדוגמה', 'Drushim CV names still have the example placeholders', 'הגדר אותם במסך Preferences', 'Set them on the Preferences screen');
+    if (p.roleTypes.filter((r) => r.enabled).length === 0 && p.queries.titles.length === 0) warn('אין סוגי תפקידים לחיפוש', 'No enabled role types to search for', 'הוסף אותם במסך Preferences', 'Add them on the Preferences screen');
   }
 }
-const { loadProfile, profilePath } = await import('../profile/facts.js');
-const profileFile = profilePath();
-const draftFile = path.join(config.paths.profileDir, 'profile.draft.json');
+
+// ---------- check: profile ----------
 if (fs.existsSync(profileFile)) {
   try {
     loadProfile(profileFile);
-    ok('data/profile/profile.json valid');
+    ok(`${path.relative(ROOT, profileFile)} valid`);
   } catch (e) {
-    fail(`profile.json לא תקין: ${(e as Error).message}`, `profile.json is invalid: ${(e as Error).message}`, 'תקן את הקובץ (ראה profile.conflicts.md)', 'Fix the file (see profile.conflicts.md)');
+    fail(`profile.json לא תקין: ${(e as Error).message}`, `profile.json is invalid: ${(e as Error).message}`, 'תקן במסך Profile (או ראה profile.conflicts.md)', 'Fix it on the Profile screen (or see profile.conflicts.md)');
   }
 } else if (fs.existsSync(draftFile)) {
-  fail(
-    'יש טיוטת פרופיל (profile.draft.json) שעוד לא אושרה',
-    'profile.draft.json exists but has not been reviewed yet',
-    'עבור על data/profile/profile.conflicts.md, תקן את הטיוטה ושנה את שמה ל-profile.json',
-    'Review data/profile/profile.conflicts.md, fix the draft, then rename it to profile.json',
+  warn(
+    'יש טיוטת פרופיל שעוד לא אושרה',
+    'profile.draft.json is waiting for your review',
+    'עבור עליה במסך Profile ולחץ "Approve draft" (או שנה את שמה ל-profile.json)',
+    'Review it on the Profile screen and click "Approve draft" (or rename it to profile.json)',
   );
 } else {
-  fail('אין פרופיל', 'No profile (data/profile/profile.json)', 'שים cv-he.pdf ו-cv-en.pdf ב-data/profile והרץ npm run profile:init', 'Put cv-he.pdf and cv-en.pdf in data/profile and run: npm run profile:init');
+  warn('אין פרופיל — אשף ההגדרה ייפתח ב-dashboard', 'No profile yet — the setup wizard opens in the dashboard', 'השלם את אשף ההגדרה', 'Complete the setup wizard');
 }
 
 // ---------- check 5: DB migrations ----------
