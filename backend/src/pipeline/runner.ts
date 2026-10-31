@@ -1,7 +1,7 @@
 import { config } from '../config.js';
 import { log } from '../log.js';
 import type { DB } from '../db/index.js';
-import { Repo } from '../db/repo.js';
+import { Repo, type StoredJob } from '../db/repo.js';
 import { getAdapter } from '../sites/registry.js';
 import type { SiteContext } from '../sites/types.js';
 import { BlockedError, closeContext, getPage } from '../browser/session.js';
@@ -43,6 +43,18 @@ export interface ActiveRun {
 export type TaskFn = (run: ActiveRun, repo: Repo, L: typeof log) => Promise<void>;
 
 let active: ActiveRun | null = null;
+/** runs to start once the current one has finished (e.g. scoring after the profile is approved) */
+const followUps: Array<() => void> = [];
+
+/** Starts the run now, or right after the current run when one is active. */
+export function startWhenIdle(start: () => void): 'started' | 'queued' {
+  if (!active) {
+    start();
+    return 'started';
+  }
+  followUps.push(start);
+  return 'queued';
+}
 
 export const getActiveRun = () =>
   active && { id: active.id, site: active.site, kind: active.kind, startedAt: active.startedAt, stage: active.stage, stats: active.stats };
@@ -81,6 +93,14 @@ export function startTask(db: DB, site: string, kind: string, fn: TaskFn): numbe
   active = run;
   void execute(repo, run, fn).finally(() => {
     active = null;
+    const next = followUps.shift();
+    if (next) {
+      try {
+        next();
+      } catch (e) {
+        log.warn({ err: e instanceof Error ? e.message : String(e) }, 'follow-up run not started');
+      }
+    }
   });
   return id;
 }
@@ -186,20 +206,43 @@ async function details(repo: Repo, run: ActiveRun, L: typeof log, prefs: ReturnT
   applyPrefilter(repo, run, prefs);
 }
 
-export function applyPrefilter(repo: Repo, run: ActiveRun, prefs: ReturnType<typeof loadPrefs>): void {
-  let aliasGroups: string[][] = [];
+function aliasGroupsOrNone(): string[][] {
   try {
-    aliasGroups = skillAliasGroups(loadProfile());
+    return skillAliasGroups(loadProfile());
   } catch {
-    /* invalid profile: the scorer reports it; prefilter works without aliases */
+    return []; // invalid profile: the scorer reports it; the prefilter works without aliases
   }
+}
+
+const prefilterJob = (j: StoredJob, prefs: ReturnType<typeof loadPrefs>, aliasGroups: string[][]) =>
+  prefilter({ ...j, regions: ((j.raw as { regions?: unknown } | null)?.regions as string[] | undefined) ?? [] }, prefs, { aliasGroups });
+
+export function applyPrefilter(repo: Repo, run: ActiveRun, prefs: ReturnType<typeof loadPrefs>): void {
+  const aliasGroups = aliasGroupsOrNone();
   for (const j of repo.jobsNeedingPrefilter(run.site)) {
-    const regions = ((j.raw as { regions?: unknown } | null)?.regions as string[] | undefined) ?? [];
-    const r = prefilter({ ...j, regions }, prefs, { aliasGroups });
+    const r = prefilterJob(j, prefs, aliasGroups);
     repo.setPrefilter(j.id, r.pass, r.reason);
     if (r.pass) run.stats.prefilterPassed++;
     else run.stats.prefilterSkipped++;
   }
+}
+
+/**
+ * After Preferences change: the prefilter again over every job not past scoring (discovered, scored, or skipped by
+ * the prefilter), so new rules apply without searching again. Newly passing jobs get details / a score next run.
+ */
+export function refilterExisting(repo: Repo, prefs = loadPrefs()): { checked: number; newlySkipped: number; restored: number } {
+  const aliasGroups = aliasGroupsOrNone();
+  const out = { checked: 0, newlySkipped: 0, restored: 0 };
+  for (const j of repo.jobsForRefilter()) {
+    out.checked++;
+    const r = prefilterJob(j, prefs, aliasGroups);
+    const wasSkipped = j.status === 'skipped';
+    if (!r.pass && !wasSkipped) out.newlySkipped++;
+    if (r.pass && wasSkipped) out.restored++;
+    repo.refilter(j.id, r.pass, r.reason);
+  }
+  return out;
 }
 
 /** Prefilter + experience cap + LLM score for the run's site (no browser). */
@@ -207,9 +250,17 @@ export async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<
   run.stage = 'scoring';
   const prefs = loadPrefs();
   applyPrefilter(repo, run, prefs);
-  const candidate = candidateContext(prefs);
-  const gender = candidateGender();
   const todo = repo.jobsNeedingScore(run.site);
+  let candidate: string;
+  try {
+    candidate = candidateContext(prefs);
+  } catch (e) {
+    // no approved profile: keep what was discovered; scoring starts by itself once the profile is approved
+    run.stats.waitingForProfile = todo.length;
+    L.warn({ jobs: todo.length }, `scoring skipped — ${(e as Error).message}`);
+    return;
+  }
+  const gender = candidateGender();
   run.stats.skippedExperience = 0;
   L.info({ count: todo.length, model: config.OLLAMA_MODEL_ANALYZE, maxRequiredYears: prefs.maxRequiredYears }, 'scoring');
   for (const j of todo) {

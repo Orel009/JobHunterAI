@@ -18,13 +18,15 @@ export function JobsScreen({
   linkedinEnabled?: boolean;
 }) {
   const [filters, setFilters] = useState({ site: '', status: '', minScore: '', q: '', roleType: '' });
+  const [showSkipped, setShowSkipped] = useState(false);
   const [data, setData] = useState<{ total: number; items: JobItem[] }>({ total: 0, items: [] });
   const [open, setOpen] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setData(await api.jobs({ ...filters, minScore: filters.minScore || undefined, limit: 300 }));
-  }, [filters]);
+    // ranked by the server: rank descending, unscored jobs last
+    setData(await api.jobs({ ...filters, minScore: filters.minScore || undefined, hideSkipped: showSkipped || filters.status ? '0' : '1', limit: 300 }));
+  }, [filters, showSkipped]);
 
   useEffect(() => {
     void load();
@@ -71,6 +73,9 @@ export function JobsScreen({
         </select>
         <input type="number" min={0} max={100} placeholder="min score" value={filters.minScore} onChange={set('minScore')} />
         <input dir="auto" placeholder="search title / company" value={filters.q} onChange={set('q')} />
+        <label className="muted" title="skipped, skipped_experience, skipped_screening, skipped_not_a_job…">
+          <input type="checkbox" checked={showSkipped || !!filters.status} disabled={!!filters.status} onChange={(e) => setShowSkipped(e.target.checked)} /> show skipped
+        </label>
         <button className="secondary" onClick={() => void load()}>
           Refresh
         </button>

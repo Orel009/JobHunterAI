@@ -10,7 +10,14 @@ import { ProfileSchema } from '../profile/schema.js';
 import { currentProfileFile, draftPath, readProfileRaw, validateProfile, writeProfileFile } from '../profile/store.js';
 import { ackDrushimUpdate, applyPending, discardPending, extractionJob, readCvState, readPending, saveCvUpload, startExtraction } from '../profile/cv-update.js';
 
-export function registerEditorRoutes(app: FastifyInstance) {
+export interface EditorHooks {
+  /** profile.json was written from a reviewed profile (scores jobs that waited for it) */
+  onProfileApproved?: () => unknown;
+  /** preferences were saved (re-runs the prefilter over existing jobs) */
+  onPreferencesSaved?: () => unknown;
+}
+
+export function registerEditorRoutes(app: FastifyInstance, hooks: EditorHooks = {}) {
   // ---------- profile ----------
   app.get('/api/profile', async () => {
     const { source, file } = currentProfileFile();
@@ -32,7 +39,8 @@ export function registerEditorRoutes(app: FastifyInstance) {
     const v = validateProfile(body.profile);
     if (target === 'profile' && !v.ok) return reply.status(400).send({ error: 'profile is not valid — not saved', issues: v.issues });
     writeProfileFile(target === 'profile' ? profilePath() : draftPath(), target === 'profile' ? v.profile : body.profile);
-    return { ok: true, target, validation: { ok: v.ok, issues: v.issues } };
+    const scoring = target === 'profile' ? hooks.onProfileApproved?.() : undefined;
+    return { ok: true, target, validation: { ok: v.ok, issues: v.issues }, scoring };
   });
 
   /** Reviewed draft → profile.json (the draft is kept as a backup). */
@@ -42,7 +50,7 @@ export function registerEditorRoutes(app: FastifyInstance) {
     if (!v.ok) return reply.status(400).send({ error: 'draft is not valid yet', issues: v.issues });
     writeProfileFile(profilePath(), v.profile);
     fs.renameSync(draftPath(), path.join(config.paths.profileDir, `profile.draft.promoted-${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
-    return { ok: true };
+    return { ok: true, scoring: hooks.onProfileApproved?.() };
   });
 
   // ---------- preferences ----------
@@ -63,7 +71,7 @@ export function registerEditorRoutes(app: FastifyInstance) {
     }
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `# JobHunter preferences — edited in the dashboard (Preferences screen). Previous versions: data/backups/\n${YAML.stringify(parsed.data, { lineWidth: 0 })}`);
-    return { ok: true, preferences: loadPrefs() };
+    return { ok: true, preferences: loadPrefs(), refilter: hooks.onPreferencesSaved?.() };
   });
 }
 

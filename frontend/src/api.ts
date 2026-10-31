@@ -98,6 +98,8 @@ export interface Status {
   linkedin: { enabled: boolean };
   sessions: Record<string, { state: 'logged_in' | 'logged_out' | 'unknown'; checkedAt: string | null; detail: string }>;
   pendingQuestions: number;
+  /** passed the prefilter, no current score (e.g. discovered before the profile was approved) */
+  waitingForScore: number;
   roleTypes: Array<{ id: string; label: string; tier: number; enabled: boolean }>;
   maxRequiredYears: number;
 }

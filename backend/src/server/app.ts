@@ -6,7 +6,8 @@ import type { DB } from '../db/index.js';
 import { Repo } from '../db/repo.js';
 import { SITES } from '../sites/registry.js';
 import { JOB_STATUSES } from '../sites/types.js';
-import { getActiveRun, startRun, startTask, stopRun } from '../pipeline/runner.js';
+import { getActiveRun, refilterExisting, startRun, startTask, stopRun } from '../pipeline/runner.js';
+import { scorePending } from '../pipeline/score-pending.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
 import { byRank, rankStoredJob } from '../core/rank.js';
 import { listLocalModels } from '../llm/llm.js';
@@ -66,6 +67,8 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
       sessions: allSessions(),
       roleTypes: loadPrefs().roleTypes.map((r) => ({ id: r.id, label: r.label ?? r.id, tier: r.tier, enabled: r.enabled })),
       maxRequiredYears: loadPrefs().maxRequiredYears,
+      /** jobs that passed the prefilter and have no current score (e.g. discovered before the profile was approved) */
+      waitingForScore: repo.jobsNeedingScore().length,
       pendingQuestions: (db.prepare("SELECT COUNT(*) AS n FROM answers WHERE status = 'pending'").get() as { n: number }).n,
     };
   });
@@ -76,6 +79,8 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
     minScore: z.coerce.number().int().min(0).max(100).optional(),
     q: z.string().optional(),
     roleType: z.string().optional(),
+    /** default list: hide skipped_* (a 'show skipped' toggle sends 0) */
+    hideSkipped: z.enum(['0', '1']).optional().transform((v) => v === '1'),
     limit: z.coerce.number().int().min(1).max(500).default(200),
     offset: z.coerce.number().int().min(0).default(0),
   });
@@ -120,7 +125,14 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   });
 
   registerApplyRoutes(app, db);
-  registerEditorRoutes(app);
+  registerEditorRoutes(app, {
+    onProfileApproved: () => scorePending(db),
+    onPreferencesSaved: () => {
+      const r = refilterExisting(repo);
+      log.info(r, 'preferences saved — prefilter re-run over existing jobs');
+      return r;
+    },
+  });
   registerLlmRoutes(app);
   registerOnboardingRoutes(app, db);
   registerLinkedInRoutes(app, db);

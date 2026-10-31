@@ -26,6 +26,17 @@ export function expandWithAliases(keywords: string[], aliasGroups: string[][]): 
   return [...out];
 }
 
+/**
+ * A disabled role type's titleKeywords act as title excludes ([keyword, role id] pairs), so e.g. support titles
+ * are skipped even when another role type's query found them. Not used as excludes: keywords of search-only role
+ * types (Junior never decides what a job is), and keywords an enabled role type or the include list also uses
+ * (disabling "software" must not exclude every "developer").
+ */
+export function disabledRoleKeywords(roles: RoleType[], extraInclude: string[] = []): Array<[string, string]> {
+  const keep = new Set([...roles.filter((r) => r.enabled).flatMap((r) => r.titleKeywords), ...extraInclude].map((k) => normalizeText(k)));
+  return roles.filter((r) => !r.enabled && !r.searchOnly).flatMap((r) => r.titleKeywords.filter((k) => !keep.has(normalizeText(k))).map((k): [string, string] => [k, r.id]));
+}
+
 /** Deterministic gate before any LLM call. Order matters: the first failing rule is the reason. */
 export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { aliasGroups?: string[][] } = {}): PrefilterResult {
   const title = normalizeText(job.title);
@@ -47,6 +58,9 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
 
   const excluded = f.excludeTitleKeywords.find((k) => containsKeyword(title, k));
   if (excluded) return { pass: false, reason: `excluded title keyword: "${excluded}"` };
+
+  const disabled = disabledRoleKeywords(prefs.roleTypes ?? [], prefs.filters.includeTitleKeywords).find(([k]) => containsKeyword(title, k));
+  if (disabled) return { pass: false, reason: `role type disabled: ${disabled[1]}` };
 
   if (f.includeTitleKeywords.length > 0 && !f.includeTitleKeywords.some((k) => containsKeyword(title, k))) {
     return { pass: false, reason: 'no include keyword in title' };

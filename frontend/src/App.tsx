@@ -90,12 +90,22 @@ export function App() {
         </div>
       )}
       {profile && !profile.valid && onboarding === false && (
-        <div className="banner warn">
-          {profile.exists
-            ? `profile.json is invalid: ${profile.error}`
-            : profile.draftExists
-              ? 'Your profile draft is waiting for your review: check it on the Profile screen and click “Approve draft”.'
-              : 'No profile yet: upload your CV on the Profile screen.'}
+        <div className="banner error">
+          <div dir="rtl">
+            {profile.draftExists && !profile.exists ? 'הפרופיל עוד לא אושר' : 'אין פרופיל תקין'} — משרות נמצאות, אבל הדירוג ממתין. אחרי האישור הדירוג מתחיל אוטומטית.
+          </div>
+          <div>
+            {profile.exists
+              ? `profile.json is invalid: ${profile.error}`
+              : profile.draftExists
+                ? 'Your profile draft is not approved yet: review it and click “Approve draft”.'
+                : 'No profile yet: upload your CV on the Profile screen.'}{' '}
+            Discovery still works; scoring waits{status?.waitingForScore ? ` (${status.waitingForScore} job(s) waiting)` : ''} and starts by itself once the profile is
+            approved.{' '}
+            <button className="primary" onClick={() => setTab('profile')}>
+              Open Profile
+            </button>
+          </div>
         </div>
       )}
       {cvInfo &&
@@ -124,7 +134,7 @@ export function App() {
           }}
         />
       )}
-      {onboarding === false && status && <Controls status={status} onChange={refresh} />}
+      {onboarding === false && status && <Controls status={status} onChange={refresh} profileReady={profile?.valid ?? true} />}
       {onboarding === false && tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} linkedinEnabled={!!status?.linkedin.enabled} roleTypes={status?.roleTypes ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
       {onboarding === false && tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} onChanged={refresh} />}
       {onboarding === false && tab === 'answers' && <AnswersBank onChanged={refresh} />}

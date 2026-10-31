@@ -44,7 +44,7 @@ roleTypes:
     tier: 3
     notes: development-oriented support only (code, SQL, APIs, debugging); tier 3 is ranked on min(score, devContentScore)
     queries: [Application Support, Technical Support Engineer, תמיכה טכנית]
-    titleKeywords: [application support, technical support, support engineer, תמיכה טכנית, תמיכה אפליקטיבית]
+    titleKeywords: [application support, technical support, support engineer, tier 1, tier 2, תמיכה טכנית, תמיכה אפליקטיבית, איש תמיכה, אשת תמיכה]
 
 # Jobs that REQUIRE more years than this are skipped (status skipped_experience).
 maxRequiredYears: 5

@@ -54,14 +54,15 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
   const save = async () => {
     setMsg(null);
     const r = await fetch('/api/preferences', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ preferences: p }) });
-    const j = (await r.json()) as { error?: string; issues?: string[] };
+    const j = (await r.json()) as { error?: string; issues?: string[]; refilter?: { checked: number; newlySkipped: number; restored: number } };
     if (!r.ok) {
       setIssues(j.issues ?? []);
       setMsg(j.error ?? 'save failed');
       return;
     }
     setIssues([]);
-    setMsg('saved');
+    const rf = j.refilter;
+    setMsg(rf ? `saved · filters re-applied to ${rf.checked} existing jobs: ${rf.newlySkipped} newly skipped, ${rf.restored} back in` : 'saved');
     await load();
     onSaved?.();
   };

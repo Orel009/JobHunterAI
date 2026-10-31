@@ -195,6 +195,38 @@ export class Repo {
     return rows.map(fromRow);
   }
 
+  /** Jobs whose prefilter result may change with new preferences: not past scoring, or skipped by the prefilter. */
+  jobsForRefilter(): StoredJob[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM jobs WHERE duplicate_of IS NULL AND (status IN ('discovered','scored') OR (status = 'skipped' AND status_reason LIKE 'prefilter:%'))`,
+      )
+      .all() as unknown as JobRow[];
+    return rows.map(fromRow);
+  }
+
+  /** Applies a fresh prefilter result to an existing job (see jobsForRefilter). */
+  refilter(id: string, pass: boolean, reason: string): void {
+    const now = nowIso();
+    if (!pass) {
+      this.db
+        .prepare(`UPDATE jobs SET prefilter_pass = 0, prefilter_reason = ?, status = 'skipped', status_reason = ?, updated_at = ? WHERE id = ?`)
+        .run(reason, `prefilter: ${reason}`, now, id);
+      return;
+    }
+    // passing: a job the prefilter had skipped comes back — scored if its score is still current, else discovered
+    this.db
+      .prepare(
+        `UPDATE jobs SET prefilter_pass = 1, prefilter_reason = 'ok',
+           status = CASE WHEN status = 'skipped' THEN
+             CASE WHEN EXISTS (SELECT 1 FROM scores s WHERE s.job_id = jobs.id AND s.content_hash = jobs.content_hash) THEN 'scored' ELSE 'discovered' END
+             ELSE status END,
+           status_reason = CASE WHEN status = 'skipped' THEN NULL ELSE status_reason END,
+           updated_at = ? WHERE id = ?`,
+      )
+      .run(now, id);
+  }
+
   jobsNeedingDetails(site: string): StoredJob[] {
     const rows = this.db
       .prepare(`SELECT * FROM jobs WHERE site = ? AND prefilter_pass = 1 AND details_fetched = 0 AND status = 'discovered' ORDER BY first_seen_at`)
@@ -238,11 +270,12 @@ export class Repo {
     });
   }
 
-  listJobs(f: { site?: string; status?: string; minScore?: number; q?: string; roleType?: string; limit?: number; offset?: number }) {
+  listJobs(f: { site?: string; status?: string; minScore?: number; q?: string; roleType?: string; hideSkipped?: boolean; limit?: number; offset?: number }) {
     const where: string[] = [];
     const args: Array<string | number> = [];
     if (f.site) (where.push('j.site = ?'), args.push(f.site));
     if (f.status) (where.push('j.status = ?'), args.push(f.status));
+    else if (f.hideSkipped) where.push("j.status NOT LIKE 'skipped%'");
     if (f.minScore !== undefined) (where.push('s.score >= ?'), args.push(f.minScore));
     if (f.q) (where.push('(j.title LIKE ? OR j.company LIKE ?)'), args.push(`%${f.q}%`, `%${f.q}%`));
     if (f.roleType) (where.push('j.role_types LIKE ?'), args.push(`%"${f.roleType}"%`));

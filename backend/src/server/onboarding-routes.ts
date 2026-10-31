@@ -16,6 +16,7 @@ import { closeContext } from '../browser/session.js';
 import { checkDrushimSession, setSession, type SessionInfo } from '../browser/site-session.js';
 import { profileInUse, PROFILE_IN_USE } from '../browser/chrome.js';
 import { getActiveRun, startTask } from '../pipeline/runner.js';
+import { scorePending } from '../pipeline/score-pending.js';
 import { candidateGender, profilePath } from '../profile/facts.js';
 import { draftPath, readProfileRaw, validateProfile, writeProfileFile } from '../profile/store.js';
 import { log } from '../log.js';
@@ -101,7 +102,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, db: DB) {
     }
     new AnswersBank(db).seed(loadPrefs(), candidateGender());
     writeOnboarding({ ...s, active: false, completedAt: new Date().toISOString() });
-    return { ok: true };
+    return { ok: true, scoring: scorePending(db) };
   });
 
   /** "Set up later": hide the wizard; everything stays editable on the normal screens. */

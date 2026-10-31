@@ -38,7 +38,8 @@ describe('prefilter: whole words, case-insensitive', () => {
   });
   it('include keywords come from enabled role types', () => {
     expect(prefilter(j('QA Automation Engineer'), prefs).pass).toBe(true);
-    expect(prefilter(j('Data Analyst'), prefs).reason).toBe('no include keyword in title'); // role disabled
+    // a disabled role type's title keywords now exclude the title, with the role type as the reason
+    expect(prefilter(j('Data Analyst'), prefs).reason).toBe('role type disabled: off');
   });
 });
 

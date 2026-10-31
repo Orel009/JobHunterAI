@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, linkedin, type RunRow, type Status } from './api';
 
-export function Controls({ status, onChange }: { status: Status; onChange: () => void }) {
+export function Controls({ status, onChange, profileReady = true }: { status: Status; onChange: () => void; profileReady?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [lastRun, setLastRun] = useState<RunRow | null>(null);
@@ -49,7 +49,11 @@ export function Controls({ status, onChange }: { status: Status; onChange: () =>
       <div className="runbar">
         {status.sites.map((s) => (
           <span key={s.id} className="site-actions">
-            <button disabled={!s.enabled || !!run || busy} onClick={() => act(() => api.startRun(s.id, 'full'))} title="search → prefilter → details → score">
+            <button
+              disabled={!s.enabled || !!run || busy}
+              onClick={() => act(() => api.startRun(s.id, 'full'))}
+              title={profileReady ? 'search → prefilter → details → score' : 'search → prefilter → details; scoring is skipped until your profile is approved, then starts by itself'}
+            >
               Discover {s.displayName}
             </button>
             {s.enabled && (
@@ -59,6 +63,7 @@ export function Controls({ status, onChange }: { status: Status; onChange: () =>
             )}
           </span>
         ))}
+        {!profileReady && <span className="note">no approved profile: Discover finds jobs, scoring waits for the profile</span>}
         {status.linkedin.enabled && (
           <button disabled={!!run || busy} onClick={() => act(linkedin.fetch)} title="read new LinkedIn job-alert emails → prefilter → score (LinkedIn itself is never opened)">
             Fetch LinkedIn alerts
@@ -79,6 +84,7 @@ export function Controls({ status, onChange }: { status: Status; onChange: () =>
           <span className={`run-info last-${lastRun.status}`}>
             Last run #{lastRun.id} {lastRun.site}: <b>{lastRun.status}</b>
             {lastRun.reason ? ` — ${lastRun.reason}` : ''} · new {lastRun.stats.inserted ?? 0} · scored {lastRun.stats.scored ?? 0}
+            {lastRun.stats.waitingForProfile ? ` · ${lastRun.stats.waitingForProfile} waiting for the profile` : ''}
           </span>
         )}
       </div>
