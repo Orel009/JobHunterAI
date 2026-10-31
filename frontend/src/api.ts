@@ -124,6 +124,21 @@ export interface Status {
   autoSubmit: { sites: Record<string, boolean>; minRank: number | null; minRankEffective: number; paused: boolean; pausedAt: string | null };
   lastHunt: import('./Schedule').HuntSummary | null;
   huntRunning: boolean;
+  /** Run & send: live progress of the running (or last) hunt */
+  huntProgress: {
+    id: number;
+    trigger: string;
+    startedAt: string;
+    step: string;
+    steps: Array<{ name: string; state: 'running' | 'done' | 'skipped' | 'failed'; detail?: string }>;
+    counts: { found: number; scored: number; candidates: number; sent: number; review: number; failed: number };
+    current: string | null;
+    finished: boolean;
+  } | null;
+  /** "on", or why a run stops after prepare (DRY_RUN, auto-submit off / paused) */
+  sending: string;
+  /** what still runs (empty = safe to close) */
+  stillRunning: string[];
   schedule: { enabled: boolean; next: string | null };
   sessions: Record<string, { state: 'logged_in' | 'logged_out' | 'unknown'; checkedAt: string | null; detail: string }>;
   pendingQuestions: number;

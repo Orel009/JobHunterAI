@@ -1,7 +1,9 @@
 /**
- * One full hunt (npm start -- --hunt, the dashboard, the in-app schedule or Windows Task Scheduler):
- * Drushim discover → score; LinkedIn alert emails (only when that optional feature is on); then prepare plans for the
- * best new Drushim jobs within today's limit (auto-submit only if you turned it on and its gate passes).
+ * One full hunt — "Run & send" in the dashboard, npm start -- --hunt [--send], the in-app schedule or Windows Task
+ * Scheduler: discover on every enabled site → score; LinkedIn alert emails (only when that optional feature is on);
+ * then prepare plans for the best new Drushim jobs within today's limit and send the ones that pass the auto-submit
+ * gate (only with DRY_RUN off and auto-submit on for the site; otherwise it stops after prepare).
+ * Live progress (step, counts, current job) is kept for the dashboard while it runs.
  * If the Drushim login has expired, the hunt stays discovery-only and its summary says to log in again.
  * Every hunt ends with a summary (stored for the dashboard, optionally a Windows toast).
  */
@@ -19,6 +21,9 @@ import { showToast } from '../notify/toast.js';
 import { runLinkedInToCompletion } from './linkedin-run.js';
 import { getActiveRun, runToCompletion, waitIdle } from './runner.js';
 import { scheduleSettings } from './schedule.js';
+import { config } from '../config.js';
+import { autoSubmitSettings } from '../apply/auto-submit.js';
+import { adapters, SITES } from '../sites/registry.js';
 
 export type HuntTrigger = 'manual' | 'schedule' | 'task' | 'cli';
 
@@ -33,6 +38,12 @@ export interface HuntSummary {
   readyForReview: number;
   autoSubmitted: number;
   failed: number;
+  /** every application sent during this hunt (auto-submit) */
+  sent?: number;
+  /** all applications waiting in the review queue when the hunt ended (this hunt's and earlier ones) */
+  waitingForReview?: number;
+  /** whether this hunt could send: on, or why it stopped after prepare */
+  sending?: string;
   /** the Drushim session expired: discovery-only, log in again */
   loginNeeded: boolean;
   note: string | null;
@@ -59,6 +70,35 @@ export function skipReason(status: string, reason: string | null): string {
 let running = false;
 export const huntRunning = () => running;
 
+export interface HuntProgress {
+  id: number;
+  trigger: HuntTrigger;
+  startedAt: string;
+  /** what the hunt is doing now ("done" at the end) */
+  step: string;
+  steps: Array<{ name: string; state: 'running' | 'done' | 'skipped' | 'failed'; detail?: string }>;
+  counts: { found: number; scored: number; candidates: number; sent: number; review: number; failed: number };
+  /** the current job / page (from the active run) */
+  current: string | null;
+  finished: boolean;
+}
+let progress: HuntProgress | null = null;
+/** the running (or last) hunt's live progress, with the active run's current stage */
+export function huntProgress(): HuntProgress | null {
+  if (!progress) return null;
+  const run = getActiveRun();
+  return { ...progress, current: progress.finished ? null : (run?.stage ?? progress.current) };
+}
+
+/** Can the sending happen in this hunt? "on", or why it stops after prepare. */
+export function sendingMode(site = 'drushim'): string {
+  if (config.DRY_RUN) return 'DRY_RUN is on — plans are prepared, nothing is sent';
+  const a = autoSubmitSettings();
+  if (a.paused) return 'auto-submit is paused (kill switch) — stopped after prepare';
+  if (!a.sites[site]) return `auto-submit is off for ${site} — stopped after prepare (approve in the review queue)`;
+  return 'on';
+}
+
 export interface HuntOptions {
   trigger?: HuntTrigger;
   /** test seam: the session check (default: the real one, a headless browser) */
@@ -74,6 +114,13 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
   const startedAt = nowIso();
   const huntId = Number(db.prepare('INSERT INTO hunts (trigger, started_at) VALUES (?, ?)').run(trigger, startedAt).lastInsertRowid);
   const L = log.child({ hunt: huntId, trigger });
+  progress = { id: huntId, trigger, startedAt, step: 'starting', steps: [], counts: { found: 0, scored: 0, candidates: 0, sent: 0, review: 0, failed: 0 }, current: null, finished: false };
+  const p = progress;
+  const step = (name: string) => {
+    p.step = name;
+    p.steps.push({ name, state: 'running' });
+    return (state: 'done' | 'skipped' | 'failed' = 'done', detail?: string) => Object.assign(p.steps[p.steps.length - 1]!, { state, detail });
+  };
   try {
     const repo = new Repo(db);
     const before = repo.statusCounts();
@@ -83,19 +130,35 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     };
 
     // is the Drushim login still valid? (an expired one keeps this hunt discovery-only)
+    let end = step('checking the Drushim login');
     const session = await (opts.checkSession ?? checkDrushimSession)().catch((e: unknown): SessionInfo => ({ state: 'unknown', checkedAt: nowIso(), detail: String(e) }));
     const loginNeeded = session.state === 'logged_out';
     if (session.state === 'logged_in') {
       const n = repo.requeueLoginFailures('drushim');
       if (n) L.info({ jobs: n }, 'login valid again — jobs that failed on "not logged in" are back in the queue');
     }
+    end(session.state === 'logged_out' ? 'failed' : 'done', session.state === 'logged_in' ? 'logged in' : session.state === 'logged_out' ? 'NOT logged in — discovery only' : `unknown (${session.detail})`);
     L.info({ session: session.state }, 'hunt started');
 
-    await runToCompletion(db, 'drushim', 'full');
-    const runs = [lastRun()];
+    // discovery on every enabled site that has an adapter (today: Drushim)
+    const runs: HuntSummary['runs'] = [];
+    for (const site of SITES.filter((x) => x.enabled && adapters[x.id])) {
+      end = step(`discovering on ${site.displayName} → scoring`);
+      await runToCompletion(db, site.id, 'full');
+      const r = lastRun();
+      runs.push(r);
+      p.counts.found += r.inserted;
+      p.counts.scored += r.scored;
+      end(r.status === 'done' ? 'done' : 'failed', `${r.status}${r.reason ? ` (${r.reason})` : ''} · new ${r.inserted} · scored ${r.scored}`);
+    }
     if (linkedInEnabled()) {
+      end = step('reading LinkedIn alert emails');
       await runLinkedInToCompletion(db);
-      runs.push(lastRun());
+      const r = lastRun();
+      runs.push(r);
+      p.counts.found += r.inserted;
+      p.counts.scored += r.scored;
+      end(r.status === 'done' ? 'done' : 'failed', `new ${r.inserted} · scored ${r.scored}`);
     }
 
     const prefs = loadPrefs();
@@ -116,6 +179,9 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
 
     let note: string | null = null;
     let prepared = 0;
+    const sending = sendingMode('drushim');
+    p.counts.candidates = candidates.length;
+    end = step(sending === 'on' ? 'preparing → sending what passes the gate' : 'preparing plans (not sending)');
     if (loginNeeded || getSession('drushim').state === 'logged_out') {
       note = `Drushim login expired — log in again (dashboard button or npm run login -- drushim). Discovery only: ${candidates.length} job(s) ≥ ${limits.autoSubmitMinScore} wait for you.`;
     } else if (candidates.length === 0) note = `no new jobs with score ≥ ${limits.autoSubmitMinScore}`;
@@ -124,6 +190,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       await waitIdle();
       prepared = candidates.length;
     }
+    end(note && !prepared ? 'skipped' : 'done', note ?? `${prepared} job(s)${sending === 'on' ? '' : ` — ${sending}`}`);
 
     const skipped = Object.fromEntries(
       (db.prepare("SELECT status, status_reason FROM jobs WHERE updated_at >= ? AND status LIKE 'skipped%'").all(startedAt) as Array<{ status: string; status_reason: string | null }>).reduce(
@@ -142,9 +209,13 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       readyForReview: count("SELECT COUNT(*) AS n FROM applications WHERE status = 'needs_review' AND updated_at >= ?"),
       autoSubmitted: count(`SELECT COUNT(*) AS n FROM applications WHERE status = 'submitted' AND submitted_at >= ? AND gate_json LIKE '%"auto":true%'`),
       failed: count("SELECT COUNT(*) AS n FROM jobs WHERE status = 'failed' AND updated_at >= ?"),
+      sent: count("SELECT COUNT(*) AS n FROM applications WHERE status = 'submitted' AND submitted_at >= ?"),
+      waitingForReview: (db.prepare("SELECT COUNT(*) AS n FROM applications WHERE status = 'needs_review'").get() as { n: number }).n,
+      sending,
       loginNeeded: loginNeeded || getSession('drushim').state === 'logged_out',
       note,
     };
+    Object.assign(p.counts, { sent: summary.sent, review: summary.waitingForReview, failed: summary.failed });
     db.prepare('UPDATE hunts SET finished_at = ?, summary_json = ? WHERE id = ?').run(summary.finishedAt, JSON.stringify(summary), huntId);
     L.info(summary, 'hunt finished');
 
@@ -155,13 +226,37 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
         : `Found ${summary.found} · skipped ${skippedN} · ready for review ${summary.readyForReview} · auto-submitted ${summary.autoSubmitted} · failed ${summary.failed}`;
       (opts.notify ?? showToast)('JobHunter hunt finished', body);
     }
+    p.step = 'done';
     return { ...summary, id: huntId, candidates: candidates.length, prepared, before, after: repo.statusCounts() };
   } catch (e) {
+    p.step = `failed: ${e instanceof Error ? e.message : String(e)}`;
+    const last = p.steps[p.steps.length - 1];
+    if (last?.state === 'running') last.state = 'failed';
     db.prepare('UPDATE hunts SET finished_at = ?, summary_json = ? WHERE id = ?').run(nowIso(), JSON.stringify({ trigger, startedAt, error: e instanceof Error ? e.message : String(e) }), huntId);
     throw e;
   } finally {
+    p.finished = true;
     running = false;
   }
+}
+
+/** The end-of-session summary: what happened, and whether JobHunter can be closed (nothing still running). */
+export function doneReport(h: HuntSummary & { error?: string }, still: string[]): string[] {
+  const skipped = Object.entries(h.skipped ?? {}).sort((a, b) => b[1] - a[1]);
+  const out = [
+    still.length ? `Still running: ${still.join(' · ')} — wait before closing.` : 'Done. Safe to close / shut down.',
+  ];
+  if (h.error) out.push(`The run failed: ${h.error}`);
+  else {
+    out.push(`found ${h.found} new job(s)`);
+    out.push(`skipped ${skipped.reduce((n, [, v]) => n + v, 0)}${skipped.length ? ` (${skipped.map(([k, v]) => `${k} ${v}`).join(', ')})` : ''}`);
+    out.push(`sent ${h.sent ?? h.autoSubmitted}${h.sending && h.sending !== 'on' ? ` — ${h.sending}` : ''}`);
+    out.push(`waiting for your review ${h.waitingForReview ?? h.readyForReview}`);
+    out.push(`failed ${h.failed}`);
+    if (h.loginNeeded) out.push('Drushim login expired — log in again (dashboard button or npm run login -- drushim); this run was discovery-only.');
+    if (h.note) out.push(h.note);
+  }
+  return out;
 }
 
 export function recentHunts(db: DB, limit = 10): Array<HuntSummary & { id: number; error?: string }> {

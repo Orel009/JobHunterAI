@@ -190,3 +190,9 @@ header .kill-switch { margin-inline-start: auto; font-size: 15px; font-weight: 7
 header .badge.warn { margin-inline-start: auto; cursor: pointer; }
 .batch-bar { background: #f6f7f9; padding: 6px 8px; border-radius: 6px; }
 .batch-results { margin: 6px 0 0; padding-left: 18px; max-height: 220px; overflow: auto; }
+.run-send-btn { font-weight: 700; padding: 6px 14px; }
+.run-panel .steps { margin: 4px 0; padding-left: 18px; }
+.run-done { display: flex; gap: 12px; align-items: baseline; font-size: 1.05em; }
+.done-table td { padding: 1px 10px 1px 0; }
+header .run-send { margin-inline-start: auto; }
+header .run-send ~ .kill-switch, header .run-send ~ .badge.warn { margin-inline-start: 0; }

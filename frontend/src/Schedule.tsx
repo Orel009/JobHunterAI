@@ -10,6 +10,9 @@ export interface HuntSummary {
   readyForReview: number;
   autoSubmitted: number;
   failed: number;
+  sent?: number;
+  waitingForReview?: number;
+  sending?: string;
   loginNeeded: boolean;
   note: string | null;
   error?: string;

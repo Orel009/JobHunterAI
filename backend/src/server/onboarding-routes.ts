@@ -73,6 +73,8 @@ export function applyIdentityToDraft(s: OnboardingState): boolean {
 }
 
 let loginChild: ChildProcess | null = null;
+/** the login window (a Chrome the user logs in with) is open */
+export const loginWindowOpen = () => !!loginChild;
 
 export function registerOnboardingRoutes(app: FastifyInstance, db: DB) {
   app.get('/api/onboarding', async () => {

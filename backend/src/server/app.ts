@@ -15,14 +15,14 @@ import { listLocalModels } from '../llm/llm.js';
 import { taskConfig } from '../llm/settings.js';
 import { usageReport } from '../llm/usage.js';
 import { registerLlmRoutes } from './llm-routes.js';
-import { registerOnboardingRoutes } from './onboarding-routes.js';
+import { loginWindowOpen, registerOnboardingRoutes } from './onboarding-routes.js';
 import { registerLinkedInRoutes } from './linkedin-routes.js';
 import { registerHistoryRoutes } from './history-routes.js';
 import { autoSubmitSettings, effectiveMinRank, pauseAutoSubmit, saveAutoSubmitSettings } from '../apply/auto-submit.js';
-import { huntRunning, recentHunts, runHunt } from '../pipeline/hunt.js';
+import { huntProgress, huntRunning, recentHunts, runHunt, sendingMode } from '../pipeline/hunt.js';
 import { inQuietHours, isHhmm, nextRun, runnableTimes, saveScheduleSettings, scheduleSettings } from '../pipeline/schedule.js';
 import { linkedInEnabled } from '../linkedin/settings.js';
-import { prepareJobs, ServiceError } from '../apply/service.js';
+import { batchProgress, prepareJobs, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
 import { registerCvRoutes, registerEditorRoutes } from './editor-routes.js';
 import fs from 'node:fs';
@@ -84,6 +84,10 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
       /** the latest hunt's summary, and the next in-app scheduled hunt (null = off) */
       lastHunt: recentHunts(db, 1)[0] ?? null,
       huntRunning: huntRunning(),
+      /** Run & send: live progress of the running (or last) hunt, whether it can send, and what still runs */
+      huntProgress: huntProgress(),
+      sending: sendingMode('drushim'),
+      stillRunning: stillRunning(),
       schedule: { enabled: scheduleSettings().enabled, next: scheduleSettings().enabled ? (nextRun(new Date(), scheduleSettings())?.toISOString() ?? null) : null },
       sessions: allSessions(),
       roleTypes: loadPrefs().roleTypes.map((r) => ({ id: r.id, label: r.label ?? r.id, tier: r.tier, enabled: r.enabled })),
@@ -297,6 +301,18 @@ const MIME: Record<string, string> = {
 };
 
 /** Applying is disabled while the site is known to be logged out (unknown = let the adapter find out). */
+/** what is still working (empty = safe to close JobHunter and shut down) */
+export function stillRunning(): string[] {
+  const out: string[] = [];
+  const run = getActiveRun();
+  if (run) out.push(`run #${run.id} ${run.site}/${run.kind}: ${run.stage}`);
+  if (huntRunning()) out.push('Run & send');
+  const b = batchProgress();
+  if (b && !b.finished) out.push(`batch approval ${b.done}/${b.total}`);
+  if (loginWindowOpen()) out.push('the login window is open — close it when you are done logging in');
+  return out;
+}
+
 export function assertCanApply(site: string): void {
   if (getSession(site).state === 'logged_out') {
     throw new ServiceError(409, `אין חיבור ל-${site} — יש להתחבר בחלון ההתחברות (או npm run login -- ${site}) ואז "בדוק שוב" / Not logged in to ${site}: run npm run login -- ${site}, then "Re-check"`);

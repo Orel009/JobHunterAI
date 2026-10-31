@@ -1,7 +1,10 @@
 /**
  * Checks 2–8 of `npm start` (check 1, Node + dependencies, runs in scripts/start.mjs before tsx exists).
  *   --doctor   checks 1–6 only, report, change nothing
- *   --hunt     after startup: discover → score → prepare plans for jobs ≥ threshold (never submits)
+ *   --hunt     after startup: discover → score → prepare plans for jobs ≥ threshold; sends only what passes the
+ *              auto-submit gate (DRY_RUN off and auto-submit on for the site)
+ *   --send     with --hunt: the "Run & send" session — no dashboard tab, print the "Done. Safe to close" summary
+ *              and exit when finished (if JobHunter is already running, the running app does it and this waits)
  *   --no-open  don't open the browser
  *   --no-browser  for Windows Task Scheduler: no dashboard tab, the site browser headless, exit after the hunt;
  *                 if JobHunter is already running, ask it to run the hunt instead and exit
@@ -14,9 +17,10 @@ import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2);
 const DOCTOR = args.includes('--doctor');
-const HUNT = args.includes('--hunt');
+const SEND = args.includes('--send');
+const HUNT = args.includes('--hunt') || SEND;
 const NO_BROWSER = args.includes('--no-browser');
-const NO_OPEN = args.includes('--no-open') || NO_BROWSER;
+const NO_OPEN = args.includes('--no-open') || NO_BROWSER || SEND;
 if (NO_BROWSER) process.env.HEADLESS = 'true'; // before .env is read (it never overrides a set variable)
 if (DOCTOR) process.env.JOBHUNTER_READONLY = '1';
 
@@ -93,13 +97,29 @@ try {
 }
 ok('.env valid');
 
-// ---------- scheduled hunt while JobHunter is already running: let the running app do it ----------
-if (HUNT && NO_BROWSER) {
+// ---------- hunt while JobHunter is already running: let the running app do it ----------
+if (HUNT && (NO_BROWSER || SEND)) {
   const base = `http://127.0.0.1:${config.PORT}`;
   const up = await fetch(`${base}/api/status`, { signal: AbortSignal.timeout(3000) }).then((r) => r.ok).catch(() => false);
   if (up) {
-    const r = await fetch(`${base}/api/hunt`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ trigger: 'task' }) }).catch(() => null);
+    const r = await fetch(`${base}/api/hunt`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ trigger: NO_BROWSER ? 'task' : 'manual' }) }).catch(() => null);
     console.log(r?.ok ? 'JobHunter is already running: it runs this hunt now (summary in the dashboard).' : `JobHunter is running but did not start the hunt: ${r ? await r.text() : 'no answer'}`);
+    if (!SEND || !r?.ok) process.exit(r?.ok ? 0 : 1);
+    // --send: wait for the running app to finish, then print its summary
+    const { doneReport } = await import('../pipeline/hunt.js');
+    type St = { huntRunning: boolean; huntProgress: { step: string; current: string | null } | null; lastHunt: Parameters<typeof doneReport>[0] | null; stillRunning: string[] };
+    let st: St | null = null;
+    let lastLine = '';
+    for (;;) {
+      await new Promise((res) => setTimeout(res, 3000));
+      st = (await fetch(`${base}/api/status`).then((x) => x.json()).catch(() => null)) as St | null;
+      if (!st) break;
+      const line = `  … ${st.huntProgress?.step ?? ''}${st.huntProgress?.current ? ` — ${st.huntProgress.current}` : ''}`;
+      if (line !== lastLine) console.log((lastLine = line));
+      if (!st.huntRunning) break;
+    }
+    if (st?.lastHunt) for (const l of doneReport(st.lastHunt, st.stillRunning)) console.log(`  ${l}`);
+    console.log('  (the dashboard is still open in the running JobHunter — close it there)');
     process.exit(0);
   }
 }
@@ -457,5 +477,13 @@ if (HUNT) {
     .join(' · ');
   const pendingNow = (db!.prepare("SELECT COUNT(*) AS n FROM answers WHERE status = 'pending'").get() as { n: number }).n;
   console.log(`\n${c.bold('hunt summary')}: ${diff}\n  pending answers: ${pendingNow} · review queue: ${new Applications(db!).list(['needs_review']).length}\n  Approve in the dashboard → Review queue (${url})\n`);
-  if (NO_BROWSER) await shutdown(0); // a scheduled run ends here
+  if (SEND) {
+    const { doneReport } = await import('../pipeline/hunt.js');
+    const { stillRunning } = await import('../server/app.js');
+    const lines = doneReport(h, stillRunning());
+    console.log(`${'═'.repeat(58)}\n  ${c.bold(lines[0]!)}`);
+    for (const l of lines.slice(1)) console.log(`  ${l}`);
+    console.log('═'.repeat(58));
+  }
+  if (NO_BROWSER || SEND) await shutdown(0); // a scheduled run, or a Run & send session, ends here
 }

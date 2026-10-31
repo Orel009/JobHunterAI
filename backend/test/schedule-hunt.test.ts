@@ -56,7 +56,7 @@ import { config } from '../src/config.js';
 import { openDb } from '../src/db/index.js';
 import { profilePath } from '../src/profile/facts.js';
 import { DEFAULT_SCHEDULE, dueSlot, inQuietHours, nextRun, runnableTimes } from '../src/pipeline/schedule.js';
-import { recentHunts, runHunt, skipReason } from '../src/pipeline/hunt.js';
+import { doneReport, huntProgress, recentHunts, runHunt, skipReason } from '../src/pipeline/hunt.js';
 import { toastScript } from '../src/notify/toast.js';
 // @ts-expect-error — plain .mjs script without type declarations
 import { buildTaskXml } from '../../scripts/schedule.mjs';
@@ -155,6 +155,36 @@ describe('hunt summary', () => {
     const r = await runHunt(db, { checkSession: async () => ({ state: 'logged_in', checkedAt: null, detail: 'probe 401→200' }), notify: () => undefined });
     expect(r).toMatchObject({ trigger: 'manual', loginNeeded: false, found: 2, prepared: 1, readyForReview: 1, autoSubmitted: 0, failed: 0 });
     expect(h.panels).toBe(1);
+  });
+
+  it('Run & send: live steps and counts, and a "Done. Safe to close" summary', async () => {
+    const db = openDb(':memory:');
+    const seen: string[] = [];
+    const r = await runHunt(db, {
+      checkSession: async () => {
+        seen.push(huntProgress()!.step);
+        return { state: 'logged_in', checkedAt: null, detail: 'ok' };
+      },
+      notify: () => undefined,
+    });
+    expect(seen).toEqual(['checking the Drushim login']);
+    const p = huntProgress()!;
+    expect(p).toMatchObject({ id: r.id, step: 'done', finished: true, current: null, counts: { found: 2, candidates: 1, sent: 0, review: 1, failed: 0 } });
+    expect(p.steps.map((s) => [s.name, s.state])).toEqual([
+      ['checking the Drushim login', 'done'],
+      ['discovering on Drushim → scoring', 'done'],
+      ['preparing plans (not sending)', 'done'],
+    ]);
+    // auto-submit is off in this data folder (or DRY_RUN is on): prepare only, and the summary says why
+    expect(r.sending).toMatch(/stopped after prepare|nothing is sent/);
+    expect(r).toMatchObject({ sent: 0, waitingForReview: 1 });
+    const done = doneReport(r, []);
+    expect(done[0]).toBe('Done. Safe to close / shut down.');
+    expect(done).toContain('found 2 new job(s)');
+    expect(done).toContain('skipped 1 (prefilter: seniority 1)');
+    expect(done).toContain('waiting for your review 1');
+    expect(done.find((l) => l.startsWith('sent 0'))).toMatch(/stopped after prepare|nothing is sent/);
+    expect(doneReport(r, ['the login window is open'])[0]).toMatch(/^Still running: the login window is open/);
   });
 
   it('one hunt at a time', async () => {
