@@ -107,11 +107,31 @@ describe('salary answers', () => {
   const posted = (min: number | null, max: number | null, unit: 'month' | 'hour' = 'month'): PostedSalary => ({ min, max, unit, source: 'drushim_field', text: '' });
   const st = (floor: number | null, text = '', num: number | null = null) => ({ floor, textAnswerNoRange: text, numericFallback: num, from: { floor: 'default', textAnswerNoRange: 'default', numericFallback: 'default' } });
 
-  it('posted range overlapping the floor → "X–Y ₪ ברוטו", number = X rounded to 500', () => {
-    expect(composeSalaryAnswer(posted(14000, 18000), st(15200), 'text')).toMatchObject({ status: 'resolved', value: '15,200–18,000 ₪ ברוטו', basis: 'posted range' });
-    expect(composeSalaryAnswer(posted(14000, 18000), st(15200), 'number')).toMatchObject({ status: 'resolved', value: '15000' });
-    expect(composeSalaryAnswer(posted(14000, 18000), st(null), 'text').value).toBe('14,000–18,000 ₪ ברוטו');
-    expect(composeSalaryAnswer(posted(16000, null), st(15000), 'text').value).toBe('16,000 ₪ ברוטו');
+  it('posted range, no floor → the upper half: X = midpoint rounded up to 500, Y = max; number = X', () => {
+    expect(composeSalaryAnswer(posted(14000, 18000), st(null), 'text')).toMatchObject({ status: 'resolved', value: '16,000–18,000 ₪ ברוטו', basis: 'posted range' });
+    expect(composeSalaryAnswer(posted(14000, 18000), st(null), 'number')).toMatchObject({ status: 'resolved', value: '16000' });
+    expect(composeSalaryAnswer(posted(10000, 13000), st(null), 'text').value).toBe('11,500–13,000 ₪ ברוטו');
+    expect(composeSalaryAnswer(posted(10000, 12600), st(null), 'number').value).toBe('11500'); // midpoint 11,300 → up to 11,500
+    expect(composeSalaryAnswer(posted(12000, 12000), st(null), 'text').value).toBe('12,000 ₪ ברוטו');
+  });
+
+  it('a floor raises X when it is above the midpoint', () => {
+    expect(composeSalaryAnswer(posted(14000, 18000), st(15200), 'text').value).toBe('16,000–18,000 ₪ ברוטו'); // midpoint wins
+    expect(composeSalaryAnswer(posted(14000, 18000), st(17200), 'text').value).toBe('17,200–18,000 ₪ ברוטו');
+    expect(composeSalaryAnswer(posted(14000, 18000), st(17200), 'number').value).toBe('17200');
+  });
+
+  it('only a minimum or a maximum posted → that value', () => {
+    expect(composeSalaryAnswer(posted(16000, null), st(null), 'text').value).toBe('16,000 ₪ ברוטו');
+    expect(composeSalaryAnswer(posted(16000, null), st(17000), 'text').value).toBe('17,000 ₪ ברוטו');
+    expect(composeSalaryAnswer(posted(null, 12000), st(null), 'number').value).toBe('12000');
+  });
+
+  it('the prefilled default text answers when no range is posted; numbers stay pending', () => {
+    const prefsFile = PrefsSchema.parse({ salary: { default: { textAnswerNoRange: 'גמיש, בהתאם להיקף התפקיד ולתנאים. אשמח לדבר על כך בשיחה' } } });
+    const settings = salarySettings(prefsFile, null);
+    expect(composeSalaryAnswer(null, settings, 'text')).toMatchObject({ status: 'resolved', value: 'גמיש, בהתאם להיקף התפקיד ולתנאים. אשמח לדבר על כך בשיחה', basis: 'fallback' });
+    expect(composeSalaryAnswer(null, settings, 'number')).toMatchObject({ status: 'pending', basis: 'pending' });
   });
 
   it('no posted range → fallbacks; both empty → pending', () => {
@@ -139,7 +159,7 @@ describe('salary answers', () => {
     const answered: BankEntry = { id: 1, question: field.label, normKey: questionKey(field.label), answer: '17,000', type: 'text', options: null, language: 'he', status: 'active', usageCount: 0, source: 'user', createdAt: '', updatedAt: '', lastUsedAt: null };
     expect(await resolveField(field, d([answered]))).toMatchObject({ status: 'resolved', value: '17,000', provenance: { source: 'bank' } });
     const withRange = { ...d([answered]), salary: { posted: posted(15000, 19000), settings: st(16000) } };
-    expect(await resolveField(field, withRange)).toMatchObject({ value: '16,000–19,000 ₪ ברוטו', provenance: { source: 'salary', ref: 'posted range' } });
+    expect(await resolveField(field, withRange)).toMatchObject({ value: '17,000–19,000 ₪ ברוטו', provenance: { source: 'salary', ref: 'posted range' } });
   });
 });
 

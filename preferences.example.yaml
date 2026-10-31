@@ -69,11 +69,12 @@ ranking:
 #   floor              minimum acceptable monthly gross; a job whose posted maximum is lower → skipped_salary.
 #                      Empty = no salary filtering.
 #   textAnswerNoRange  answer to a text salary question when the job posts no range
-#                      (suggested wording: "גמיש, בהתאם להיקף התפקיד ולתנאים")
+#                      (the default below is prefilled; edit it, or set one per tier / role type)
 #   numericFallback    one number for number-only salary fields when the job posts no range
-# With a posted range the answer is computed: "X–Y ₪ ברוטו", X = max(posted minimum, floor). Nothing set → asked each time.
+# With a posted range the answer is its upper half: "X–Y ₪ ברוטו", X = midpoint rounded up to 500 (raised to the floor if
+# one is set), Y = posted maximum; a number-only field gets X. No range and nothing set → asked each time.
 salary:
-  default: { floor: null, textAnswerNoRange: null, numericFallback: null }
+  default: { floor: null, textAnswerNoRange: "גמיש, בהתאם להיקף התפקיד ולתנאים. אשמח לדבר על כך בשיחה", numericFallback: null }
   tier1: { floor: null, textAnswerNoRange: null, numericFallback: null }
   tier2: { floor: null, textAnswerNoRange: null, numericFallback: null }
   tier3: { floor: null, textAnswerNoRange: null, numericFallback: null }

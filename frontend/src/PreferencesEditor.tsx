@@ -7,7 +7,7 @@ export interface SalarySettings {
   numericFallback?: number | null;
 }
 /** suggested wording for the no-range text answer (offered, never filled in by itself) */
-export const SUGGESTED_TEXT_NO_RANGE = 'גמיש, בהתאם להיקף התפקיד ולתנאים';
+export const SUGGESTED_TEXT_NO_RANGE = 'גמיש, בהתאם להיקף התפקיד ולתנאים. אשמח לדבר על כך בשיחה';
 
 interface RoleType {
   id: string;
@@ -228,7 +228,7 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
           <legend>Salary (monthly gross ₪)</legend>
           <p className="muted">
             Everything starts empty. Per value, a role type's own setting wins, then its tier, then the default. <b>Floor</b>: a job whose posted maximum is lower is skipped
-            (skipped_salary); empty = no salary filtering. With a posted range, salary answers are computed (“X–Y ₪ ברוטו”, X = max(posted minimum, floor)); without one,
+            (skipped_salary); empty = no salary filtering. With a posted range, salary answers use its upper half (“X–Y ₪ ברוטו”, X = the midpoint rounded up to 500, raised to the floor if set); without one,
             the text / number below are used; nothing set = the question waits for you. The Market screen shows posted salaries and can suggest a floor.
           </p>
           <table className="edit-table">

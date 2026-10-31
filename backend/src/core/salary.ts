@@ -139,7 +139,7 @@ export interface SalarySettings {
 }
 
 /** The suggested wording for textAnswerNoRange (offered in the editor; never filled in by itself). */
-export const SUGGESTED_TEXT_NO_RANGE = 'גמיש, בהתאם להיקף התפקיד ולתנאים';
+export const SUGGESTED_TEXT_NO_RANGE = 'גמיש, בהתאם להיקף התפקיד ולתנאים. אשמח לדבר על כך בשיחה';
 
 type Partial3 = { floor?: number | null; textAnswerNoRange?: string | null; numericFallback?: number | null } | undefined;
 const set = (v: unknown) => v !== null && v !== undefined && v !== '';
@@ -185,23 +185,24 @@ export interface SalaryAnswer {
   detail: string;
 }
 
-const round500 = (n: number) => Math.round(n / 500) * 500;
+const ceil500 = (n: number) => Math.ceil(n / 500) * 500;
 
 /**
  * The answer to a salary question for this job:
- *   posted monthly range reaching the floor → text "X–Y ₪ ברוטו" (X = max(min, floor)), number = X rounded to 500
+ *   posted monthly range → the UPPER half: X = midpoint(min, max) rounded up to 500 (raised to the floor, if one is
+ *     set), Y = max; text "X–Y ₪ ברוטו", number X. Only a minimum or a maximum posted → that value.
  *   no posted range → textAnswerNoRange / numericFallback; neither set → pending
  */
 export function composeSalaryAnswer(posted: PostedSalary | null, st: SalarySettings, kind: 'text' | 'number'): SalaryAnswer {
   const monthly = posted && posted.unit === 'month' && (posted.min !== null || posted.max !== null) ? posted : null;
   if (monthly) {
     if (belowFloor(monthly, st.floor)) return { status: 'pending', value: null, basis: 'pending', detail: `posted ${describeSalary(monthly)} is below your floor ${fmtIls(st.floor!)} ₪` };
-    const lo = monthly.min ?? monthly.max!;
-    const x = st.floor !== null ? Math.max(lo, st.floor) : lo;
+    const mid = monthly.min !== null && monthly.max !== null ? ceil500((monthly.min + monthly.max) / 2) : (monthly.min ?? monthly.max!);
+    const x = st.floor !== null ? Math.max(mid, st.floor) : mid;
     const y = monthly.max;
     const text = y !== null && y > x ? `${fmtIls(x)}–${fmtIls(y)} ₪ ברוטו` : `${fmtIls(x)} ₪ ברוטו`;
     const detail = `posted ${describeSalary(monthly)} (${monthly.source === 'drushim_bucket' ? 'approximate bucket' : monthly.source === 'drushim_field' ? 'site salary field' : 'from the post text'})${st.floor !== null ? `, floor ${fmtIls(st.floor)} ₪` : ''}`;
-    return kind === 'number' ? { status: 'resolved', value: String(round500(x)), basis: 'posted range', detail } : { status: 'resolved', value: text, basis: 'posted range', detail };
+    return { status: 'resolved', value: kind === 'number' ? String(x) : text, basis: 'posted range', detail };
   }
   const why = posted?.unit === 'hour' ? `only an hourly rate is posted (${describeSalary(posted)})` : 'no salary posted';
   if (kind === 'number') {
