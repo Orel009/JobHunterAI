@@ -8,8 +8,8 @@ import { siteBrowser } from '../browser/session.js';
 import { formatSessionReport, sessionReport } from '../browser/session-report.js';
 
 const site = process.argv[2] ?? 'drushim';
-if (site !== 'drushim') {
-  console.error('only drushim has a session probe so far');
+if (site !== 'drushim' && site !== 'alljobs') {
+  console.error('session checks exist for drushim and alljobs');
   process.exit(1);
 }
 if (profileInUse(config.paths.browserProfile)) {
@@ -19,7 +19,7 @@ if (profileInUse(config.paths.browserProfile)) {
 console.log(`browser: ${siteBrowser().label} · profile: ${config.paths.browserProfile}`);
 const r = await sessionReport(config.paths.browserProfile, site);
 console.log(formatSessionReport(r));
-if (r.session.state === 'logged_out') console.log('\nLog in with: npm run login -- drushim (or the dashboard button)');
+if (r.session.state === 'logged_out') console.log(`\nLog in with: npm run login -- ${site}${site === 'drushim' ? ' (or the dashboard button)' : ''}`);
 if (r.session.state === 'logged_in') {
   const { getDb } = await import('../db/index.js');
   const { Repo } = await import('../db/repo.js');

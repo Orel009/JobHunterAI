@@ -57,3 +57,34 @@ export async function checkDrushimSession(onContext?: (ctx: BrowserContext) => P
   setSession('drushim', info);
   return info;
 }
+
+/**
+ * AllJobs: its own session endpoint (observed 2026-10-31) answers `null` when logged out and the session object when
+ * logged in. Read with the browser's cookies; nothing is sent.
+ */
+const ALLJOBS_SESSION = 'https://app.alljobs.co.il/api/auth/session';
+export async function checkAllJobsSession(onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
+  let info: SessionInfo;
+  try {
+    const ctx = await getContext({ headless: true });
+    await onContext?.(ctx);
+    const r = await ctx.request.get(ALLJOBS_SESSION, { timeout: 20_000 });
+    const body = (await r.json().catch(() => null)) as { user?: unknown } | null;
+    const now = new Date().toISOString();
+    if (!r.ok()) info = { state: 'unknown', checkedAt: now, detail: `session endpoint ${r.status()}` };
+    else info = body && body.user ? { state: 'logged_in', checkedAt: now, detail: 'session endpoint: user' } : { state: 'logged_out', checkedAt: now, detail: 'session endpoint: null' };
+  } catch (e) {
+    info = { state: 'unknown', checkedAt: new Date().toISOString(), detail: e instanceof Error ? e.message.split('\n')[0]! : String(e) };
+  } finally {
+    await closeContext();
+  }
+  setSession('alljobs', info);
+  return info;
+}
+
+/** The session check of a site (sites without one answer "unknown"). */
+export function checkSiteSession(site: string, onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
+  if (site === 'drushim') return checkDrushimSession(onContext);
+  if (site === 'alljobs') return checkAllJobsSession(onContext);
+  return Promise.resolve({ state: 'unknown', checkedAt: null, detail: `no session check for ${site} yet` });
+}
