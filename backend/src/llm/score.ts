@@ -1,8 +1,7 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { z } from 'zod';
 import { config } from '../config.js';
 import type { Prefs } from '../core/prefs.js';
+import { loadProfile, profileForScoring } from '../profile/facts.js';
 import type { Job } from '../sites/types.js';
 import { chatJson, type LlmCache } from './ollama.js';
 
@@ -20,12 +19,12 @@ export type ScoreResult = z.infer<typeof ScoreSchema>;
 const MAX_POST_CHARS = 6000;
 
 /**
- * Candidate facts for the scorer: data/profile/profile.json if present (Phase 2),
- * otherwise `candidateSummary` from preferences.yaml.
+ * Candidate facts for the scorer: data/profile/profile.json whenever it exists (an invalid or unresolved profile
+ * throws rather than silently falling back); `candidateSummary` from preferences.yaml only before profile.json exists.
  */
 export function candidateContext(prefs: Prefs): string {
-  const profileFile = path.join(config.paths.profileDir, 'profile.json');
-  if (fs.existsSync(profileFile)) return fs.readFileSync(profileFile, 'utf8');
+  const profile = loadProfile();
+  if (profile) return profileForScoring(profile);
   const summary = prefs.candidateSummary.trim();
   if (summary && !summary.startsWith('(fill in)')) return summary;
   throw new Error('No candidate profile: add `candidateSummary` to preferences.yaml (or create data/profile/profile.json).');

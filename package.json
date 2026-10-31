@@ -17,7 +17,8 @@
     "db:migrate": "npm run migrate -w backend",
     "test": "npm test -w backend",
     "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
-    "session:check": "npm run session:check -w backend --"
+    "session:check": "npm run session:check -w backend --",
+    "profile:init": "npm run profile:init -w backend"
   },
   "engines": {
     "node": ">=22.13"
