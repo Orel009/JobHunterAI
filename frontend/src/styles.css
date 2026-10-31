@@ -73,3 +73,40 @@ tr.detail td { background: #fbfcfe; }
 .ll.error .lv, .ll.fatal .lv { color: #ff6b6b; }
 .ll.info .lv { color: #6bc4ff; }
 .ll .x { color: #8b93a5; }
+
+/* ---------- Phase 2 ---------- */
+.banner.warn { background: #fff3cd; color: #7a5a00; }
+.banner.live-banner { background: #c62828; color: #fff; font-weight: 700; text-align: center; }
+.badge.warn { background: #fdecea; color: #a12622; font-weight: 700; }
+.review, .bank { background: #fff; border: 1px solid #e1e4ea; border-radius: 8px; padding: 10px 12px; }
+.app-card { border: 1px solid #e1e4ea; border-radius: 8px; padding: 10px 12px; margin: 12px 0; }
+.app-card.status-dry_run_ok { border-color: #7fbf8a; }
+.app-card.status-failed { border-color: #e7a19c; }
+.app-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.app-title { font-weight: 700; font-size: 15px; }
+.cv-row { margin: 8px 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+table.plan td { vertical-align: top; }
+tr.field-pending { background: #fff8e1; }
+tr.field-draft { background: #f3f0ff; }
+.pending { color: #8a5a00; font-weight: 600; }
+.answer { font-weight: 600; white-space: pre-wrap; unicode-bidi: plaintext; }
+.req { color: #c62828; }
+.flagged { color: #a12622; font-size: 12px; margin-top: 4px; }
+.edit { display: flex; flex-direction: column; gap: 4px; }
+.edit textarea, .edit input[dir] { width: 100%; font: inherit; }
+.prov { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #eef0f4; white-space: nowrap; }
+.prov-profile { background: #e3ecff; }
+.prov-bank { background: #e3f4e6; }
+.prov-skill_years { background: #e0f2f1; }
+.prov-draft { background: #ede7f6; }
+.prov-user { background: #fff3cd; }
+.shots { display: flex; gap: 12px; margin: 10px 0; align-items: flex-start; flex-wrap: wrap; }
+.shots img { width: 260px; max-height: 360px; object-fit: cover; object-position: top; border: 1px solid #e1e4ea; border-radius: 6px; }
+.confirm { background: #d6f2dc; padding: 8px 12px; border-radius: 6px; }
+.actions-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.new-entry { display: flex; gap: 6px; margin: 10px 0; }
+.new-entry input { flex: 1; }
+tr.pending-row { background: #fff8e1; }
+.inline-edit { display: inline-flex; gap: 4px; }
+.inline-edit input { min-width: 260px; }
+.status-dry_run_ok { background: #d6f2dc; }

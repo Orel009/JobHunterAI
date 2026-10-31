@@ -100,7 +100,7 @@ export function JobsScreen({ refreshKey, sites }: { refreshKey: number; sites: S
                     </button>
                   ) : (
                     <>
-                      <button className="link" disabled={j.status === 'queued' || j.status === 'submitted'} onClick={() => act(() => api.apply(j.id))}>
+                      <button className="link" disabled={['queued', 'needs_review', 'dry_run_ok', 'submitted'].includes(j.status)} title='prepare an application plan (opens the apply panel, never submits)' onClick={() => act(() => api.apply(j.id))}>
                         apply
                       </button>
                       <button className="link" onClick={() => act(() => api.skip(j.id))}>

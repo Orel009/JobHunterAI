@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type Status } from './api';
+import { api, profileStatus, type Status } from './api';
+import { AnswersBank } from './AnswersBank';
 import { Controls } from './Controls';
 import { JobsScreen } from './JobsScreen';
 import { LogPanel } from './LogPanel';
+import { ReviewQueue } from './ReviewQueue';
 
 const TABS = [
   { id: 'jobs', label: 'Jobs', enabled: true },
-  { id: 'review', label: 'Review queue (Phase 2)', enabled: false },
-  { id: 'answers', label: 'Answers bank (Phase 2)', enabled: false },
+  { id: 'review', label: 'Review queue', enabled: true },
+  { id: 'answers', label: 'Answers bank', enabled: true },
   { id: 'history', label: 'History (Phase 3)', enabled: false },
 ] as const;
 
+type ProfileState = Awaited<ReturnType<typeof profileStatus>>;
+
 export function App() {
   const [status, setStatus] = useState<Status | null>(null);
+  const [profile, setProfile] = useState<ProfileState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<string>('jobs');
   const [tick, setTick] = useState(0);
@@ -20,6 +25,7 @@ export function App() {
   const refresh = useCallback(async () => {
     try {
       setStatus(await api.status());
+      setProfile(await profileStatus());
       setError(null);
     } catch (e) {
       setError(`API unreachable: ${(e as Error).message}`);
@@ -47,9 +53,21 @@ export function App() {
           ))}
         </nav>
       </header>
+      {status?.dryRun === false && <div className="banner live-banner">DRY_RUN is OFF — approving in the review queue submits real applications.</div>}
       {error && <div className="banner error">{error} — is `npm run dev` running?</div>}
+      {profile && !profile.valid && (
+        <div className="banner warn">
+          {profile.exists
+            ? `profile.json is invalid: ${profile.error}`
+            : profile.draftExists
+              ? 'profile.draft.json is waiting for your review: resolve data/profile/profile.conflicts.md, then rename it to profile.json.'
+              : 'No profile yet: put cv-he.pdf / cv-en.pdf in data/profile and run npm run profile:init.'}
+        </div>
+      )}
       {status && <Controls status={status} onChange={refresh} />}
       {tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} />}
+      {tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} onChanged={refresh} />}
+      {tab === 'answers' && <AnswersBank onChanged={refresh} />}
       <LogPanel />
     </div>
   );

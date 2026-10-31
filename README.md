@@ -12,7 +12,7 @@ If a site shows a challenge, the run is marked `blocked` and stops.
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Scaffold, DB, browser session + login, Drushim discovery, prefilter, Ollama scoring, Jobs screen, model bench | ✅ |
-| 2 | profile:init, answers bank, Drushim apply flow (DRY_RUN), Review queue | — |
+| 2 | profile:init, answers bank, Drushim apply flow (DRY_RUN), Review queue | ✅ built — live panel not yet verified (needs login) |
 | 3 | AllJobs + JobMaster, auto-submit gate, email apply, scheduler, History | — |
 
 ## Setup (Windows 11)
@@ -34,8 +34,8 @@ If a site shows a challenge, the run is marked `blocked` and stops.
    copy .env.example .env                       # every variable is documented inside
    copy preferences.example.yaml preferences.yaml
    ```
-   Edit `preferences.yaml`: search titles, locations, filters, and **`candidateSummary`** (true facts only; the
-   scorer uses it until `data/profile/profile.json` exists in Phase 2).
+   Edit `preferences.yaml`: search titles, locations, filters, `cv.he` / `cv.en` (CV names exactly as shown in the
+   site's CV list) and `standardAnswers`. `candidateSummary` is only a fallback until `data/profile/profile.json` exists.
 5. **DB:** created and migrated automatically on first start (`npm run db:migrate` runs migrations explicitly).
 
 ## Running
@@ -45,7 +45,10 @@ If a site shows a challenge, the run is marked `blocked` and stops.
 | Log in to a site once (manual, in the persistent profile) | `npm run login -- drushim` → log in, then close the window |
 | API + dashboard | `npm run dev` → open <http://127.0.0.1:5173> |
 | Discovery + scoring from the terminal | `npm run discover -- drushim [discover\|score\|full]` |
-| Model comparison report | `npm run model:bench` → `data/reports/model-bench-*.md` |
+| Model comparison report (+ draft hallucinations before/after) | `npm run model:bench` → `data/reports/model-bench-*.md` |
+| Build the profile draft from both CVs | `npm run profile:init` → `data/profile/profile.draft.json` + `profile.conflicts.md` |
+| Is the browser profile logged in? | `npm run session:check -- drushim` (cookie names/expiry only, never values) |
+| Apply-flow investigation (all writes aborted) | `npm run investigate:apply -w backend -- apply <jobUrl...>` |
 | Network investigation of a site | `npm run investigate -- drushim <url> [--click "text"] [--wait 30]` → `data/investigations/` |
 | Tests (unit + Playwright on local fixtures) | `npm test` |
 | Typecheck | `npm run typecheck` |
@@ -58,6 +61,38 @@ Only one process can use `data/browser-profile` at a time: don't run `login` whi
 2. `npm run dev`, open the dashboard.
 3. Click **Discover Drushim** and follow the live log. The stages are search → prefilter → details → scoring.
 4. Scored jobs appear sorted by score. Click a row to see the Hebrew reasoning, matched/missing requirements and the post.
+
+### Phase 2: profile, answers, apply
+
+1. Put `cv-he.pdf` and `cv-en.pdf` in `data/profile/` and run `npm run profile:init`.
+2. Review `profile.draft.json` against `profile.conflicts.md`:
+   - Replace every `CONFLICT he=… en=…` value. `profile.json` will not load while one remains.
+   - Prune skills you don't want claimed.
+   - Link skills to the roles where you used them (`experience[].skills`). Skill years are derived only from those dates.
+3. Rename the file to `profile.json`. From then on, scoring uses it.
+4. In the dashboard:
+   1. **Answers bank** → *Seed from preferences.yaml*, then answer the pending questions once.
+   2. **Jobs** → *apply* on a job. This opens the apply panel, builds the field plan, ticks only confirmed items and takes a screenshot. **It never submits.**
+   3. **Review queue** → check provenance, answer pending items, then *Approve*:
+      - with `DRY_RUN=true`: fills everything, takes a screenshot and stops (`dry_run_ok`);
+      - with `DRY_RUN=false` (set it in `.env` and restart): submits **this one** application and stores the response, the confirmation text and before/after screenshots.
+
+**Field resolution order:**
+- (a) Profile mapping (contact fields).
+- (b) Answers bank. An exact question match is used directly; otherwise the LLM returns only `{entryId, confidence}`.
+- (c) "N years of X": from profile skill years, only if X is a profile skill. Year-only dates are counted conservatively.
+- (d) A fact-cited draft, for open text questions only. Drafts that cite nothing, or cite unknown fact ids, are rejected. A second pass flags any claim the cited facts don't support.
+
+**Hard rule:** the LLM never answers yes/no, choice, number or consent fields. The same goes for availability, shifts, weekends, relocation, salary, notice period, military/clearance, legal, license and years questions. Those come from the bank or profile, or stay `pending`.
+
+**CV choice (deterministic):** the English CV is used only if Hebrew letters make up less than `ENGLISH_CV_MAX_HEBREW_RATIO` (0.2) of the post's letters. If the chosen CV name isn't in the site's list, the job is `failed`. There is no fallback CV.
+
+**Drushim apply flow:**
+- The adapter targets the site's own `data-nagish` hooks.
+- The apply request is `POST …/api/cv/sendsinglecv?JobCode=…&cvc=…`.
+- Screening questions are confirmation checkboxes and are never sent to the server. A statement that's false for you makes the job `skipped`.
+- Already applied: the response contains `Failed[]` with a `SentDate` → `skipped`.
+- Drushim enforces a daily submission cap (`ExceededDailyCvSubmissionsLimit`) → stop for the day.
 
 ## How it works
 

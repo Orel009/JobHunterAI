@@ -4,12 +4,13 @@ export type JobStatus =
   | 'queued'
   | 'needs_review'
   | 'ready'
+  | 'dry_run_ok'
   | 'submitted'
   | 'failed'
   | 'blocked'
   | 'skipped';
 
-export const STATUSES: JobStatus[] = ['discovered', 'scored', 'queued', 'needs_review', 'ready', 'submitted', 'failed', 'blocked', 'skipped'];
+export const STATUSES: JobStatus[] = ['discovered', 'scored', 'queued', 'needs_review', 'ready', 'dry_run_ok', 'submitted', 'failed', 'blocked', 'skipped'];
 
 export interface Score {
   score: number;
@@ -100,3 +101,72 @@ export const api = {
   stopRun: () => req('POST', '/api/runs/stop'),
   runs: () => req<RunRow[]>('GET', '/api/runs'),
 };
+
+// ---------- Phase 2 ----------
+export type FieldType = 'text' | 'textarea' | 'yes_no' | 'choice' | 'number' | 'consent';
+export interface ResolvedField {
+  field: { key: string; label: string; type: FieldType; required: boolean; options?: string[] };
+  normKey: string;
+  status: 'resolved' | 'draft' | 'pending' | 'empty_optional';
+  value: string | null;
+  provenance: { source: 'profile' | 'bank' | 'skill_years' | 'draft' | 'user' | 'none'; ref?: string; confidence?: number; detail?: string; usedFactIds?: string[]; flaggedClaims?: string[] };
+  reason?: string;
+  category?: string | null;
+}
+export interface Plan {
+  jobId: string;
+  cv: { lang: 'he' | 'en'; cvName: string; hebrewRatio: number; threshold: number; overridden?: boolean } | null;
+  fields: ResolvedField[];
+  readiness: 'ready' | 'needs_answers' | 'has_drafts' | 'blocked_no';
+  notes: string[];
+}
+export interface Application {
+  id: number;
+  jobId: string;
+  status: string;
+  dryRun: boolean;
+  plan: Plan;
+  screenshotBefore: string | null;
+  screenshotAfter: string | null;
+  confirmationText: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  submittedAt: string | null;
+  job: JobItem | null;
+  score: Score | null;
+}
+export interface BankEntry {
+  id: number;
+  question: string;
+  answer: string | null;
+  type: 'text' | 'yes_no' | 'choice' | 'number';
+  options: string[] | null;
+  language: 'he' | 'en';
+  status: 'active' | 'pending';
+  usageCount: number;
+  source: string;
+  blocks: number;
+}
+
+export const apply = {
+  list: (status?: string) => req<Application[]>('GET', `/api/applications${status ? `?status=${status}` : ''}`),
+  editField: (id: number, key: string, value: string, saveToBank: boolean) =>
+    req<Application>('PATCH', `/api/applications/${id}/fields/${encodeURIComponent(key)}`, { value, saveToBank }),
+  setCv: (id: number, lang: 'he' | 'en') => req<Application>('PUT', `/api/applications/${id}/cv`, { lang }),
+  approve: (id: number) => req<{ runId: number; dryRun: boolean }>('POST', `/api/applications/${id}/approve`),
+  reject: (id: number, reason?: string) => req('POST', `/api/applications/${id}/reject`, { reason }),
+  prepareQueued: () => req<{ note?: string; count?: number }>('POST', '/api/applications/prepare', {}),
+  screenshotUrl: (file: string) => `/api/screenshots/${encodeURIComponent(file)}`,
+};
+
+export const answers = {
+  list: () => req<BankEntry[]>('GET', '/api/answers'),
+  create: (e: { question: string; answer: string | null; type: BankEntry['type'] }) => req<BankEntry>('POST', '/api/answers', e),
+  update: (id: number, e: Partial<{ question: string; answer: string | null; type: BankEntry['type'] }>) => req<BankEntry>('PATCH', `/api/answers/${id}`, e),
+  remove: (id: number) => req('DELETE', `/api/answers/${id}`),
+  seed: () => req<{ seeded: number }>('POST', '/api/answers/seed', {}),
+};
+
+export const profileStatus = () =>
+  req<{ exists: boolean; valid: boolean; draftExists: boolean; facts?: number; error?: string }>('GET', '/api/profile/status');
