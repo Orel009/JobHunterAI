@@ -187,7 +187,7 @@ function AppCard({
             </bdi>
           </div>
           <div className="muted">
-            #{app.id} · {job?.site} · {job?.applyType} · {job && <span title={job.salaryText ?? ''}>salary {salaryLabel(job)} · </span>}<span className={`pill status-${app.status}`}>{app.status}</span> · {READINESS[plan.readiness]}
+            #{app.id} · {job?.site} {job?.site === 'jobnet' && <span className="badge" title="Jobnet gives only regions, not the job's city">location approximate</span>} · {job?.applyType} · {job && <span title={job.salaryText ?? ''}>salary {salaryLabel(job)} · </span>}<span className={`pill status-${app.status}`}>{app.status}</span> · {READINESS[plan.readiness]}
             {job && (
               <>
                 {' '}

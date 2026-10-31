@@ -38,22 +38,27 @@ export function Controls({ status, onChange, profileReady = true }: { status: St
         <button className="link" disabled={!!run || busy} onClick={() => act(api.checkSession)}>
           re-check login
         </button>
-        {status.sites.some((s) => s.id === 'jobmaster' && s.enabled) && (
-          <>
-            <span className={status.sessions.jobmaster?.state === 'logged_in' ? 'badge ok' : status.sessions.jobmaster?.state === 'logged_out' ? 'badge warn' : 'badge'} title={status.sessions.jobmaster?.detail}>
-              JobMaster: {status.sessions.jobmaster?.state === 'logged_in' ? 'logged in' : status.sessions.jobmaster?.state === 'logged_out' ? 'NOT logged in' : 'login unknown'}
-            </span>
-            {status.sessions.jobmaster?.state === 'logged_out' ? (
-              <button className="link" disabled={!!run || busy} onClick={() => act(() => fetch('/api/session/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ site: 'jobmaster' }) }))}>
-                open the JobMaster login window
-              </button>
-            ) : (
-              <button className="link" disabled={!!run || busy} onClick={() => act(() => api.checkSiteSession('jobmaster'))}>
-                re-check
-              </button>
-            )}
-          </>
-        )}
+        {status.sites
+          .filter((s) => s.enabled && s.id !== 'drushim')
+          .map((s) => {
+            const st = status.sessions[s.id]?.state;
+            return (
+              <span key={s.id} className="site-session">
+                <span className={st === 'logged_in' ? 'badge ok' : st === 'logged_out' ? 'badge warn' : 'badge'} title={status.sessions[s.id]?.detail}>
+                  {s.displayName}: {st === 'logged_in' ? 'logged in' : st === 'logged_out' ? 'NOT logged in' : 'login unknown'}
+                </span>
+                {st === 'logged_out' ? (
+                  <button className="link" disabled={!!run || busy} onClick={() => act(() => fetch('/api/session/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ site: s.id }) }))}>
+                    open the {s.displayName} login window
+                  </button>
+                ) : (
+                  <button className="link" disabled={!!run || busy} onClick={() => act(() => api.checkSiteSession(s.id))}>
+                    re-check
+                  </button>
+                )}
+              </span>
+            );
+          })}
         <span className={status.pendingQuestions ? 'badge warn' : 'badge'}>pending answers: {status.pendingQuestions}</span>
         <LlmBadge llm={status.llm} />
         {Object.entries(status.counts).map(([k, v]) => (

@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<!-- Sanitized copy of the Jobnet send form (SendCv.aspx, job 13450755) while logged in, captured 2026-10-31 without sending.
+     Personal details, CV file names and ids replaced; ASP.NET state values blanked; inline handlers removed. -->
+<html lang="he"><head><meta charset="utf-8"><title>JobNet</title></head><body>
+<form method="post" action="./SendCv.aspx?pid=13450755&amp;l=4" id="frm1" enctype="multipart/form-data" novalidate="novalidate">
+<div class="aspNetHidden">
+<input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="">
+<input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="x">
+</div>
+<div class="aspNetHidden">
+ <input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="x">
+ <input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="x">
+</div>
+ <div>
+<div class="popcv">
+<div class="modal fade in" id="EmailConfirmPopup" tabindex="-1" role="dialog" aria-labelledby="loginpopup" aria-hidden="true" data-backdrop="static">
+ <div class="modal-dialog">
+ <div class="modal-content">
+ <button id="closeEmailConfModal" type="button" class="close-popup" data-dismiss="modal" aria-hidden="true"><img src="/NewStyle/images/cross.png" class="img-responsive"></button>
+ <div class="modal-body p0">
+<div id="EmailConfirmation" class="collapse in" aria-expanded="true">
+ <div style="direction:rtl;" class="confirmMail">
+ <p class="ContentInfo">
+ ברגעים אלו נשלח אליך מייל 
+ לאימות כתובת המייל שלך
+ <br>
+ כדי שנוכל לשלוח אליך משרות
+ </p>
+ <div>
+ <label for="emailRemind">
+ קוד האימות:</label>
+ <input id="emailConfCode" class="emailConfCode" name="emailConfCode" type="text" style="margin-bottom: 0px;">
+ <label class="orangeTxt" style="display:block;" id="errConfirmE">
+ </label>
+ <div style="width:100%;">
+ <button class="submitRemind btn btn-primary" id="submitEmailConf"> אישור הקוד ושמירת הסוכן &nbsp;
+ </button>
+ </div>
+ <i id="spinEmailConf" class="fa fa-spinner fa-spin" style="display:none"></i> 
+</div>
+ <div>
+ <label>לא קיבלתי את הקוד</label>
+ <a style="cursor:pointer">שלחו לי שוב</a>
+ </div>
+ <div>
+ <div class="fa fa-check-circle" id="successConf" style="display:none"></div>
+ </div>
+ </div>
+ </div>
+ </div></div></div></div>
+ <div class="row">
+ <div class="col-md-12">
+ <h1>שליחת קורות חיים למשרת
+ <span id="ucSendCV_lblJobName">FULL STACK </span>
+ </h1>
+ <p></p>
+ <p id="ucSendCV_pRegister" style="display:none;">כבר רשום באתר? <a href="JavaScript:Void(0)" id="logindetails">התחבר</a> ועבור להגשת מועמדות מהירה. </p>
+ <span id="ucSendCV_generalError" class="text-danger"></span>
+ <span id="ucSendCV_message" class="text-danger"></span>
+ </div>
+ <div class="hidden">
+ <input name="ucSendCV$txtPosSelected" type="text" value="0" id="ucSendCV_txtPosSelected">
+ <input type="submit" name="ucSendCV$btnLoadPos" value="" id="ucSendCV_btnLoadPos">
+ </div>
+ <div class="col-md-12">
+ <div class="boxone">
+ <div class="row reverse-row">
+ <div class="col-md-7">
+ <div class="row reverse-row">
+ <div class="col-md-6 cxleft">
+ <label>שם מלא*</label>
+ <div class="input-box">
+ <input name="ucSendCV$txtName" type="text" value="נועה טסט" id="ucSendCV_txtName">
+ </div>
+ </div>
+ <div class="col-md-6 cxleft">
+ <label>טלפון</label>
+ <div class="input-box">
+ <input name="ucSendCV$txtPhone" value="0500000000" maxlength="12" id="ucSendCV_txtPhone" type="tel">
+ </div>
+ </div>
+ <div class="col-md-6 cxleft">
+ <label>אימייל*</label>
+ <div class="input-box">
+ <input name="ucSendCV$txtEmail" value="noa.test@example.com" id="ucSendCV_txtEmail" type="email">
+ </div>
+ </div>
+ <div class="col-md-6 cxleft">
+ <label>עיר</label>
+ <div class="input-box">
+ <input name="ucSendCV$txtCity" type="text" value="חיפה" id="ucSendCV_txtCity" class="basicAutoComplete ui-autocomplete-input" autocomplete="off">
+ <div class="hidden"><span id="ucSendCV_lblCity"></span></div>
+ <ul id="ui-id-1" tabindex="0" class="ui-menu ui-widget ui-widget-content ui-autocomplete ui-front" style="display: none;"></ul></div>
+ </div>
+ <div class="col-md-12 cxleft">
+ <label> צירוף קובץ:</label>
+ <div id="ucSendCV_divFileSelected" class="input-box" style="display:block;"> 
+ <div>
+ <span id="ucSendCV_lblUpload" title="קורות חיים - נועה טסט.pdf">קורות חיים - נועה טסט.pdf</span>
+ <button id="deleteCookie" class="changefileSelected">שינוי</button>
+ </div>
+ <div id="ucSendCV_cookieMessage" class="label-info"></div>
+ </div>
+ <div id="ucSendCV_beforelogin" class="input-box" style="display:none;">
+ <input name="ucSendCV$fileDialog" type="file" id="ucSendCV_fileDialog" class="custom-file-input" size="42" tabindex="7" accept=".doc, .docx,application/pdf, .rtf," data-msg-accept="ניתן להעלות קבצים מסוג doc, rtf, docx, pdf בלבד."> 
+ <div class="fakefile">
+ <input type="text" placeholder="טען קובץ" id="uploadfileText" name="uploadfileText" disabled="disabled">
+ <span class="icnoupload"><img src="../images/upload.jpg" class="img-responsive"></span>
+ <input name="ucSendCV$file_name" type="hidden" id="ucSendCV_file_name" value="קורות חיים - נועה טסט.pdf">
+ <input name="ucSendCV$attach_file" type="hidden" id="ucSendCV_attach_file" value="AAAA0000000000000000000000000001.pdf">
+ <input name="ucSendCV$attach_file_id" type="hidden" id="ucSendCV_attach_file_id" value="900001">
+ <input name="ucSendCV$attachmentsExt" type="hidden" id="ucSendCV_attachmentsExt" value="DOC;RTF;DOCX;PDF">
+ </div>
+ </div>
+ <div id="ucSendCV_afterlogin" class="input-box" style="display:none;">
+ <select name="ucSendCV$ddlFiles" id="ucSendCV_ddlFiles">
+ <option value="-1">בחר קובץ</option>
+ <option value="AAAA0000000000000000000000000001.pdf" fileid="900001">קורות חיים - נועה טסט.pdf</option>
+ <option value="BBBB0000000000000000000000000002.pdf" fileid="900002">Noa Test - Resume.pdf</option>
+ <option value="0">בחירת קובץ אחר</option>
+</select>
+ </div>
+ </div>
+ </div>
+ </div>
+ <div class="col-md-5">
+ <label>&nbsp;</label>
+ <textarea name="ucSendCV$txtRemarks" rows="2" cols="20" id="ucSendCV_txtRemarks" placeholder="הערות (מכתב מקדים)"></textarea>
+ </div>
+ </div>
+ </div>
+ <div id="ucSendCV_divQuestions" class="boxtwo" style="display:none;">
+ <div class="row">
+ <div class="col-md-12">
+ <h2>מידע שחשוב לנו לדעת </h2>
+ <ul id="ucSendCV_ulQuestions">
+ </ul>
+ </div>
+ </div>
+ </div>
+ <div class="boxthree">
+ <div class="row">
+ <div class="col-md-12">
+ <div id="ucSendCV_divDistributeQ" class="checkbox">
+ <label>
+ <input id="ucSendCV_cbDistribute" type="checkbox" name="ucSendCV$cbDistribute">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ אני מאשר/ת את שליחת קורות החיים שלי למשרות דומות
+ </label>
+ </div>
+ <div id="ucSendCV_divDistributeS" class="checkbox">
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+ נא לבחור אזורים להפצה:
+ <input type="hidden" name="ucSendCV$hdnDistRegions" id="ucSendCV_hdnDistRegions">
+ <label>
+ <input type="hidden" name="ucSendCV$rptRegiondist$ctl00$regionID" id="ucSendCV_rptRegiondist_regionID_0" value="2">
+ <input id="ucSendCV_rptRegiondist_positionRegionsCBL_0" type="checkbox" name="ucSendCV$rptRegiondist$ctl00$positionRegionsCBL" disabled="disabled">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ מרכז 
+ </label> 
+ <label>
+ <input type="hidden" name="ucSendCV$rptRegiondist$ctl01$regionID" id="ucSendCV_rptRegiondist_regionID_1" value="5">
+ <input id="ucSendCV_rptRegiondist_positionRegionsCBL_1" type="checkbox" name="ucSendCV$rptRegiondist$ctl01$positionRegionsCBL" disabled="disabled">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ שרון 
+ </label> 
+ <label>
+ <input type="hidden" name="ucSendCV$rptRegiondist$ctl02$regionID" id="ucSendCV_rptRegiondist_regionID_2" value="4">
+ <input id="ucSendCV_rptRegiondist_positionRegionsCBL_2" type="checkbox" name="ucSendCV$rptRegiondist$ctl02$positionRegionsCBL" disabled="disabled">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ ירושלים 
+ </label> 
+ <label>
+ <input type="hidden" name="ucSendCV$rptRegiondist$ctl03$regionID" id="ucSendCV_rptRegiondist_regionID_3" value="9">
+ <input id="ucSendCV_rptRegiondist_positionRegionsCBL_3" type="checkbox" name="ucSendCV$rptRegiondist$ctl03$positionRegionsCBL" disabled="disabled">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ השפלה 
+ </label> 
+ </div>
+ <div id="ucSendCV_divDistFields" class="checkbox">
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+ נא לבחור תחומים להפצה:
+ <input type="hidden" name="ucSendCV$hdnDistFields" id="ucSendCV_hdnDistFields">
+ <label class="cbpfrofFields">
+ <input type="hidden" name="ucSendCV$rptDistFields$ctl00$FieldID" id="ucSendCV_rptDistFields_FieldID_0" value="987">
+ <input id="ucSendCV_rptDistFields_cbDistField_0" type="checkbox" name="ucSendCV$rptDistFields$ctl00$cbDistField">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ תוכנה - מתכנת #C
+ </label> 
+ <label class="cbpfrofFields">
+ <input type="hidden" name="ucSendCV$rptDistFields$ctl01$FieldID" id="ucSendCV_rptDistFields_FieldID_1" value="1520">
+ <input id="ucSendCV_rptDistFields_cbDistField_1" type="checkbox" name="ucSendCV$rptDistFields$ctl01$cbDistField" checked="checked">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ תוכנה - Full Stack
+ </label> 
+ <label class="cbpfrofFields">
+ <input type="hidden" name="ucSendCV$rptDistFields$ctl02$FieldID" id="ucSendCV_rptDistFields_FieldID_2" value="1540">
+ <input id="ucSendCV_rptDistFields_cbDistField_2" type="checkbox" name="ucSendCV$rptDistFields$ctl02$cbDistField">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ תוכנה - REACT
+ </label> 
+ </div>
+ <div class="checkbox" style="margin-top:8px">
+ <label>
+ <input id="ucSendCV_cbSuggest" type="checkbox" name="ucSendCV$cbSuggest">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ אני מעוניינ/ת שייצרו איתי קשר לגבי ייעוץ לימודים חינם 
+ </label>
+ </div>
+ <input type="hidden" name="ucSendCV$hdnSmartAgent" id="ucSendCV_hdnSmartAgent" value="true">
+ </div>
+ <div class="col-md-12 text-center">
+ <input type="submit" name="ucSendCV$btnSendCV" value="שלח" id="ucSendCV_btnSendCV" class="sendcvSubmit">
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+ <div class="modal fade in" id="agentChoose" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
+ <div class="modal-dialog">
+ <div class="modal-content">
+ <div class="modal-body p0">
+ <div style="direction:rtl;" class="confirmMail">
+ <p class="ContentInfo">
+ לצורך התאמה מרבית של סוכן המשרות,
+ <br>
+ אנו ממליצים שתבחר את העדפותיך: 
+ </p>
+ </div>
+ <div class="mainselect">
+ <div class="cx_text">היקף משרה</div>
+ <div class="cx_dropselect" dir="rtl">
+ <div class="row reverse-row">
+ <div class="col-md-12">
+ <div class="row">
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbExtent" type="checkbox" checked="" value="1">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p>משרה מלאה </p>
+ </label>
+ </div>
+ </div>
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbExtent" type="checkbox" checked="" value="2">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p>משרה חלקית </p>
+ </label>
+ </div>
+ </div>
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbExtent" type="checkbox" checked="" value="3">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p>משרה זמנית </p>
+ </label>
+ </div>
+ </div>
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbExtent" type="checkbox" checked="" value="4">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p>משמרות </p>
+ </label>
+ </div>
+ </div>
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbExtent" type="checkbox" checked="" value="7">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p>לפי שעות </p>
+ </label>
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+ <div class="mainselect">
+ <div class="cx_text">אזור עבודה מועדף </div>
+ <div class="cx_dropselect">
+ <div class="row reverse-row">
+ <div class="col-md-12">
+ <div class="row">
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbRegion" checked="" type="checkbox" value="2">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p> מרכז</p>
+ </label>
+ </div>
+ </div>
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbRegion" checked="" type="checkbox" value="5">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p> שרון</p>
+ </label>
+ </div>
+ </div>
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbRegion" checked="" type="checkbox" value="4">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p> ירושלים</p>
+ </label>
+ </div>
+ </div>
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbRegion" type="checkbox" value="3">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p> צפון</p>
+ </label>
+ </div>
+ </div>
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbRegion" type="checkbox" value="1">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p> דרום</p>
+ </label>
+ </div>
+ </div>
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbRegion" checked="" type="checkbox" value="9">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p> השפלה</p>
+ </label>
+ </div>
+ </div>
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbRegion" type="checkbox" value="7">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p> אילת</p>
+ </label>
+ </div>
+ </div>
+ <div class="col-md-4 floatright">
+ <div class="checkbox">
+ <label>
+ <input class="cbRegion" type="checkbox" value="6">
+ <span class="cr"><i class="cr-icon glyphicon glyphicon-ok"></i></span>
+ <p> חו"ל</p>
+ </label>
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+ <div class="mainselect text-center">
+ <button class="continueButton">שמירת סוכן</button>
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+ <input name="ucSendCV$phonePrefixHidden" type="hidden" id="ucSendCV_phonePrefixHidden">
+ <input name="ucSendCV$phoneHidden" type="hidden" id="ucSendCV_phoneHidden">
+ <input name="ucSendCV$areaIdsHidden" type="hidden" id="ucSendCV_areaIdsHidden">
+ </div>
+</div></form>
+</body></html>

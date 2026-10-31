@@ -239,7 +239,7 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
 
   /** Re-check the site login (e.g. after `npm run login -- drushim` in another terminal). Uses the browser, so it is a run. */
   app.post('/api/session/check', async (req, reply) => {
-    const { site } = z.object({ site: z.enum(['drushim', 'jobmaster', 'alljobs']).default('drushim') }).parse(req.body ?? {});
+    const { site } = z.object({ site: z.enum(['drushim', 'jobmaster', 'jobnet', 'alljobs']).default('drushim') }).parse(req.body ?? {});
     try {
       return { runId: startTask(db, site, 'session_check', async () => void (site === 'drushim' ? await checkDrushimSession() : await checkSiteSession(site))) };
     } catch (e) {

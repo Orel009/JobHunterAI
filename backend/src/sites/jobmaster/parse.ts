@@ -13,8 +13,8 @@ export const jobUrl = (key: string) => `${JM_BASE}/jobs/checknum.asp?key=${key}`
 export const searchUrl = (term: string) => `${JM_BASE}/jobs/?q=${encodeURIComponent(term).replace(/%20/g, '+')}`;
 export const SENT_LIST_URL = `${JM_BASE}/code/korot/myJobmaster/sent-list.asp`;
 /** the send itself (the popup's preview is sendkorot-prev.api.asp, which never sends) */
-export const SEND_PATTERN = /\/api\/korot\/send-korot\/(?:global\/global\.)?sendkorot\.api\.asp(?:$|\?)/i;
-export const PREVIEW_PATTERN = /\/api\/korot\/send-korot\/(?:global\/global\.)?sendkorot-prev\.api\.asp(?:$|\?)/i;
+export const SEND_PATTERN = /^https:\/\/(www\.)?jobmaster\.co\.il\/api\/korot\/send-korot\/(?:global\/global\.)?sendkorot\.api\.asp(?:$|\?)/i;
+export const PREVIEW_PATTERN = /^https:\/\/(www\.)?jobmaster\.co\.il\/api\/korot\/send-korot\/(?:global\/global\.)?sendkorot-prev\.api\.asp(?:$|\?)/i;
 
 /** HTML fragment → text (<br> and block ends become line breaks). */
 export function text(html: string | undefined | null): string {

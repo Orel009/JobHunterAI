@@ -112,6 +112,7 @@ export function JobsScreen({
                 <td dir="auto" className="title">
                   {j.title}
                   {ASSISTED.includes(j.site) && !j.descriptionText && <span className="badge warn" title="from an alert email: title, company and location only"> incomplete info</span>}
+                  {j.site === 'jobnet' && <span className="badge" title="Jobnet gives only regions (מרכז, שרון…), not the job's city"> location approximate</span>}
                 </td>
                 <td className="muted" title={j.roleTypes.join(', ')}>
                   {j.rank.roleType ?? '—'}

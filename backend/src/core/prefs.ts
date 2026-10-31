@@ -128,6 +128,18 @@ export const PrefsSchema = z.object({
       shareContactDetails: z.boolean().default(false),
     })
     .prefault({}),
+  /** Jobnet: the CV files saved in your Jobnet account, and which Jobnet regions count as your locations */
+  jobnet: z
+    .object({
+      /** chosen by the same language rule as cv.he / cv.en; a missing name means the application fails (no fallback) */
+      cv: z.object({ he: z.string().default(''), en: z.string().default('') }).prefault({}),
+      /**
+       * Jobnet gives regions (מרכז, שרון, השפלה…), not the job's city: a job in one of these regions passes the location
+       * filter (marked "location approximate"). Empty = match the region's sub-areas against your locations instead.
+       */
+      regions: z.array(z.string()).default([]),
+    })
+    .prefault({}),
   standardAnswers: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
 });
 

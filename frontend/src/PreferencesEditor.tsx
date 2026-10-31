@@ -32,6 +32,7 @@ export interface Prefs {
   limits: { maxPagesPerRun?: number; dailyApplyLimit?: number; companyCooldownDays?: number };
   cv: { he: string; en: string; englishMaxHebrewRatio?: number };
   jobmaster: { cv: { he: string; en: string }; shareContactDetails: boolean };
+  jobnet: { cv: { he: string; en: string }; regions: string[] };
   [k: string]: unknown;
 }
 
@@ -319,6 +320,31 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
                 <option value="no">No (default)</option>
                 <option value="yes">Yes</option>
               </select>
+            </Field>
+          </div>
+        </fieldset>
+      )}
+
+      {show('cv') && (
+        <fieldset>
+          <legend>Jobnet</legend>
+          <p className="muted">
+            CV file names exactly as they are saved in your Jobnet account (same language rule; a missing name means that application fails, no fallback). Jobnet gives only
+            regions, not the job's city: list the regions that count as your area. Their jobs are marked "location approximate".
+          </p>
+          <div className="grid3">
+            <Field label="Hebrew CV file (Jobnet)">
+              <input dir="auto" value={p.jobnet.cv.he} onChange={(e) => up((d) => void (d.jobnet.cv.he = e.target.value))} />
+            </Field>
+            <Field label="English CV file (Jobnet)">
+              <input dir="auto" value={p.jobnet.cv.en} onChange={(e) => up((d) => void (d.jobnet.cv.en = e.target.value))} />
+            </Field>
+            <Field label="Jobnet regions that count as your area" hint="comma-separated, e.g. שרון, מרכז (empty = match the region's sub-areas against your locations)">
+              <input
+                dir="auto"
+                value={p.jobnet.regions.join(', ')}
+                onChange={(e) => up((d) => void (d.jobnet.regions = e.target.value.split(',').map((x) => x.trim()).filter(Boolean)))}
+              />
             </Field>
           </div>
         </fieldset>

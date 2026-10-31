@@ -13,6 +13,7 @@ import { experienceInput, extractRequiredYears } from '../core/experience.js';
 import { candidateContext, scoreJob } from '../llm/score.js';
 import { LlmPausedError } from '../llm/types.js';
 import { candidateGender, loadProfile, skillAliasGroups } from '../profile/facts.js';
+import { regionAccepted } from '../sites/jobnet/parse.js';
 
 /** enrich = fetch missing details for prefilter-passing jobs, then score (no searching) */
 export type RunKind = 'discover' | 'score' | 'full' | 'enrich';
@@ -227,8 +228,12 @@ function aliasGroupsOrNone(): string[][] {
   }
 }
 
-const prefilterJob = (j: StoredJob, prefs: ReturnType<typeof loadPrefs>, aliasGroups: string[][]) =>
-  prefilter({ ...j, regions: ((j.raw as { regions?: unknown } | null)?.regions as string[] | undefined) ?? [] }, prefs, { aliasGroups });
+const prefilterJob = (j: StoredJob, prefs: ReturnType<typeof loadPrefs>, aliasGroups: string[][]) => {
+  const regions = ((j.raw as { regions?: unknown } | null)?.regions as string[] | undefined) ?? [];
+  // Jobnet has regions, not cities: a region you accept (jobnet.regions) counts as your location — approximate
+  if (j.site === 'jobnet' && regionAccepted(regions, prefs.jobnet.regions)) return prefilter({ ...j, location: '', regions: [] }, prefs, { aliasGroups });
+  return prefilter({ ...j, regions }, prefs, { aliasGroups });
+};
 
 /** Reads the posted salary of new / changed jobs (deterministic, no LLM). */
 export const syncSalaries = (repo: Repo) => repo.syncSalaries((j) => jobSalary(j));

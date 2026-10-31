@@ -367,7 +367,7 @@ async function autoSubmitPrepared(o: {
     return false;
   }
   L.info({ job: job.title }, 'AUTO-SUBMIT: every gate condition passed');
-  const r = await driver.submitPanel(page, job, `app${appId}`);
+  const r = await driver.submitPanel(page, job, `app${appId}`, plan.cv?.cvName);
   const res = recordSubmitResult(apps, repo, appId, job, before, r, L);
   if (res.stop) throw new Error(res.detail); // daily cap / session: stop the run
   return res.status === 'submitted';
@@ -453,7 +453,7 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
       L.warn({ job: job.title }, `not sent: ${excluded}`);
       return done('skipped', excluded);
     }
-    const r = await driver.submitPanel(page, job, `app${appId}`);
+    const r = await driver.submitPanel(page, job, `app${appId}`, app.plan.cv?.cvName);
     const res = recordSubmitResult(apps, repo, appId, job, before, r, L);
     return done(res.status, res.detail, res.stop);
   } catch (e) {

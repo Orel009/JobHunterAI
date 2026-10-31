@@ -115,6 +115,15 @@ jobmaster:
     en: ""
   shareContactDetails: false
 
+# Jobnet: the CV files saved in your Jobnet account (exact names; same language rule; a missing name = that
+# application fails). regions: the Jobnet regions that count as your area (e.g. [שרון, מרכז]) — their jobs are
+# "location approximate" (Jobnet gives regions, not cities). Empty = match the region's sub-areas to your locations.
+jobnet:
+  cv:
+    he: ""
+    en: ""
+  regions: []
+
 thresholds:
   autoSubmitMinScore: 80
   matchConfidence: 0.85
