@@ -1,0 +1,85 @@
+{
+ "page": "/job/[jobCode]/[jobHash]",
+ "props": {
+  "pageProps": {
+   "job": {
+    "id": "38822551",
+    "title": "Full Stack Developer",
+    "companyName": "חסוי",
+    "companyHref": "",
+    "companyLogo": "",
+    "cities": [
+     "פתח תקווה"
+    ],
+    "scope": "משרה מלאה",
+    "scopes": [
+     "משרה מלאה"
+    ],
+    "salaryRange": "25000-30000",
+    "experience": "3-4 שנים",
+    "publishedAt": "לפני 1 שעות",
+    "publishedDate": "2026-10-22T09:47:32.16",
+    "requirements": [
+     "3+ שנות ניסיון בפיתוח Full Stack - חובה!",
+     "ניסיון בשפות הפיתוח React ו- NodeJS - חובה!",
+     "ניסיון עם MongoDB - חובה!",
+     "ניסיון עם AWS - חובה!",
+     "ניסיון עם כלי CI/CD - חובה (ניסיון עם azure devops - יתרון)",
+     "ניסיון בעבודה עם כלי AI - יתרון משמעותי",
+     "המשרה פתוחה לכל המועמדים.",
+     "* משרה זו פונה לנשים וגברים כאחד."
+    ],
+    "description": [
+     "לחברה מובילה בשוק דרוש/ה מפתח/ת Full Stack.",
+     "תחומי אחריות:",
+     "70% פיתוח Full-Stack ו-30% עבודה רוחבית בתחומי שרתים, תשתיות On-Prem וDevOps.",
+     "פיתוח ותחזוקה של אתרים ואפליקציות אינטרנט רספונסיביות באמצעות Node.js ו- React.",
+     "עבודה עם כלי AI לפיתוח אפליקציות ואתרי אינטרנט.",
+     "עבודה עם AWS ובסיסי נתונים MongoDB.",
+     "עבודה על פיתוחים מגוונים ומעניינים.",
+     "",
+     "מיקום: פתח תקווה, יומיים מהבית."
+    ],
+    "isEnglish": false,
+    "externalApplyUrl": "",
+    "allowNoCv": false,
+    "companyId": 1775496,
+    "scopeIds": [
+     1
+    ],
+    "experienceId": 3,
+    "categoryCodes": [
+     6
+    ],
+    "categories": [
+     {
+      "code": 6,
+      "name": "הייטק-תוכנה"
+     }
+    ],
+    "subcategoryCodes": [
+     504,
+     75
+    ],
+    "subcategories": [
+     {
+      "code": 504,
+      "name": "Full Stack"
+     },
+     {
+      "code": 75,
+      "name": "מפתח/ת Web"
+     }
+    ],
+    "geolexIds": [
+     539128
+    ],
+    "hasSmartFilter": false,
+    "filterQuestions": []
+   },
+   "jobCode": "38822551",
+   "jobHash": "3d25aca1",
+   "isGone": false
+  }
+ }
+}

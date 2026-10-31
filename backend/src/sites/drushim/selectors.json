@@ -1,0 +1,11 @@
+{
+  "baseUrl": "https://www.drushim.co.il",
+  "searchUrl": "https://www.drushim.co.il/jobs/search/{term}/",
+  "loginUrl": "https://www.drushim.co.il/",
+  "apiSearchPattern": "webapi\\.drushim\\.co\\.il/api/jobs/search\\?.*page=",
+  "sessionProbePattern": "gw\\.drushim\\.co\\.il/auth/seeker-details",
+  "loadMoreText": "הצג עוד משרות",
+  "dom": {
+    "jobCard": "a[href^='/job/']"
+  }
+}

@@ -1,0 +1,164 @@
+{
+ "props": {
+  "pageProps": {
+   "dehydratedState": {
+    "queries": [
+     {
+      "queryKey": [
+       "search-results",
+       {
+        "keyword": "full stack"
+       }
+      ],
+      "state": {
+       "data": {
+        "pages": [
+         {
+          "jobs": [
+           {
+            "id": "38822551",
+            "title": "Full Stack Developer",
+            "companyName": "חסוי",
+            "city": "פתח תקווה",
+            "cities": [
+             "פתח תקווה"
+            ],
+            "categoryCodes": [
+             6
+            ],
+            "subcategoryCodes": [
+             504,
+             75
+            ],
+            "scopeIds": [
+             1
+            ],
+            "experienceId": 3,
+            "geolexIds": [
+             539128
+            ],
+            "companyId": 1775496,
+            "salaryRangeId": 25001,
+            "hasSmartFilter": false,
+            "scope": "משרה מלאה",
+            "scopes": [
+             "משרה מלאה"
+            ],
+            "experience": "3-4 שנים",
+            "description": "לחברה מובילה בשוק דרוש/ה מפתח/ת Full Stack. תחומי אחריות: 70% פיתוח Full-Stack ו-30% עבודה רוחבית בתחומי שרתים, תשתיות On-Prem וDevOps. פיתוח ותחזוקה של אתרים ואפליקציות אינטרנט רספונסיביות באמצעות Node.js ו- React. עבודה עם כלי AI לפיתוח אפליקציות ואתרי אינטרנט. עבודה עם AWS ובסיסי נתונים MongoDB. עבודה על פיתוחים מגוונים ומעניינים. מיקום: פתח תקווה, יומיים מהבית.",
+            "isEnglish": false,
+            "publishedAt": "לפני 1 שעות",
+            "publishedAtIso": "2026-10-22T09:47:32.16",
+            "isHot": false,
+            "isPreferred": true,
+            "jobUrl": "/job/38822551/3d25aca1/",
+            "stsJobCode": 30722205,
+            "allowNoCv": false,
+            "filterQuestions": []
+           },
+           {
+            "id": "38693541",
+            "title": "Full stack Developer",
+            "companyName": "phoenix brokers",
+            "city": "פתח תקווה",
+            "cities": [
+             "פתח תקווה"
+            ],
+            "categoryCodes": [
+             6
+            ],
+            "subcategoryCodes": [
+             69,
+             504,
+             506
+            ],
+            "scopeIds": [
+             1,
+             5,
+             6
+            ],
+            "experienceId": 2,
+            "geolexIds": [
+             539128
+            ],
+            "companyId": 3424525,
+            "salaryRangeId": null,
+            "hasSmartFilter": false,
+            "scope": "משרה מלאה",
+            "scopes": [
+             "משרה מלאה",
+             "עבודה מהבית",
+             "היברידי"
+            ],
+            "experience": "1-2 שנים",
+            "description": "לצוות הפיתוח של סוכנות ביטוח מובילה דרוש/ה מפתח/ת Full Stack להשתלבות בפיתוח מערכות הליבה והמערכות העסקיות של הארגון.",
+            "isEnglish": false,
+            "publishedAt": "לפני 1 שעות",
+            "publishedAtIso": "2026-10-11T08:34:16.94",
+            "isHot": false,
+            "isPreferred": true,
+            "jobUrl": "/job/38693541/be9cf8c1/",
+            "stsJobCode": 30770770,
+            "allowNoCv": false,
+            "filterQuestions": []
+           },
+           {
+            "id": "38599187",
+            "title": "מפתח/ת תוכנה Full Stack",
+            "companyName": "קבוצת יעל",
+            "companyLogo": "https://webapi.drushim.co.il/logos/28853/page/638676315836326673.png",
+            "city": "ירושלים",
+            "cities": [
+             "ירושלים"
+            ],
+            "categoryCodes": [
+             6
+            ],
+            "subcategoryCodes": [
+             504
+            ],
+            "scopeIds": [
+             1,
+             6
+            ],
+            "experienceId": 3,
+            "geolexIds": [
+             537511
+            ],
+            "companyId": 28853,
+            "salaryRangeId": null,
+            "hasSmartFilter": false,
+            "scope": "משרה מלאה",
+            "scopes": [
+             "משרה מלאה",
+             "היברידי"
+            ],
+            "experience": "3-4 שנים",
+            "description": "קבוצת יעל מגייסת מפתח/ת תוכנה Full Stack לארגון ממשלתי גדול בירושלים תיאור התפקיד: - פיתוח מערכות מורכבות בטכנולוגיות .NET ו-Angular. - תכנון ומימוש פתרונות מקצה לקצה, פיתוח ממשקים ואינטגרציות מורכבות בין מערכות. - עבודה עמוקה מול בסיסי נתונים, תוך הקפדה על איכות קוד, ביצועים גבוהים, אבטחת מידע ותחזוקתיות. - פיתוח עצמאי, ראייה מערכתית רחבה, פתרון בעיות מורכבות והשתלבות בצוות פיתוח מקצועי.",
+            "isEnglish": false,
+            "publishedAt": "לפני 1 שעות",
+            "publishedAtIso": "2026-10-04T08:43:06.927",
+            "isHot": false,
+            "isPreferred": true,
+            "jobUrl": "/job/38599187/1f4df0ff/",
+            "stsJobCode": 30702449,
+            "allowNoCv": false,
+            "filterQuestions": []
+           }
+          ],
+          "count": 75,
+          "totalPages": 6
+         }
+        ],
+        "pageParams": [
+         0
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ "page": "/jobs/search/[term]"
+}

@@ -1,0 +1,38 @@
+{
+  "_note": "Bench-only data. The sample profile and bank answers below are FICTIONAL and are only used when data/profile/profile.json does not exist. They are never used for real applications.",
+  "sampleProfile": {
+    "fullName": "ישראל ישראלי (פרופיל בדיוני לבנצ'מרק)",
+    "gender": "male",
+    "city": "רמת גן",
+    "title": "Full Stack Developer",
+    "yearsExperience": 4,
+    "skills": ["TypeScript", "React", "Node.js", "PostgreSQL", "Docker", "AWS"],
+    "education": "B.Sc. במדעי המחשב, אוניברסיטת בר-אילן",
+    "languages": ["עברית - שפת אם", "אנגלית - רמה גבוהה"],
+    "experience": [
+      { "company": "חברת תוכנה בדיונית", "role": "Full Stack Developer", "years": "2022-2026", "highlights": ["פיתוח מערכת הזמנות ב-React ו-Node.js", "הובלת מעבר ל-Docker ו-AWS ECS"] }
+    ],
+    "drivingLicense": true
+  },
+  "sampleBank": [
+    { "id": 1, "question": "מהן ציפיות השכר שלך?", "answer": "22,000 ש\"ח ברוטו" },
+    { "id": 2, "question": "מתי תוכל להתחיל לעבוד?", "answer": "תוך 30 יום" },
+    { "id": 3, "question": "כמה שנות ניסיון יש לך ב-React?", "answer": "4" },
+    { "id": 4, "question": "האם יש לך רישיון נהיגה?", "answer": "כן" },
+    { "id": 5, "question": "האם יש לך תואר אקדמי רלוונטי?", "answer": "כן, B.Sc. במדעי המחשב" },
+    { "id": 6, "question": "באיזו עיר אתה גר?", "answer": "רמת גן" },
+    { "id": 7, "question": "האם אתה מעוניין במשרה מלאה?", "answer": "כן" }
+  ],
+  "questions": [
+    { "q": "מה ציפיות השכר שלך לתפקיד?", "type": "text", "expectedEntryId": 1 },
+    { "q": "מה הזמינות שלך לתחילת עבודה?", "type": "text", "expectedEntryId": 2 },
+    { "q": "האם יש לך לפחות 3 שנות ניסיון בפיתוח עם React?", "type": "yes_no", "expectedEntryId": 3 },
+    { "q": "האם הנך בעל/ת רישיון נהיגה בתוקף?", "type": "yes_no", "expectedEntryId": 4 },
+    { "q": "האם את/ה בעל/ת תואר ראשון במדעי המחשב או תחום דומה?", "type": "yes_no", "expectedEntryId": 5 },
+    { "q": "מקום מגורים", "type": "text", "expectedEntryId": 6 },
+    { "q": "האם את/ה מוכן/ה לעבוד במשמרות כולל סופי שבוע?", "type": "yes_no", "expectedEntryId": null },
+    { "q": "ספר/י בקצרה על פרויקט שאת/ה גאה בו", "type": "textarea", "expectedEntryId": null },
+    { "q": "למה את/ה מתעניין/ת בתפקיד הזה?", "type": "textarea", "expectedEntryId": null },
+    { "q": "תאר/י את הניסיון שלך עם שירותי ענן", "type": "textarea", "expectedEntryId": null }
+  ]
+}

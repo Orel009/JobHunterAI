@@ -1,0 +1,51 @@
+# Copy to preferences.yaml (gitignored) and edit. Hebrew and English both work everywhere.
+
+queries:
+  # Each entry is searched as its own term on every site.
+  titles:
+    - Full Stack
+    - מפתח Full Stack
+    - Backend Developer
+  keywords: []
+
+# Accepted job locations. A job passes if its location contains one of these
+# (or matches remoteKeywords). Jobs with no location pass. Empty list = any location.
+locations:
+  - תל אביב
+  - רמת גן
+  - גבעתיים
+  - פתח תקווה
+  - הרצליה
+  - בני ברק
+
+filters:
+  # Title must contain at least one of these (empty = no requirement).
+  includeTitleKeywords: [full stack, fullstack, full-stack, backend, back end, frontend, developer, engineer, מפתח, מתכנת, פיתוח]
+  excludeTitleKeywords: [QA, בודק, מכירות, תמיכה, support, embedded, הנדסאי]
+  # Seniority words to drop before any LLM call.
+  excludeSeniorityKeywords: [בכיר, ראש צוות, ראש תחום, מנהל, senior, sr, team lead, tech lead, lead, principal, architect, director, head of, vp]
+  excludeCompanies: []
+  remoteKeywords: [מהבית, remote, היברידי, hybrid, כל הארץ]
+
+# Used by the scorer until data/profile/profile.json exists (Phase 2, `npm run profile:init`).
+# TRUE FACTS ONLY: skills, years, education, the kind of role you want.
+candidateSummary: |
+  (fill in) e.g. Full Stack developer, X years experience. Skills: ... Education: ... Looking for: ...
+
+thresholds:
+  autoSubmitMinScore: 80
+  matchConfidence: 0.85
+
+limits:
+  maxPagesPerRun: 3
+  dailyApplyLimit: 15
+  companyCooldownDays: 30
+
+# Deterministic answers for common form fields (used from Phase 2).
+standardAnswers:
+  city: ""
+  salaryExpectation: ""
+  noticePeriod: ""
+  availability: ""
+  fullTime: true
+  drivingLicense: ""

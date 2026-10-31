@@ -1,0 +1,75 @@
+:root {
+  font-family: system-ui, 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+  color: #1d2330;
+  background: #f5f6f8;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.app { padding: 12px 16px 260px; }
+header { display: flex; align-items: center; gap: 24px; }
+h1 { font-size: 20px; margin: 0; }
+nav { display: flex; gap: 4px; }
+button { font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid #2d5bd7; background: #2d5bd7; color: #fff; cursor: pointer; }
+button:disabled { opacity: 0.45; cursor: default; }
+button.secondary, button.tab { background: #fff; color: #2d5bd7; }
+button.tab.active { background: #2d5bd7; color: #fff; }
+button.danger { background: #c62828; border-color: #c62828; }
+button.link { background: none; border: none; color: #2d5bd7; padding: 0 4px; }
+select, input { font: inherit; padding: 4px 8px; border: 1px solid #c8cdd6; border-radius: 6px; background: #fff; }
+.muted { color: #6b7385; font-size: 12px; }
+.banner { padding: 8px 12px; border-radius: 6px; margin: 8px 0; }
+.banner.error { background: #fdecea; color: #a12622; }
+
+.controls { background: #fff; border: 1px solid #e1e4ea; border-radius: 8px; padding: 10px 12px; margin: 12px 0; }
+.badges, .runbar, .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.runbar { margin-top: 10px; }
+.site-actions { display: inline-flex; gap: 4px; }
+.badge { padding: 3px 8px; border-radius: 12px; background: #eef0f4; font-size: 12px; }
+.badge.dry { background: #fff3cd; color: #7a5a00; font-weight: 700; border: 1px solid #e0b100; }
+.badge.live { background: #c62828; color: #fff; font-weight: 700; }
+.badge.ok { background: #e3f4e6; color: #1e6b2e; }
+.badge.warn { background: #fdecea; color: #a12622; }
+.run-info { font-size: 13px; }
+.run-info.last-blocked, .run-info.last-failed { color: #a12622; }
+
+.jobs { background: #fff; border: 1px solid #e1e4ea; border-radius: 8px; padding: 10px 12px; }
+table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+th { text-align: start; font-weight: 600; font-size: 12px; color: #6b7385; border-bottom: 1px solid #e1e4ea; padding: 6px; }
+td { padding: 6px; border-bottom: 1px solid #f0f1f4; vertical-align: top; }
+tr.row { cursor: pointer; }
+tr.row:hover, tr.row.open { background: #f7f9ff; }
+td.title { font-weight: 600; }
+td.actions { white-space: nowrap; }
+.score { display: inline-block; min-width: 34px; text-align: center; padding: 2px 6px; border-radius: 6px; font-weight: 700; }
+.score.high { background: #d6f2dc; color: #1e6b2e; }
+.score.mid { background: #fff3cd; color: #7a5a00; }
+.score.low { background: #fdecea; color: #a12622; }
+.score.none { color: #9aa1b0; }
+.pill { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #eef0f4; }
+.status-scored { background: #e3ecff; }
+.status-skipped { background: #f1f1f1; color: #888; }
+.status-blocked, .status-failed { background: #fdecea; color: #a12622; }
+.status-queued, .status-needs_review { background: #fff3cd; }
+.status-submitted { background: #d6f2dc; }
+.note { color: #2d5bd7; font-size: 12px; }
+
+tr.detail td { background: #fbfcfe; }
+.detail-grid { display: grid; grid-template-columns: minmax(280px, 1fr) 2fr; gap: 16px; }
+.reasoning { font-size: 14px; line-height: 1.6; margin-top: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { font-size: 12px; padding: 2px 8px; border-radius: 10px; }
+.chip.ok { background: #e3f4e6; }
+.chip.miss { background: #fdecea; }
+.post h4 { margin: 0 0 4px; }
+.post pre { white-space: pre-wrap; font-family: inherit; margin: 0 0 10px; max-height: 320px; overflow: auto; unicode-bidi: plaintext; }
+
+.log { position: fixed; bottom: 0; left: 0; right: 0; background: #11151c; color: #d6dae3; font-family: Consolas, monospace; font-size: 12px; }
+.log-head { padding: 4px 12px; cursor: pointer; background: #1b212b; }
+.log-body { height: 220px; overflow: auto; padding: 4px 12px; }
+.ll { white-space: pre-wrap; unicode-bidi: plaintext; }
+.ll .t { color: #6b7385; }
+.ll.warn .lv { color: #f0b429; }
+.ll.error .lv, .ll.fatal .lv { color: #ff6b6b; }
+.ll.info .lv { color: #6bc4ff; }
+.ll .x { color: #8b93a5; }
