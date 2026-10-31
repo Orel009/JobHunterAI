@@ -18,6 +18,7 @@ import { registerLlmRoutes } from './llm-routes.js';
 import { registerOnboardingRoutes } from './onboarding-routes.js';
 import { registerLinkedInRoutes } from './linkedin-routes.js';
 import { registerHistoryRoutes } from './history-routes.js';
+import { autoSubmitSettings, effectiveMinRank, pauseAutoSubmit, saveAutoSubmitSettings } from '../apply/auto-submit.js';
 import { linkedInEnabled } from '../linkedin/settings.js';
 import { prepareJobs, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
@@ -69,6 +70,8 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
       sites: SITES,
       /** optional LinkedIn job alerts (email); the LinkedIn screen and filter exist only while this is on */
       linkedin: { enabled: linkedInEnabled() },
+      /** auto-submit (off by default): per-site toggles, the kill switch and the effective minimum rank */
+      autoSubmit: { ...autoSubmitSettings(), minRankEffective: effectiveMinRank() },
       sessions: allSessions(),
       roleTypes: loadPrefs().roleTypes.map((r) => ({ id: r.id, label: r.label ?? r.id, tier: r.tier, enabled: r.enabled })),
       maxRequiredYears: loadPrefs().maxRequiredYears,
@@ -152,6 +155,29 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   registerOnboardingRoutes(app, db);
   registerLinkedInRoutes(app, db);
   registerHistoryRoutes(app, db);
+
+  // ---------- auto-submit (off by default) ----------
+  app.get('/api/auto-submit', async () => ({ ...autoSubmitSettings(), minRankEffective: effectiveMinRank(), dryRun: config.DRY_RUN, minRankEnv: config.AUTO_SUBMIT_MIN_RANK }));
+  app.put('/api/auto-submit', async (req) => {
+    const b = z
+      .object({ sites: z.record(z.string(), z.boolean()).optional(), minRank: z.number().min(0).max(200).nullable().optional() })
+      .parse(req.body ?? {});
+    const cur = autoSubmitSettings();
+    const next = saveAutoSubmitSettings({ ...(b.sites ? { sites: { ...cur.sites, ...b.sites } } : {}), ...(b.minRank !== undefined ? { minRank: b.minRank } : {}) });
+    log.warn({ sites: next.sites, minRank: effectiveMinRank(next) }, 'auto-submit settings changed');
+    return { ...next, minRankEffective: effectiveMinRank(next) };
+  });
+  /** the kill switch: stops auto-submit for every site immediately (checked again right before every final click) */
+  app.post('/api/auto-submit/pause', async () => {
+    const s = pauseAutoSubmit();
+    log.warn('AUTO-SUBMIT PAUSED for all sites');
+    return s;
+  });
+  app.post('/api/auto-submit/resume', async () => {
+    const s = saveAutoSubmitSettings({ paused: false, pausedAt: null });
+    log.warn('auto-submit resumed');
+    return s;
+  });
   registerCvRoutes(app, {
     cache: repo,
     rescore: () => {

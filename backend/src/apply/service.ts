@@ -14,11 +14,14 @@ import { effectiveLimits, loadPrefs } from '../core/prefs.js';
 import { candidateGender } from '../profile/facts.js';
 import { rankStoredJob } from '../core/rank.js';
 import { getPage, pace } from '../browser/session.js';
+import type { Page } from 'playwright';
+import type { log } from '../log.js';
 import { startTask } from '../pipeline/runner.js';
-import { ApplyError, fillPanel, installDryRunGuard, openPanel, screenshot, submitPanel, type PanelState, fetchAppliedJobs, screenshotPanel } from '../sites/drushim/apply.js';
+import { ApplyError, fillPanel, installDryRunGuard, openPanel, screenshot, submitPanel, type PanelState, fetchAppliedJobs, screenshotPanel, type SubmitResult } from '../sites/drushim/apply.js';
 import { AnswersBank, bankTypeFor, yesNo } from './bank.js';
 import { hebrewRatio } from './cv.js';
 import { Applications, buildPlan, readiness, type ApplicationRow } from './plan.js';
+import { autoSubmitOn, evaluateAutoSubmit } from './auto-submit.js';
 import type { ApplyPlan, ResolvedField } from './types.js';
 
 export class ServiceError extends Error {
@@ -98,7 +101,14 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
         continue;
       }
       const page = await getPage();
-      const unguard = await installDryRunGuard(page); // prepare never submits
+      const unguardOnce = await installDryRunGuard(page); // prepare never submits (auto-submit lifts it only after its gate)
+      let guarded = true;
+      const unguard = async () => {
+        if (guarded) {
+          guarded = false;
+          await unguardOnce();
+        }
+      };
       try {
         const state = await openPanel(page, job.url);
         const plan = await buildPlan(job, state.fields, { db, repo, prefs });
@@ -117,11 +127,17 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
         }
         await partialFill(page, state, plan);
         const shot = await screenshotPanel(page, `app${app.id}-prepare`);
-        apps.update(app.id, { screenshotBefore: shot });
+        const gate = evaluateAutoSubmit(db, repo, job, plan, prefs);
+        apps.update(app.id, { screenshotBefore: shot, gate });
         savePlanFile(app.id, plan);
         repo.setStatus(job.id, 'needs_review', `plan ${plan.readiness}`);
         run.stats.prepared++;
-        L.info({ job: job.title, readiness: plan.readiness, fields: plan.fields.length }, 'prepared');
+        L.info({ job: job.title, readiness: plan.readiness, fields: plan.fields.length, autoSubmit: gate.auto }, 'prepared');
+        if (gate.auto) {
+          await unguard(); // DRY_RUN=false is one of the gate conditions
+          const sent = await autoSubmitPrepared({ page, state, plan, job, appId: app.id, apps, repo, L });
+          if (sent) run.stats.autoSubmitted = (run.stats.autoSubmitted ?? 0) + 1;
+        }
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
         if (e instanceof ApplyError && e.code === 'already_applied') {
@@ -233,6 +249,56 @@ export function rejectApplication(db: DB, appId: number, reason = 'rejected in r
   new Repo(db).setStatus(app.jobId, 'skipped', reason);
 }
 
+// ---------- submit outcome (manual approval and auto-submit) ----------
+function recordSubmitResult(apps: Applications, repo: Repo, appId: number, job: StoredJob, before: string, r: SubmitResult, L: typeof log): boolean {
+  if (r.outcome.kind === 'submitted') {
+    apps.update(appId, { status: 'submitted', screenshotBefore: before, screenshotAfter: r.screenshotAfter, confirmationText: r.confirmationText, submitted: true, error: null });
+    repo.setStatus(job.id, 'submitted', 'submitted');
+    L.info({ job: job.title }, 'SUBMITTED');
+    return true;
+  }
+  if (r.outcome.kind === 'already_applied') {
+    const reason = `already_applied: the site answered "sent ${r.outcome.sentDate}"`;
+    apps.update(appId, { status: 'skipped', screenshotBefore: before, screenshotAfter: r.screenshotAfter, error: reason });
+    repo.setStatus(job.id, 'skipped', reason);
+    return false;
+  }
+  apps.update(appId, { status: 'failed', screenshotBefore: before, screenshotAfter: r.screenshotAfter, confirmationText: r.confirmationText, error: r.outcome.message });
+  repo.setStatus(job.id, 'failed', r.outcome.message);
+  if (r.outcome.fatalForDay || r.outcome.needsLogin) throw new Error(r.outcome.message);
+  return false;
+}
+
+/**
+ * Auto-submit of a prepared application whose gate passed. The kill switch, DRY_RUN and the site toggle are checked
+ * again right before the final click; if any changed, the application goes to the review queue instead.
+ */
+async function autoSubmitPrepared(o: {
+  page: Page;
+  state: PanelState;
+  plan: ApplyPlan;
+  job: StoredJob;
+  appId: number;
+  apps: Applications;
+  repo: Repo;
+  L: typeof log;
+}): Promise<boolean> {
+  const { page, state, plan, job, appId, apps, repo, L } = o;
+  apps.update(appId, { status: 'approved', dryRun: false });
+  await fillPanel(page, state, plan);
+  const before = await screenshotPanel(page, `app${appId}-before-submit`);
+  await pace(1500, 3000);
+  if (config.DRY_RUN || !autoSubmitOn(job.site)) {
+    apps.update(appId, { status: 'needs_review', screenshotBefore: before, error: 'auto-submit was paused before sending — review it' });
+    repo.setStatus(job.id, 'needs_review', 'auto-submit paused before sending');
+    L.warn({ job: job.title }, 'auto-submit paused before the final click — left for review');
+    return false;
+  }
+  L.info({ job: job.title }, 'AUTO-SUBMIT: every gate condition passed');
+  const r = await submitPanel(page, Number(job.externalId), `app${appId}`);
+  return recordSubmitResult(apps, repo, appId, job, before, r, L);
+}
+
 // ---------- approve ----------
 export function approveApplication(db: DB, appId: number): { runId: number; dryRun: boolean } {
   const apps = new Applications(db);
@@ -290,19 +356,7 @@ export function approveApplication(db: DB, appId: number): { runId: number; dryR
       }
       await pace(1500, 3000);
       const r = await submitPanel(page, Number(job.externalId), `app${appId}`);
-      if (r.outcome.kind === 'submitted') {
-        apps.update(appId, { status: 'submitted', screenshotBefore: before, screenshotAfter: r.screenshotAfter, confirmationText: r.confirmationText, submitted: true, error: null });
-        repo.setStatus(job.id, 'submitted', 'submitted');
-        L.info({ job: job.title }, 'SUBMITTED');
-      } else if (r.outcome.kind === 'already_applied') {
-        const reason = `already_applied: the site answered "sent ${r.outcome.sentDate}"`;
-        apps.update(appId, { status: 'skipped', screenshotBefore: before, screenshotAfter: r.screenshotAfter, error: reason });
-        repo.setStatus(job.id, 'skipped', reason);
-      } else {
-        apps.update(appId, { status: 'failed', screenshotBefore: before, screenshotAfter: r.screenshotAfter, confirmationText: r.confirmationText, error: r.outcome.message });
-        repo.setStatus(job.id, 'failed', r.outcome.message);
-        if (r.outcome.fatalForDay || r.outcome.needsLogin) throw new Error(r.outcome.message);
-      }
+      recordSubmitResult(apps, repo, appId, job, before, r, L);
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
       const cur = apps.get(appId);

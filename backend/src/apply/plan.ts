@@ -101,6 +101,8 @@ export interface ApplicationRow {
   updatedAt: string;
   submittedAt: string | null;
   reviewedAt: string | null;
+  /** the auto-submit gate result (core of History's "conditions checked"), null = never evaluated */
+  gate: unknown;
 }
 
 interface AppDbRow {
@@ -119,6 +121,7 @@ interface AppDbRow {
   updated_at: string;
   submitted_at: string | null;
   reviewed_at: string | null;
+  gate_json: string | null;
 }
 
 const appFromRow = (r: AppDbRow): ApplicationRow => ({
@@ -137,6 +140,7 @@ const appFromRow = (r: AppDbRow): ApplicationRow => ({
   updatedAt: r.updated_at,
   submittedAt: r.submitted_at,
   reviewedAt: r.reviewed_at,
+  gate: r.gate_json ? (JSON.parse(r.gate_json) as unknown) : null,
 });
 
 export class Applications {
@@ -177,10 +181,11 @@ export class Applications {
     return this.get(Number(r.lastInsertRowid))!;
   }
 
-  update(id: number, patch: Partial<Pick<ApplicationRow, 'status' | 'screenshotBefore' | 'screenshotAfter' | 'confirmationText' | 'error' | 'plan' | 'dryRun'>> & { submitted?: boolean; reviewed?: boolean }): void {
+  update(id: number, patch: Partial<Pick<ApplicationRow, 'status' | 'screenshotBefore' | 'screenshotAfter' | 'confirmationText' | 'error' | 'plan' | 'dryRun' | 'gate'>> & { submitted?: boolean; reviewed?: boolean }): void {
     const cur = this.get(id);
     if (!cur) return;
     const now = nowIso();
+    if (patch.gate !== undefined) this.db.prepare('UPDATE applications SET gate_json = ? WHERE id = ?').run(patch.gate === null ? null : JSON.stringify(patch.gate), id);
     this.db
       .prepare(
         `UPDATE applications SET status = ?, screenshot_before = ?, screenshot_after = ?, confirmation_text = ?, error = ?, plan_json = ?, dry_run = ?,

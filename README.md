@@ -87,7 +87,8 @@ The **Profile**, **Preferences** and **Settings** screens edit everything in for
 ## Safety
 
 - **`DRY_RUN=true` by default**: the agent goes up to the final submit click, takes a screenshot, and stops. Real submission needs
-  `DRY_RUN=false` **and** your explicit approval in the review queue. There is no auto-submit.
+  `DRY_RUN=false` **and** your explicit approval in the review queue.
+- **Auto-submit is off by default.** If you turn it on for a site (Settings, with a warning), an application is sent without review only when every gate condition holds: rank ≥ 90, every answer from your profile / bank, company cooldown, daily limit, full description, and more. Every check is recorded in History, and **Pause auto-submit** in the header stops it immediately.
 - **LinkedIn is never automated**: any request to linkedin.com from the automated browser is blocked, and LinkedIn jobs cannot enter the automated apply flow.
 - **No bypassing**: CAPTCHA, bot protection and rate limits are never circumvented, and login is never automated: the login window is your installed Chrome, started as a normal process with no automation, and you close it when done. Automation then uses the same installed Chrome and profile. A challenge stops the run with status `blocked`.
 - **No invented facts**: every value sent traces back to your profile or the answers bank, and its provenance is stored per field.

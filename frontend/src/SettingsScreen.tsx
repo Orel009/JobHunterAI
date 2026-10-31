@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { llm, type LlmSettings, type TaskCfg, type UsageReport } from './api';
 import { Field, Num } from './forms';
 import { LinkedInSettingsCard } from './LinkedInScreen';
+import { AutoSubmitCard } from './AutoSubmit';
+import type { Status } from './api';
 
 const TASKS = [
   { id: 'analyze', label: 'Analyze', hint: 'scoring, matching, classification, CV extraction — many calls, needs reliable JSON' },
@@ -147,7 +149,7 @@ export function KeyInputs({ settings, only, onSaved }: { settings: LlmSettings; 
   );
 }
 
-export function SettingsScreen({ onSaved }: { onSaved?: () => void }) {
+export function SettingsScreen({ onSaved, sites = [] }: { onSaved?: () => void; sites?: Status['sites'] }) {
   const [s, setS] = useState<LlmSettings | null>(null);
   const [tasks, setTasks] = useState<Record<string, TaskCfg>>({});
   const [limit, setLimit] = useState<number | undefined>(undefined);
@@ -298,6 +300,7 @@ export function SettingsScreen({ onSaved }: { onSaved?: () => void }) {
           </table>
         </fieldset>
       )}
+      <AutoSubmitCard sites={sites} onSaved={onSaved} />
       <LinkedInSettingsCard onSaved={onSaved} />
     </div>
   );

@@ -184,3 +184,7 @@ textarea { font: inherit; }
 .pill.outcome-offer { background: #d6f2dc; }
 .pill.outcome-rejected, .pill.outcome-withdrawn { background: #f1e3e3; }
 a.button { display: inline-block; padding: 4px 10px; border-radius: 6px; border: 1px solid #c8cdd6; text-decoration: none; }
+
+/* ---------- auto-submit kill switch ---------- */
+header .kill-switch { margin-inline-start: auto; font-size: 15px; font-weight: 700; padding: 8px 16px; }
+header .badge.warn { margin-inline-start: auto; cursor: pointer; }

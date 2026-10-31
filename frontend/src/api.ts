@@ -121,6 +121,7 @@ export interface Status {
   sites: Array<{ id: string; displayName: string; enabled: boolean }>;
   /** optional LinkedIn job alerts (email): the LinkedIn screen and filter exist only while enabled */
   linkedin: { enabled: boolean };
+  autoSubmit: { sites: Record<string, boolean>; minRank: number | null; minRankEffective: number; paused: boolean; pausedAt: string | null };
   sessions: Record<string, { state: 'logged_in' | 'logged_out' | 'unknown'; checkedAt: string | null; detail: string }>;
   pendingQuestions: number;
   /** passed the prefilter, no current score (e.g. discovered before the profile was approved) */
@@ -185,7 +186,13 @@ export interface Plan {
   readiness: 'ready' | 'needs_answers' | 'has_drafts' | 'blocked_no';
   notes: string[];
 }
+export interface GateResult {
+  auto: boolean;
+  at: string;
+  conditions: Array<{ name: string; ok: boolean; detail: string }>;
+}
 export interface Application {
+  gate?: GateResult | null;
   id: number;
   jobId: string;
   status: string;

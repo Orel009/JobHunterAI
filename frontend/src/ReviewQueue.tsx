@@ -101,6 +101,15 @@ function AppCard({ app, dryRun, busy, applyDisabled, act }: { app: Application; 
         </p>
       )}
       {app.error && <div className="banner error">{app.error}</div>}
+      {app.gate && !app.gate.auto && app.gate.conditions.find((c) => c.name.startsWith('auto-submit is on'))?.ok && (
+        <p className="muted">
+          Auto-submit not used:{' '}
+          {app.gate.conditions
+            .filter((c) => !c.ok)
+            .map((c) => `${c.name} (${c.detail})`)
+            .join(' · ')}
+        </p>
+      )}
       {plan.notes.map((n) => (
         <div key={n} className="muted" dir="auto">
           ℹ {n}

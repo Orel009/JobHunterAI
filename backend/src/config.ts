@@ -35,6 +35,8 @@ const EnvSchema = z.object({
   MAX_PAGES_PER_RUN: int(3),
   DAILY_APPLY_LIMIT: int(15),
   AUTO_SUBMIT_MIN_SCORE: int(80),
+  /** auto-submit (off by default, per site in Settings) needs rank ≥ this; the Settings screen can override it */
+  AUTO_SUBMIT_MIN_RANK: z.coerce.number().default(90),
   MATCH_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.85),
   COMPANY_COOLDOWN_DAYS: int(30),
   DEDUPE_WINDOW_DAYS: int(14),

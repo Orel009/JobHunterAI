@@ -441,13 +441,14 @@ export class Repo {
     return Object.fromEntries(rows.map((r) => [r.status, r.n]));
   }
 
-  submittedToday(): number {
+  /** real submissions since local midnight, for one site or all */
+  submittedToday(site?: string): number {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     return (
       this.db
-        .prepare(`SELECT COUNT(*) AS n FROM applications WHERE status='submitted' AND dry_run=0 AND submitted_at >= ?`)
-        .get(start.toISOString()) as { n: number }
+        .prepare(`SELECT COUNT(*) AS n FROM applications WHERE status='submitted' AND dry_run=0 AND submitted_at >= ? AND (? IS NULL OR site = ?)`)
+        .get(start.toISOString(), site ?? null, site ?? null) as { n: number }
     ).n;
   }
 
