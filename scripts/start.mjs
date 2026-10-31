@@ -30,7 +30,7 @@ function fail(he, en, fixHe, fixEn) {
 // ---- 1a. Node version (node:sqlite without a flag needs 22.13+) ----
 const [maj, min] = process.versions.node.split('.').map(Number);
 if (maj < 22 || (maj === 22 && min < 13)) {
-  fail(`גרסת Node ${process.versions.node} ישנה מדי (נדרש 22.13 ומעלה)`, `Node ${process.versions.node} is too old (need 22.13+)`, 'התקן Node LTS מ-https://nodejs.org', 'Install Node LTS from https://nodejs.org');
+  fail(`גרסת Node ${process.versions.node} ישנה מדי (נדרש 22.13 ומעלה)`, `Node ${process.versions.node} is too old (need 22.13+)`, 'יש להתקין Node LTS מ-https://nodejs.org', 'Install Node LTS from https://nodejs.org');
 }
 console.log(`${green('✓')} Node ${process.versions.node}`);
 
@@ -43,13 +43,13 @@ const stale = !missing && fs.existsSync(lock) && fs.statSync(lock).mtimeMs > fs.
 if (missing || stale) {
   const why = missing ? 'node_modules missing' : 'package-lock.json changed';
   if (doctor) {
-    fail(`חבילות לא מותקנות / לא מעודכנות (${why})`, `Dependencies are not installed or out of date (${why})`, 'הרץ npm install', 'Run: npm install');
+    fail(`חבילות לא מותקנות / לא מעודכנות (${why})`, `Dependencies are not installed or out of date (${why})`, 'יש להריץ npm install', 'Run: npm install');
   }
   console.log(`… ${why} → npm install`);
   try {
     execSync('npm install', { cwd: ROOT, stdio: 'inherit' });
   } catch {
-    fail('npm install נכשל', 'npm install failed', 'בדוק את החיבור לאינטרנט והרץ שוב npm install', 'Check your internet connection and run npm install again');
+    fail('npm install נכשל', 'npm install failed', 'יש לבדוק את החיבור לאינטרנט ולהריץ שוב npm install', 'Check your internet connection and run npm install again');
   }
 }
 console.log(`${green('✓')} dependencies installed`);
