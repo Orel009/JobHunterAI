@@ -196,6 +196,6 @@ const MIME: Record<string, string> = {
 /** Applying is disabled while the site is known to be logged out (unknown = let the adapter find out). */
 export function assertCanApply(site: string): void {
   if (getSession(site).state === 'logged_out') {
-    throw new ServiceError(409, `לא מחובר ל-${site} — הרץ npm run login -- ${site} ואז "בדוק שוב" / Not logged in to ${site}: run npm run login -- ${site}, then "Re-check"`);
+    throw new ServiceError(409, `אין חיבור ל-${site} — יש להתחבר בחלון ההתחברות (או npm run login -- ${site}) ואז "בדוק שוב" / Not logged in to ${site}: run npm run login -- ${site}, then "Re-check"`);
   }
 }

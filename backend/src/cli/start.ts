@@ -81,7 +81,7 @@ try {
   fail(
     `ערך לא תקין ב-‎.env: ${issues?.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') ?? (e as Error).message}`,
     `.env has invalid values: ${issues?.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') ?? (e as Error).message}`,
-    'תקן את הערכים לפי .env.example',
+    'יש לתקן את הערכים לפי .env.example',
     'Fix the values (see .env.example for each variable)',
   );
   process.exit(1);
@@ -136,7 +136,7 @@ if (providers.includes('ollama')) {
     llmProblem(
       'Ollama לא רץ',
       `Ollama is not reachable at ${config.OLLAMA_URL}`,
-      'פתח את אפליקציית Ollama (או התקן מ-https://ollama.com/download), או בחר ספק API במסך Settings',
+      'יש לפתוח את אפליקציית Ollama (או להתקין מ-https://ollama.com/download), או לבחור ספק API במסך Settings',
       'Open the Ollama app (or install it from https://ollama.com/download), or choose an API provider on the Settings screen',
     );
   } else {
@@ -153,7 +153,7 @@ if (providers.includes('ollama')) {
         }
         models = await ollamaModelsWithSize().catch(() => [] as Array<{ name: string; size: number }>);
       }
-      if (!have(models, m)) llmProblem(`המודל ${m} לא מותקן`, `Model ${m} is not installed`, `הרץ: ollama pull ${m}`, `Run: ollama pull ${m}`);
+      if (!have(models, m)) llmProblem(`המודל ${m} לא מותקן`, `Model ${m} is not installed`, `יש להריץ: ollama pull ${m}`, `Run: ollama pull ${m}`);
     }
     if (required.length && required.every((m) => have(models, m))) ok(`local model(s): ${required.join(', ')}`);
     // does the model fit the GPU?
@@ -162,12 +162,12 @@ if (providers.includes('ollama')) {
       const sizeMb = (have(models, m)?.size ?? 0) / 1024 / 1024;
       if (!sizeMb) continue;
       if (vram === null) {
-        warn('לא נמצא GPU של NVIDIA (nvidia-smi) — מודל מקומי ירוץ לאט על המעבד', `No NVIDIA GPU found (nvidia-smi) — ${m} will run slowly on the CPU`, 'בחר מודל קטן יותר או ספק API במסך Settings', 'Pick a smaller model or an API provider on the Settings screen');
+        warn('לא נמצא GPU של NVIDIA (nvidia-smi) — מודל מקומי ירוץ לאט על המעבד', `No NVIDIA GPU found (nvidia-smi) — ${m} will run slowly on the CPU`, 'כדאי לבחור מודל קטן יותר או ספק API במסך Settings', 'Pick a smaller model or an API provider on the Settings screen');
       } else if (sizeMb > vram * 0.9) {
         warn(
           `המודל ${m} (${(sizeMb / 1024).toFixed(1)}GB) גדול מזיכרון ה-GPU (${(vram / 1024).toFixed(1)}GB)`,
           `${m} (${(sizeMb / 1024).toFixed(1)} GB) does not fit the GPU (${(vram / 1024).toFixed(1)} GB VRAM)`,
-          'בחר מודל מקומי קטן יותר (למשל גרסת 4B) או ספק API במסך Settings',
+          'יש לבחור מודל מקומי קטן יותר (למשל גרסת 4B) או ספק API במסך Settings',
           'Choose a smaller local model (e.g. a 4B variant) or an API provider on the Settings screen',
         );
       } else ok(`${m} fits the GPU (${(sizeMb / 1024).toFixed(1)} of ${(vram / 1024).toFixed(1)} GB)`);
@@ -176,21 +176,21 @@ if (providers.includes('ollama')) {
 }
 for (const p of providers.filter((x) => x !== 'ollama')) {
   if (p === 'fake') {
-    warn('מצב ניסוי: אין מודל — התשובות ריקות', 'Test mode provider: no model, answers are empty placeholders', 'בחר ספק אמיתי במסך Settings', 'Choose a real provider on the Settings screen');
+    warn('מצב ניסוי: אין מודל — התשובות ריקות', 'Test mode provider: no model, answers are empty placeholders', 'יש לבחור ספק אמיתי במסך Settings', 'Choose a real provider on the Settings screen');
     continue;
   }
   if (!apiKey(p)) {
-    llmProblem(`חסר מפתח API עבור ${p}`, `No API key for ${p}`, 'הזן מפתח במסך Settings (נשמר רק ב-.env)', 'Enter the key on the Settings screen (stored only in .env)');
+    llmProblem(`חסר מפתח API עבור ${p}`, `No API key for ${p}`, 'יש להזין מפתח במסך Settings (נשמר רק ב-.env)', 'Enter the key on the Settings screen (stored only in .env)');
     continue;
   }
   try {
     const list = await getProvider(p).listModels();
     const wanted = (['analyze', 'write'] as const).filter((t) => tasks[t].provider === p).map((t) => tasks[t].model);
     const missing = wanted.filter((m) => m && list.length && !list.includes(m));
-    if (missing.length) warn(`המודל ${missing.join(', ')} לא מופיע ברשימת ${p}`, `${missing.join(', ')} is not in ${p}'s model list`, 'בדוק את שם המודל במסך Settings', 'Check the model name on the Settings screen');
+    if (missing.length) warn(`המודל ${missing.join(', ')} לא מופיע ברשימת ${p}`, `${missing.join(', ')} is not in ${p}'s model list`, 'יש לבדוק את שם המודל במסך Settings', 'Check the model name on the Settings screen');
     else ok(`${p} API reachable (${list.length} models)`);
   } catch (e) {
-    llmProblem(`לא ניתן להתחבר ל-${p}`, `Cannot reach ${p}: ${(e as Error).message}`, 'בדוק את המפתח והחיבור במסך Settings (Test connection)', 'Check the key and connection on the Settings screen (Test connection)');
+    llmProblem(`לא ניתן להתחבר ל-${p}`, `Cannot reach ${p}: ${(e as Error).message}`, 'יש לבדוק את המפתח והחיבור במסך Settings (Test connection)', 'Check the key and connection on the Settings screen (Test connection)');
   }
 }
 
@@ -210,13 +210,13 @@ if (fs.existsSync(prefsFile)) {
   const parsed = PrefsSchema.safeParse(YAML.parse(fs.readFileSync(prefsFile, 'utf8')) ?? {});
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
-    fail(`קובץ ההעדפות לא תקין: ${msg}`, `preferences are invalid: ${msg}`, 'תקן במסך Preferences או לפי preferences.example.yaml', 'Fix them on the Preferences screen (or see preferences.example.yaml)');
+    fail(`קובץ ההעדפות לא תקין: ${msg}`, `preferences are invalid: ${msg}`, 'יש לתקן במסך Preferences או לפי preferences.example.yaml', 'Fix them on the Preferences screen (or see preferences.example.yaml)');
   } else {
     ok(`${path.relative(ROOT, prefsFile)} valid`);
     const p = parsed.data;
-    if (!p.cv.he && !p.cv.en) warn('שמות קורות החיים בדרושים לא מוגדרים — לא ניתן להגיש', 'Drushim CV names (cv.he / cv.en) are not set — applying will fail', 'הגדר אותם במסך Preferences', 'Set them on the Preferences screen');
-    else if (/^</.test(p.cv.he) || /^</.test(p.cv.en)) warn('שמות קורות החיים עדיין בערכי הדוגמה', 'Drushim CV names still have the example placeholders', 'הגדר אותם במסך Preferences', 'Set them on the Preferences screen');
-    if (p.roleTypes.filter((r) => r.enabled).length === 0 && p.queries.titles.length === 0) warn('אין סוגי תפקידים לחיפוש', 'No enabled role types to search for', 'הוסף אותם במסך Preferences', 'Add them on the Preferences screen');
+    if (!p.cv.he && !p.cv.en) warn('שמות קורות החיים בדרושים לא מוגדרים — לא ניתן להגיש', 'Drushim CV names (cv.he / cv.en) are not set — applying will fail', 'יש להגדיר אותם במסך Preferences', 'Set them on the Preferences screen');
+    else if (/^</.test(p.cv.he) || /^</.test(p.cv.en)) warn('שמות קורות החיים עדיין בערכי הדוגמה', 'Drushim CV names still have the example placeholders', 'יש להגדיר אותם במסך Preferences', 'Set them on the Preferences screen');
+    if (p.roleTypes.filter((r) => r.enabled).length === 0 && p.queries.titles.length === 0) warn('אין סוגי תפקידים לחיפוש', 'No enabled role types to search for', 'יש להוסיף אותם במסך Preferences', 'Add them on the Preferences screen');
   }
 }
 
@@ -226,17 +226,17 @@ if (fs.existsSync(profileFile)) {
     loadProfile(profileFile);
     ok(`${path.relative(ROOT, profileFile)} valid`);
   } catch (e) {
-    fail(`profile.json לא תקין: ${(e as Error).message}`, `profile.json is invalid: ${(e as Error).message}`, 'תקן במסך Profile (או ראה profile.conflicts.md)', 'Fix it on the Profile screen (or see profile.conflicts.md)');
+    fail(`profile.json לא תקין: ${(e as Error).message}`, `profile.json is invalid: ${(e as Error).message}`, 'יש לתקן במסך Profile (או לעיין ב-profile.conflicts.md)', 'Fix it on the Profile screen (or see profile.conflicts.md)');
   }
 } else if (fs.existsSync(draftFile)) {
   warn(
     'יש טיוטת פרופיל שעוד לא אושרה',
     'profile.draft.json is waiting for your review',
-    'עבור עליה במסך Profile ולחץ "Approve draft" (או שנה את שמה ל-profile.json)',
+    'יש לעבור עליה במסך Profile וללחוץ "Approve draft" (או לשנות את שמה ל-profile.json)',
     'Review it on the Profile screen and click "Approve draft" (or rename it to profile.json)',
   );
 } else {
-  warn('אין פרופיל — אשף ההגדרה ייפתח ב-dashboard', 'No profile yet — the setup wizard opens in the dashboard', 'השלם את אשף ההגדרה', 'Complete the setup wizard');
+  warn('אין פרופיל — אשף ההגדרה ייפתח ב-dashboard', 'No profile yet — the setup wizard opens in the dashboard', 'יש להשלים את אשף ההגדרה', 'Complete the setup wizard');
 }
 
 // ---------- check 5: DB migrations ----------
@@ -260,7 +260,7 @@ if (DOCTOR) {
     db = openDb(config.paths.db);
     ok(`database ready (${allMigrations.length} migrations)`);
   } catch (e) {
-    fail(`מיגרציה נכשלה: ${(e as Error).message}`, `Database migration failed: ${(e as Error).message}`, 'גבה את data/jobhunter.sqlite ודווח על השגיאה', 'Back up data/jobhunter.sqlite and report the error');
+    fail(`מיגרציה נכשלה: ${(e as Error).message}`, `Database migration failed: ${(e as Error).message}`, 'יש לגבות את data/jobhunter.sqlite ולדווח על השגיאה', 'Back up data/jobhunter.sqlite and report the error');
   }
 }
 
@@ -282,7 +282,7 @@ if (!browserInstalled() && !DOCTOR) {
   }
 }
 if (browserInstalled()) ok('browser (Chromium) installed');
-else fail('הדפדפן (Chromium) לא מותקן', 'The browser (Chromium) is not installed', 'הרץ: npx playwright install chromium', 'Run: npx playwright install chromium');
+else fail('הדפדפן (Chromium) לא מותקן', 'The browser (Chromium) is not installed', 'יש להריץ: npx playwright install chromium', 'Run: npx playwright install chromium');
 
 // ---------- check 6: Drushim session ----------
 const { checkDrushimSession, getSession } = await import('../browser/site-session.js');
@@ -290,15 +290,15 @@ console.log('… checking the Drushim session (headless browser)');
 let session = await checkDrushimSession();
 if (session.state === 'logged_in') ok('Drushim: logged in');
 else if (session.state === 'logged_out') {
-  warn('לא מחובר לדרושים — ההגשה תהיה מושבתת', 'Not logged in to Drushim — applying will be disabled', 'לחץ "Open the login window" ב-dashboard, או הרץ: npm run login -- drushim', 'Click "Open the login window" in the dashboard, or run: npm run login -- drushim');
+  warn('אין חיבור לדרושים — ההגשה תהיה מושבתת', 'Not logged in to Drushim — applying will be disabled', 'יש ללחוץ "Open the login window" ב-dashboard, או להריץ: npm run login -- drushim', 'Click "Open the login window" in the dashboard, or run: npm run login -- drushim');
   // on a fresh installation the setup wizard has a login step
   if (!DOCTOR && !ONBOARDING && (await ask('Open the Drushim login window now? / לפתוח עכשיו חלון התחברות לדרושים?'))) {
     execSync(`"${process.execPath}" "${TSX_CLI}" src/cli/login.ts drushim`, { cwd: BACKEND, stdio: 'inherit' });
     session = await checkDrushimSession();
     if (session.state === 'logged_in') ok('Drushim: logged in');
-    else warn('עדיין לא מחובר — ממשיך בלי אפשרות הגשה', 'Still not logged in — continuing with applying disabled');
+    else warn('עדיין אין חיבור — ההפעלה ממשיכה בלי אפשרות הגשה', 'Still not logged in — continuing with applying disabled');
   }
-} else warn(`מצב החיבור לדרושים לא ידוע: ${session.detail}`, `Drushim session unknown: ${session.detail}`, 'אם השרת כבר רץ, סגור אותו ונסה שוב', 'If JobHunter is already running, close it and try again');
+} else warn(`מצב החיבור לדרושים לא ידוע: ${session.detail}`, `Drushim session unknown: ${session.detail}`, 'אם השרת כבר רץ, יש לסגור אותו ולנסות שוב', 'If JobHunter is already running, close it and try again');
 
 if (DOCTOR) {
   console.log(`\n${c.bold('Doctor report')}: ${failures.length} failed, ${warnings.length} warning(s). Nothing was changed.`);
@@ -318,7 +318,7 @@ if (!fs.existsSync(distIndex) || fs.statSync(distIndex).mtimeMs < srcTime) {
   try {
     execSync('npm run build -w frontend', { cwd: ROOT, stdio: 'inherit' });
   } catch {
-    fail('בניית ה-dashboard נכשלה', 'Dashboard build failed', 'הרץ npm run build -w frontend וראה את השגיאה', 'Run: npm run build -w frontend and check the error');
+    fail('בניית ה-dashboard נכשלה', 'Dashboard build failed', 'יש להריץ npm run build -w frontend ולבדוק את השגיאה', 'Run: npm run build -w frontend and check the error');
   }
 }
 ok('dashboard built');
@@ -336,14 +336,14 @@ const url = `http://127.0.0.1:${config.PORT}`;
 try {
   await app.listen({ host: '127.0.0.1', port: config.PORT });
 } catch (e) {
-  fail(`הפורט ${config.PORT} תפוס (אולי JobHunter כבר רץ?)`, `Port ${config.PORT} is busy (is JobHunter already running?)`, `סגור את המופע הקודם או שנה PORT ב-.env`, 'Close the other instance or change PORT in .env');
+  fail(`הפורט ${config.PORT} תפוס (אולי JobHunter כבר רץ?)`, `Port ${config.PORT} is busy (is JobHunter already running?)`, `יש לסגור את המופע הקודם או לשנות PORT ב-.env`, 'Close the other instance or change PORT in .env');
 }
 
 let shuttingDown = false;
 async function shutdown(code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log('\nShutting down… / סוגר…');
+  console.log('\nShutting down… / סגירה…');
   stopRun();
   await Promise.race([waitIdle(), sleep(8000)]);
   await closeContext().catch(() => undefined);
