@@ -77,7 +77,7 @@ export async function extractProfile(files: Partial<Record<Lang, string>>, opts:
   const span = 80 / langs.length;
   for (const [i, l] of langs.entries()) verified[l] = verifyExtraction(await extractOne(l, texts[l]!.text, opts, 5 + i * span, span), texts[l]!.text, l);
 
-  opts.onProgress?.('matching the two CVs', 88);
+  opts.onProgress?.(langs.length === 2 ? 'matching the two CVs' : 'checking the extracted facts', 88);
   let align: Alignment = { experience: [], education: [] };
   if (langs.length === 2) {
     const list = (x: Extracted, k: 'experience' | 'education') =>

@@ -1,8 +1,9 @@
 # JobHunter
 
-A local-first, zero-cost personal job-application agent for the Israeli job market. It finds jobs, filters and scores
-them with a local LLM, prepares each application with a field-by-field plan, and submits only after you approve it.
-Everything runs on your Windows PC. There are no paid APIs and no cloud LLMs, and your data stays in `./data`.
+A local-first personal job-application agent for the Israeli job market. It finds jobs, filters and scores them
+with a language model, prepares each application with a field-by-field plan, and submits only after you approve it.
+It runs on your Windows PC, and your data stays in `./data`. The default model is local and free (Ollama); paid API
+providers are optional.
 
 **Full guide (Hebrew): [docs/GUIDE.md](docs/GUIDE.md)**
 
@@ -11,26 +12,73 @@ _Screenshot: coming soon._
 
 ## Features
 
+- **Setup wizard**: on a fresh installation the dashboard walks you through everything. You never edit a file by hand.
 - **Discovery** on Drushim. It reads the site's own data rather than scraping the page, with human pacing and per-run limits. AllJobs and JobMaster come next.
-- **Role types with tiers** (Full Stack, Backend, Junior, Automation, …), searched in Hebrew and English.
-- **Deterministic prefilter** (whole-word title keywords, seniority, locations) and an **experience cap** read from the requirements text, then **LLM scoring** for the job's role type with Hebrew reasoning (Ollama, `gemma4:12b`).
+- **Role types with tiers**, searched in Hebrew and English. A job's tier comes from its title, and search-only role types (e.g. Junior) never set it.
+- **Deterministic prefilter** (whole-word title keywords, seniority, course/training titles, locations by city or site region) and an **experience cap** read from the requirements text. Then comes **LLM scoring** for the job's role type, with Hebrew reasoning and a dev-content score that caps fallback (tier 3) roles.
 - **Ranking that prefers junior roles**: `rank = score + experience boost + tier boost`. Jobs, the review queue and preparation all follow it.
-- **Profile from your CVs** (`profile:init`), built from a Hebrew and an English PDF. Every fact is checked against the CV text, and contradictions are listed for you to resolve.
+- **Pluggable model provider**: Ollama (default, local), Anthropic, OpenAI or Google Gemini, chosen per task (analyze / write) on the Settings screen. All of them use native structured output, validated with a retry. Also included: usage and cost tracking, and an optional daily token limit.
+- **Profile from your CV(s)**: upload a Hebrew and/or English PDF in the dashboard. Every fact is checked against the CV text. Later uploads show a reviewable diff, and your own edits are never overwritten.
+- **Hebrew in your grammatical gender**: drafts, standard questions and scoring text use male or female forms, as you choose.
 - **Answers bank**: you answer each question once, and it is reused for every later job.
 - **Field resolution** in this order: profile, then the answers bank, then skill years, then a fact-cited draft. The LLM never answers yes/no, salary, availability, legal and similar questions.
 - **CV per job language**: Hebrew or English, chosen deterministically, with a manual override.
 - **Review queue**: field plan with the source of every answer, inline editing, screenshots, and Approve/Reject.
-- **One command**: `npm start` checks everything, starts the system and opens the dashboard. `npm run doctor` only reports.
+- **One command**: `npm start` checks everything, installs what is missing, starts the system and opens the dashboard. `npm run doctor` only reports.
 
 ## Quick start (Windows 11)
 
-1. Install [Node.js LTS](https://nodejs.org) and [Ollama](https://ollama.com/download), then run `ollama pull gemma4:12b`.
-2. Create your config: `copy .env.example .env` and `copy preferences.example.yaml preferences.yaml`, then edit `preferences.yaml`.
-3. Put `cv-he.pdf` and `cv-en.pdf` in `data\profile\`, run `npm install`, then `npm run profile:init`. Review the draft and rename it to `profile.json`.
-4. Log in to Drushim once by hand: `npm run login -- drushim`.
-5. Run `npm start` (or double-click `start.cmd`). Add `--hunt` for one full pass: `npm start -- --hunt`.
+1. Install [Node.js LTS](https://nodejs.org) (22.13+).
+   Optionally, install [Ollama](https://ollama.com/download) for a free local model. It needs a GPU with enough memory, about 8 GB for `gemma4:12b`.
+2. Get the code:
+   ```powershell
+   git clone https://github.com/Orel009/JobHunterAI.git
+   cd JobHunterAI
+   ```
+3. Run `npm start` (or double-click `start.cmd`). The first run does the following:
+   - installs the dependencies and the browser;
+   - creates `.env` and `data/preferences.yaml` from the examples;
+   - opens the dashboard with the **setup wizard**.
+4. Complete the wizard's nine steps:
+   1. your name and Hebrew gender;
+   2. the model provider, with a connection test;
+   3. your CV upload;
+   4. profile review;
+   5. skill levels and links;
+   6. declared experience;
+   7. role types, locations and max years;
+   8. your Drushim CV names, plus a login window where you log in yourself;
+   9. standard answers.
 
+After that, `npm start` is all you need. Add `--hunt` for one full pass: `npm start -- --hunt`.
 If something is wrong, `npm run doctor` tells you what and how to fix it.
+
+## Choosing a model
+
+| Provider | Cost | Privacy |
+|---|---|---|
+| Ollama (default) | free | everything stays on your computer |
+| Anthropic, OpenAI, Google Gemini | pay per use | job posts, profile facts and CV text are sent to the provider |
+
+- Pick the provider and model per task on the **Settings** screen. Model names are suggested from the provider's model list, and **Test connection** checks the choice.
+- API keys are stored only in your local `.env`. They are never saved in the database or logged, and the UI only shows them masked.
+- Costs come from the per-token prices you enter; nothing is hard-coded. `DAILY_LLM_TOKEN_LIMIT` pauses model steps for the rest of the day once reached.
+- `npm start` and `npm run doctor` check the selected provider. With Ollama, they also check that the model fits your GPU memory.
+- `npm run model:bench` compares models across providers. Set `BENCH_MODELS=gemma4:12b,anthropic:<model>,…` in `.env`.
+
+## Updating your CV
+
+1. Upload the new PDF on the **Profile** screen. It is read in the background, and nothing changes until you review it.
+2. Review the proposed changes. Accept or reject each one, or use **Accept all safe changes** (additions and date fixes only).
+3. Optionally re-score the active jobs against the updated profile.
+
+Your own edits always survive a CV update: skill links, levels, aliases, removed skills, declared experience, edited dates and gender.
+
+Applications send the CV stored **on your Drushim account**, so a banner reminds you to upload the new file to Drushim too, under the CV name set in your preferences.
+
+## Editing your profile and preferences
+
+The **Profile**, **Preferences** and **Settings** screens edit everything in forms. Every save is validated, and the previous version is backed up under `data/`.
 
 ## Safety
 

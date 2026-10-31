@@ -264,14 +264,35 @@ if (DOCTOR) {
   }
 }
 
+// ---------- check: browser (Playwright's Chromium, downloaded once) ----------
+const { chromium } = await import('playwright');
+const browserInstalled = () => {
+  try {
+    return fs.existsSync(chromium.executablePath());
+  } catch {
+    return false;
+  }
+};
+if (!browserInstalled() && !DOCTOR) {
+  console.log('… browser not installed → npx playwright install chromium (one time, ~150 MB)');
+  try {
+    execSync('npx playwright install chromium', { cwd: BACKEND, stdio: 'inherit' });
+  } catch {
+    /* reported below */
+  }
+}
+if (browserInstalled()) ok('browser (Chromium) installed');
+else fail('הדפדפן (Chromium) לא מותקן', 'The browser (Chromium) is not installed', 'הרץ: npx playwright install chromium', 'Run: npx playwright install chromium');
+
 // ---------- check 6: Drushim session ----------
 const { checkDrushimSession, getSession } = await import('../browser/site-session.js');
 console.log('… checking the Drushim session (headless browser)');
 let session = await checkDrushimSession();
 if (session.state === 'logged_in') ok('Drushim: logged in');
 else if (session.state === 'logged_out') {
-  warn('לא מחובר לדרושים — ההגשה תהיה מושבתת', 'Not logged in to Drushim — applying will be disabled', 'הרץ: npm run login -- drushim', 'Run: npm run login -- drushim');
-  if (!DOCTOR && (await ask('Open the Drushim login window now? / לפתוח עכשיו חלון התחברות לדרושים?'))) {
+  warn('לא מחובר לדרושים — ההגשה תהיה מושבתת', 'Not logged in to Drushim — applying will be disabled', 'לחץ "Open the login window" ב-dashboard, או הרץ: npm run login -- drushim', 'Click "Open the login window" in the dashboard, or run: npm run login -- drushim');
+  // on a fresh installation the setup wizard has a login step
+  if (!DOCTOR && !ONBOARDING && (await ask('Open the Drushim login window now? / לפתוח עכשיו חלון התחברות לדרושים?'))) {
     execSync(`"${process.execPath}" "${TSX_CLI}" src/cli/login.ts drushim`, { cwd: BACKEND, stdio: 'inherit' });
     session = await checkDrushimSession();
     if (session.state === 'logged_in') ok('Drushim: logged in');

@@ -69,6 +69,16 @@ export async function runDraftComparison(): Promise<{ markdown: string; before: 
   let after = 0;
 
   for (const q of data.questions) {
+    try {
+      await draftRow(q);
+    } catch (e) {
+      // one slow or failing model call must not lose the whole report
+      rows.push(`### ${q.q} (${q.type})`, '', `**error:** ${e instanceof Error ? e.message : String(e)}`, '');
+      process.stdout.write('E');
+    }
+  }
+
+  async function draftRow(q: BenchQ) {
     const field: FormField = { key: 'q', label: q.q, type: benchType(q.type), required: true };
     // before
     const old = await generateText({

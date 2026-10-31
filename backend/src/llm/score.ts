@@ -44,7 +44,7 @@ export function candidateContext(prefs: Prefs): string {
   if (profile) return profileForScoring(profile);
   const summary = prefs.candidateSummary.trim();
   if (summary && !summary.startsWith('(fill in)')) return summary;
-  throw new Error('No candidate profile: add `candidateSummary` to preferences.yaml (or create data/profile/profile.json).');
+  throw new Error('No candidate profile yet: finish the setup wizard or upload your CV on the Profile screen (or set `candidateSummary` in your preferences).');
 }
 
 export function buildScoreMessages(
