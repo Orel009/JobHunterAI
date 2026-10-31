@@ -90,7 +90,7 @@ export function PrivacyNotice({ providers, labels }: { providers: string[]; labe
   return (
     <div className="banner warn">
       <div dir="rtl">
-        שים לב: עם ספק ענן ({cloud.map((p) => labels[p] ?? p).join(', ')}) תיאורי המשרות, פרטי הפרופיל וקורות החיים שלך נשלחים לשרתי הספק לעיבוד, וחלים עליהם תנאי
+        לתשומת לבך: עם ספק ענן ({cloud.map((p) => labels[p] ?? p).join(', ')}) תיאורי המשרות, פרטי הפרופיל וקורות החיים שלך נשלחים לשרתי הספק לעיבוד, וחלים עליהם תנאי
         הפרטיות שלו. עם Ollama הכול נשאר במחשב הזה.
       </div>
       <div>

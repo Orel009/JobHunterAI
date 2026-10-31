@@ -77,7 +77,7 @@ export function App() {
       {error && <div className="banner error">{error} — is JobHunter running (npm start)?</div>}
       {status?.sessions.drushim?.state === 'logged_out' && onboarding === false && (
         <div className="banner error">
-          <div dir="rtl">לא מחובר לדרושים — ההגשה מושבתת. פתח את חלון ההתחברות, התחבר בעצמך וסגור את החלון.</div>
+          <div dir="rtl">אין חיבור לדרושים — ההגשה מושבתת. יש לפתוח את חלון ההתחברות, להתחבר ולסגור את החלון.</div>
           <div dir="ltr">
             Not logged in to Drushim — applying is disabled.{' '}
             <button className="link" onClick={() => void fetch('/api/session/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })}>
@@ -102,7 +102,7 @@ export function App() {
           .map(([lang]) => (
             <div key={lang} className="banner warn">
               <div dir="rtl">
-                עדכנת את קורות החיים ({lang === 'he' ? 'עברית' : 'אנגלית'}) — עדכן אותם גם בדרושים. המערכת שולחת את הקובץ ששמור בחשבון שלך בדרושים.
+                קורות החיים ({lang === 'he' ? 'עברית' : 'אנגלית'}) עודכנו — יש לעדכן אותם גם בדרושים. המערכת שולחת את הקובץ ששמור בחשבון שלך בדרושים.
               </div>
               <div>
                 Update this CV on Drushim too — applications send the CV stored on your Drushim account. Drushim CV name in your preferences:{' '}

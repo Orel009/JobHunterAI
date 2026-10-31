@@ -41,7 +41,7 @@ const fileDest = READONLY ? null : pino.destination({ dest: path.join(config.pat
 const pretty = pino.transport({ target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss' } });
 
 export const log = pino(
-  { level: config.LOG_LEVEL },
+  { level: config.LOG_LEVEL, base: { pid: process.pid } }, // no hostname in the log
   pino.multistream([
     { stream: pretty, level: config.LOG_LEVEL },
     ...(fileDest ? [{ stream: fileDest, level: config.LOG_LEVEL }] : []),
