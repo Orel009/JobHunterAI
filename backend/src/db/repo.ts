@@ -301,6 +301,14 @@ export class Repo {
     };
   }
 
+  /** Drops scores of active (scored) jobs so the next score run re-evaluates them; returns how many. */
+  invalidateScores(): number {
+    return tx(this.db, () => {
+      this.db.prepare("DELETE FROM scores WHERE job_id IN (SELECT id FROM jobs WHERE status = 'scored')").run();
+      return Number(this.db.prepare("UPDATE jobs SET status = 'discovered', status_reason = 'profile changed — re-scoring' WHERE status = 'scored'").run().changes);
+    });
+  }
+
   /** Records which role types found a job (union with existing tags). */
   addRoleTypes(id: string, roleIds: string[]): void {
     const cur = this.getJob(id);

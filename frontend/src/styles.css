@@ -137,3 +137,14 @@ tr.pending-row { background: #fff8e1; }
 .sticky { position: sticky; top: 0; background: #f5f6f8; z-index: 2; padding: 6px 0; }
 tr.disabled-row { opacity: 0.55; }
 textarea { font: inherit; }
+
+/* ---------- CV update ---------- */
+.cv-slot { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px dashed #c8cdd6; border-radius: 6px; }
+.progress-row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.progress-row progress { width: 240px; }
+.diff h4 { margin: 8px 0 4px; text-transform: capitalize; }
+.diff-row { display: flex; gap: 6px; align-items: baseline; padding: 2px 0; }
+.diff-added .pill { background: #e3f4e6; }
+.diff-removed .pill { background: #fdecea; }
+.pill.ok { background: #d6f2dc; }
+.banner.ok-banner { background: #e3f4e6; color: #1e6b2e; }

@@ -22,6 +22,7 @@ type ProfileState = Awaited<ReturnType<typeof profileStatus>>;
 export function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [profile, setProfile] = useState<ProfileState | null>(null);
+  const [cvInfo, setCvInfo] = useState<{ state: Record<string, { needsDrushimUpdate: boolean }>; drushimCvNames: { he: string; en: string } } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<string>('jobs');
   const [tick, setTick] = useState(0);
@@ -30,6 +31,7 @@ export function App() {
     try {
       setStatus(await api.status());
       setProfile(await profileStatus());
+      setCvInfo(await (await fetch('/api/profile/cv')).json());
       setError(null);
     } catch (e) {
       setError(`API unreachable: ${(e as Error).message}`);
@@ -76,6 +78,23 @@ export function App() {
               : 'No profile yet: put cv-he.pdf / cv-en.pdf in data/profile and run npm run profile:init.'}
         </div>
       )}
+      {cvInfo &&
+        Object.entries(cvInfo.state)
+          .filter(([, s]) => s.needsDrushimUpdate)
+          .map(([lang]) => (
+            <div key={lang} className="banner warn">
+              <div dir="rtl">
+                עדכנת את קורות החיים ({lang === 'he' ? 'עברית' : 'אנגלית'}) — עדכן אותם גם בדרושים. המערכת שולחת את הקובץ ששמור בחשבון שלך בדרושים.
+              </div>
+              <div>
+                Update this CV on Drushim too — applications send the CV stored on your Drushim account. Drushim CV name in your preferences:{' '}
+                <b dir="auto">{(cvInfo.drushimCvNames as Record<string, string>)[lang] || '(not set)'}</b>{' '}
+                <button className="link" onClick={() => void fetch(`/api/profile/cv/${lang}/ack`, { method: 'POST' }).then(refresh)}>
+                  I updated it on Drushim
+                </button>
+              </div>
+            </div>
+          ))}
       {status && <Controls status={status} onChange={refresh} />}
       {tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} roleTypes={status?.roleTypes ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
       {tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} onChanged={refresh} />}

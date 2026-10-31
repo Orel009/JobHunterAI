@@ -12,7 +12,7 @@ import { byRank, rankStoredJob } from '../core/rank.js';
 import { listLocalModels } from '../llm/ollama.js';
 import { prepareJobs, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
-import { registerEditorRoutes } from './editor-routes.js';
+import { registerCvRoutes, registerEditorRoutes } from './editor-routes.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { allSessions, checkDrushimSession, getSession } from '../browser/site-session.js';
@@ -106,6 +106,14 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
 
   registerApplyRoutes(app, db);
   registerEditorRoutes(app);
+  registerCvRoutes(app, {
+    cache: repo,
+    rescore: () => {
+      const n = repo.invalidateScores();
+      log.info({ jobs: n }, 're-scoring active jobs after a profile change');
+      return { runId: startRun(db, 'drushim', 'score'), jobs: n } as { runId: number };
+    },
+  });
 
   /** Re-check the site login (e.g. after `npm run login -- drushim` in another terminal). Uses the browser, so it is a run. */
   app.post('/api/session/check', async (_req, reply) => {

@@ -13,7 +13,9 @@ export interface LlmCache {
 }
 
 export interface ChatJsonOptions<T extends z.ZodType> {
-  model: string;
+  /** explicit model, or a task whose configured model is used */
+  model?: string;
+  task?: 'analyze' | 'write';
   messages: ChatMessage[];
   schema: T;
   temperature?: number;
@@ -70,7 +72,8 @@ function withHebrewQuoteRule(messages: ChatMessage[]): ChatMessage[] {
  * Structured output: passes the zod schema as JSON Schema in `format`, validates the reply with zod,
  * retries once (feeding the validation error back), and caches valid results by content hash.
  */
-export async function chatJson<T extends z.ZodType>(opts: ChatJsonOptions<T>): Promise<{ data: z.infer<T>; cached: boolean }> {
+export async function chatJson<T extends z.ZodType>(optsIn: ChatJsonOptions<T>): Promise<{ data: z.infer<T>; cached: boolean }> {
+  const opts = { ...optsIn, model: optsIn.model ?? (optsIn.task === 'write' ? config.OLLAMA_MODEL_WRITE : config.OLLAMA_MODEL_ANALYZE) };
   // `input` side: what the model must produce (post-validation transforms are ours).
   const jsonSchema = z.toJSONSchema(opts.schema, { target: 'draft-7', io: 'input' });
   const key = sha1(JSON.stringify([opts.model, jsonSchema, opts.messages, opts.temperature ?? 0]));
