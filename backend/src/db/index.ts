@@ -28,10 +28,18 @@ export function migrate(db: DB): string[] {
   for (const f of files) {
     if (applied.has(f)) continue;
     const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
-    tx(db, () => {
-      db.exec(sql);
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(f, nowIso());
-    });
+    // Table rebuilds (to change CHECK constraints) need FK enforcement off; it can't be toggled inside a transaction.
+    db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      tx(db, () => {
+        db.exec(sql);
+        const broken = db.prepare('PRAGMA foreign_key_check').all();
+        if (broken.length) throw new Error(`migration ${f} broke foreign keys: ${JSON.stringify(broken.slice(0, 3))}`);
+        db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(f, nowIso());
+      });
+    } finally {
+      db.exec('PRAGMA foreign_keys = ON');
+    }
     ran.push(f);
   }
   return ran;

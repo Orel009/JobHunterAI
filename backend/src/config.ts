@@ -35,6 +35,7 @@ const EnvSchema = z.object({
   MATCH_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.85),
   COMPANY_COOLDOWN_DAYS: int(30),
   DEDUPE_WINDOW_DAYS: int(14),
+  ENGLISH_CV_MAX_HEBREW_RATIO: z.coerce.number().min(0).max(1).default(0.2),
   PACE_MIN_MS: int(2500),
   PACE_MAX_MS: int(7000),
 });

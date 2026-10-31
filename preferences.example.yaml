@@ -32,6 +32,11 @@ filters:
 candidateSummary: |
   (fill in) e.g. Full Stack developer, X years experience. Skills: ... Education: ... Looking for: ...
 
+# CV names exactly as shown in the site's CV list. Chosen per job by language (see ENGLISH_CV_MAX_HEBREW_RATIO).
+cv:
+  he: "<Hebrew CV name as shown on the site>"
+  en: "<English CV name as shown on the site>"
+
 thresholds:
   autoSubmitMinScore: 80
   matchConfidence: 0.85
@@ -41,7 +46,7 @@ limits:
   dailyApplyLimit: 15
   companyCooldownDays: 30
 
-# Deterministic answers for common form fields (used from Phase 2).
+# Deterministic answers, seeded into the answers bank (pending when empty). You can also answer in the dashboard.
 standardAnswers:
   city: ""
   salaryExpectation: ""
@@ -49,3 +54,8 @@ standardAnswers:
   availability: ""
   fullTime: true
   drivingLicense: ""
+  shifts: ""
+  weekends: ""
+  relocation: ""
+  hybridOk: ""
+  applyConsent: ""

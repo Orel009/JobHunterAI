@@ -18,11 +18,14 @@ export function loadProfile(file = profilePath()): Profile | null {
 }
 
 // ---------- dates / years ----------
-/** Month index (year*12 + month-1). Year-only start = January, year-only end = December. */
+/**
+ * Month index (year*12 + month-1). Conservative for year-only dates so derived years never overstate:
+ * a year-only start counts as December of that year, a year-only end as January.
+ */
 export function monthIndex(d: string, edge: 'start' | 'end', now = new Date()): number {
   if (d === 'present') return now.getFullYear() * 12 + now.getMonth();
   const [y, m] = d.split('-').map(Number) as [number, number | undefined];
-  return y * 12 + (m ? m - 1 : edge === 'start' ? 0 : 11);
+  return y * 12 + (m ? m - 1 : edge === 'start' ? 11 : 0);
 }
 
 /** Total months covered by a set of [start,end] month intervals (overlaps counted once, inclusive). */

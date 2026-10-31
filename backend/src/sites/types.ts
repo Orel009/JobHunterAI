@@ -9,6 +9,7 @@ export const JOB_STATUSES = [
   'queued',
   'needs_review',
   'ready',
+  'dry_run_ok',
   'submitted',
   'failed',
   'blocked',
