@@ -3,7 +3,7 @@
  * The server keeps the last result: when a site is known to be logged out, applying is disabled.
  */
 import type { BrowserContext } from 'playwright';
-import { closeContext, getContext, getPage } from './session.js';
+import { closeContext, detectBlock, getContext, getPage } from './session.js';
 import cfg from '../sites/drushim/selectors.json' with { type: 'json' };
 import { watchSessionProbe } from '../sites/drushim/session-probe.js';
 
@@ -59,20 +59,39 @@ export async function checkDrushimSession(onContext?: (ctx: BrowserContext) => P
 }
 
 /**
- * AllJobs: its own session endpoint (observed 2026-10-31) answers `null` when logged out and the session object when
- * logged in. Read with the browser's cookies; nothing is sent.
+ * AllJobs: the classic site (www.alljobs.co.il, where jobs are applied to) shows a logout link when logged in and a
+ * login link when not. (app.alljobs.co.il/api/auth/session belongs to a separate app: it answered null while the
+ * classic site was logged in — observed 2026-10-31.) One page load with the browser's cookies; nothing is sent.
+ * A bot-protection page answers "unknown" — never bypassed.
  */
-const ALLJOBS_SESSION = 'https://app.alljobs.co.il/api/auth/session';
+export const ALLJOBS_HOME = 'https://www.alljobs.co.il/';
+export function allJobsLoginState(page: { logout: boolean; login: boolean }): 'logged_in' | 'logged_out' | 'unknown' {
+  if (page.logout) return 'logged_in';
+  if (page.login) return 'logged_out';
+  return 'unknown';
+}
 export async function checkAllJobsSession(onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
   let info: SessionInfo;
   try {
     const ctx = await getContext({ headless: true });
     await onContext?.(ctx);
-    const r = await ctx.request.get(ALLJOBS_SESSION, { timeout: 20_000 });
-    const body = (await r.json().catch(() => null)) as { user?: unknown } | null;
+    const page = await getPage();
+    const res = await page.goto(ALLJOBS_HOME, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => undefined);
     const now = new Date().toISOString();
-    if (!r.ok()) info = { state: 'unknown', checkedAt: now, detail: `session endpoint ${r.status()}` };
-    else info = body && body.user ? { state: 'logged_in', checkedAt: now, detail: 'session endpoint: user' } : { state: 'logged_out', checkedAt: now, detail: 'session endpoint: null' };
+    const blocked = await detectBlock(page, res?.status());
+    if (blocked) info = { state: 'unknown', checkedAt: now, detail: `alljobs: ${blocked} — not bypassed; try again later` };
+    else {
+      const links = await page.evaluate(() => {
+        const items = Array.from(document.querySelectorAll('a, button'));
+        return {
+          logout: items.some((a) => /התנתק|logout|signout/i.test((a.textContent ?? '') + (a.getAttribute('href') ?? ''))),
+          login: items.some((a) => /^\s*(כניסה|התחברות)\s*$/.test(a.textContent ?? '')),
+        };
+      });
+      const state = allJobsLoginState(links);
+      info = { state, checkedAt: now, detail: state === 'logged_in' ? 'alljobs: logout link shown' : state === 'logged_out' ? 'alljobs: login link shown' : 'alljobs: neither login nor logout link found' };
+    }
   } catch (e) {
     info = { state: 'unknown', checkedAt: new Date().toISOString(), detail: e instanceof Error ? e.message.split('\n')[0]! : String(e) };
   } finally {

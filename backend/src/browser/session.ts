@@ -98,6 +98,8 @@ const BLOCK_PATTERNS: Array<[RegExp, string]> = [
   [/just a moment|cf-chl|checking your browser|attention required/i, 'cloudflare challenge'],
   [/request unsuccessful\. incapsula|_incapsula_resource|imperva/i, 'imperva/incapsula bot protection'],
   [/px-captcha|perimeterx|press & hold/i, 'perimeterx bot protection'],
+  // Radware Bot Manager (AllJobs, Drushim): a 200 page titled 'Radware Page' with 'Verifying your browser…'
+  [/radware page|verifying your browser|radware bot manager|validate.perfdrive/i, 'radware bot protection'],
   [/too many requests|rate limit/i, 'rate limited'],
 ];
 
