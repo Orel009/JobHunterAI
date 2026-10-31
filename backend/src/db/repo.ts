@@ -317,6 +317,17 @@ export class Repo {
     return rows.map(fromRow);
   }
 
+  /** Scored jobs with the role type they were scored as (to re-score when preferences assign another role type). */
+  scoredWithRole(site?: string): Array<StoredJob & { scoredRole: string | null }> {
+    const rows = this.db
+      .prepare(
+        `SELECT j.*, s.role_type AS scored_role FROM jobs j JOIN scores s ON s.job_id = j.id
+         WHERE j.status = 'scored' AND s.content_hash = j.content_hash AND (? IS NULL OR j.site = ?)`,
+      )
+      .all(site ?? null, site ?? null) as unknown as Array<JobRow & { scored_role: string | null }>;
+    return rows.map((r) => ({ ...fromRow(r), scoredRole: r.scored_role ?? null }));
+  }
+
   saveScore(jobId: string, s: Omit<ScoreRecord, 'createdAt'>): void {
     const now = nowIso();
     tx(this.db, () => {

@@ -82,6 +82,24 @@ export function leadRoleNoun(title: string): string | null {
   return null;
 }
 
+const removeWords = (normTitle: string, phrase: string) => {
+  const p = normalizeText(phrase);
+  if (!p) return normTitle;
+  return ` ${normTitle} `.split(` ${p} `).join(' ').replace(/\s+/g, ' ').trim();
+};
+
+/** "מוביל/ת צוות", "מובילה לצוות" — a team lead, which no role type's exception covers (like "ראש צוות"). */
+export const isTeamLead = (title: string) => /(?<![א-ת])מוביל(?:\s*[/.\\(]\s*[הת]\)?|ה)?\s+[ול]?צוות/.test(title);
+
+/**
+ * Seniority words allowed for this title: the allowSeniorityWords of every enabled role type whose titleKeywords
+ * match it. lead = the role-noun "מוביל/ת" is allowed (listed as "מוביל" / "מובילה").
+ */
+export function allowedSeniority(title: string, roles: RoleType[]): { phrases: string[]; lead: boolean } {
+  const words = rolesMatchingTitle(title, roles.filter((r) => !r.searchOnly)).flatMap((r) => r.allowSeniorityWords ?? []);
+  return { phrases: words, lead: words.some((w) => /^מוביל(ה|\s*[/.]\s*[הת])?$/.test(w.trim())) };
+}
+
 /** Deterministic gate before any LLM call. Order matters: the first failing rule is the reason. */
 export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { aliasGroups?: string[][] } = {}): PrefilterResult {
   const title = normalizeText(job.title);
@@ -98,10 +116,13 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
   const excludedCompany = excludedCompanyMatch(job.company, f.excludeCompanies);
   if (excludedCompany) return { pass: false, status: 'skipped_company', reason: `excluded company: ${job.company} (matches "${excludedCompany}")` };
 
-  const seniority = f.excludeSeniorityKeywords.find((k) => containsKeyword(title, k));
+  // a role type can allow some seniority words when the title is that kind of role (allowSeniorityWords)
+  const allow = allowedSeniority(job.title, prefs.roleTypes ?? []);
+  const seniorityTitle = allow.phrases.reduce(removeWords, title);
+  const seniority = f.excludeSeniorityKeywords.find((k) => containsKeyword(seniorityTitle, k));
   if (seniority) return { pass: false, reason: `seniority: "${seniority}"` };
   const lead = leadRoleNoun(job.title);
-  if (lead) return { pass: false, reason: `seniority: "${lead}" (team / domain lead)` };
+  if (lead && !(allow.lead && !isTeamLead(job.title))) return { pass: false, reason: `seniority: "${lead}" (team / domain lead)` };
 
   const excluded = f.excludeTitleKeywords.find((k) => containsKeyword(title, k));
   if (excluded) return { pass: false, reason: `excluded title keyword: "${excluded}"` };
@@ -149,7 +170,11 @@ export function rolesMatchingTitle(title: string, roles: RoleType[]): RoleType[]
  */
 export function primaryRole(job: { title: string; roleTypes: string[] }, prefs: Pick<Prefs, 'roleTypes' | 'queries'>): RoleType | null {
   const roles = activeRoleTypes(prefs).filter((r) => !r.searchOnly);
-  return [...rolesMatchingTitle(job.title, roles)].sort((a, b) => a.tier - b.tier)[0] ?? null;
+  // best tier; within a tier the role type with more matching keywords ("מוביל/ת חדשנות ו-AI" is AI innovation, not
+  // AI development), then the order in preferences
+  const t = normalizeText(job.title);
+  const hits = (r: RoleType) => r.titleKeywords.filter((k) => containsKeyword(t, k)).length;
+  return [...rolesMatchingTitle(job.title, roles)].sort((a, b) => a.tier - b.tier || hits(b) - hits(a))[0] ?? null;
 }
 
 /** Tier used for ranking: the primary role's tier, or 3 when no role type matches the title. */

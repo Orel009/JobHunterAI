@@ -19,6 +19,7 @@ interface RoleType {
   titleKeywords: string[];
   notes?: string;
   salary?: SalarySettings;
+  allowSeniorityWords?: string[];
 }
 export interface Prefs {
   roleTypes: RoleType[];
@@ -105,6 +106,7 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
                 <th>Search only</th>
                 <th>Queries (one per line)</th>
                 <th>Title keywords (one per line)</th>
+                <th title="seniority words that do not skip a job whose title matches this role type (e.g. מוביל, AI Lead); never a team lead">Allowed seniority words</th>
                 <th />
               </tr>
             </thead>
@@ -134,6 +136,9 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
                   </td>
                   <td>
                     <TextList value={r.titleKeywords} rows={4} onChange={(v) => up((d) => void (d.roleTypes[i]!.titleKeywords = v))} />
+                  </td>
+                  <td>
+                    <TextList value={r.allowSeniorityWords ?? []} rows={4} placeholder="e.g. מוביל / AI Lead" onChange={(v) => up((d) => void (d.roleTypes[i]!.allowSeniorityWords = v))} />
                   </td>
                   <td>
                     <button className="link" onClick={() => up((d) => void d.roleTypes.splice(i, 1))}>

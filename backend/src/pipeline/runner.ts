@@ -268,7 +268,10 @@ export async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<
   run.stage = 'scoring';
   const prefs = loadPrefs();
   applyPrefilter(repo, run, prefs);
-  const todo = repo.jobsNeedingScore(run.site);
+  // new or changed jobs, plus scored jobs that preferences now treat as another role type (judged for the wrong role)
+  const roleChanged = repo.scoredWithRole(run.site).filter((j) => (scoringRole(j, prefs)?.id ?? null) !== j.scoredRole);
+  const todo = [...repo.jobsNeedingScore(run.site), ...roleChanged];
+  run.stats.roleChanged = roleChanged.length;
   let candidate: string;
   try {
     candidate = candidateContext(prefs);

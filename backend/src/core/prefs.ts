@@ -39,6 +39,11 @@ export const RoleTypeSchema = z.object({
   titleKeywords: strList,
   /** extra guidance for the scorer, e.g. "development-oriented only" */
   notes: z.string().optional(),
+  /**
+   * seniority words that do NOT skip a job whose title matches this role type's titleKeywords, e.g. ["מוביל",
+   * "AI Lead", "Innovation Lead"]. "מוביל" covers מוביל/ה, מוביל/ת, מובילה (never as a team lead: "מוביל/ת צוות").
+   */
+  allowSeniorityWords: strList,
   /** salary settings for this role type (empty values fall back to the tier, then the default) */
   salary: SalarySettingsSchema.optional(),
 });
@@ -130,7 +135,7 @@ export function loadPrefs(file = config.paths.preferences): Prefs {
 export function activeRoleTypes(p: Pick<Prefs, 'roleTypes' | 'queries'>): RoleType[] {
   if (p.roleTypes.length > 0) return p.roleTypes.filter((r) => r.enabled);
   const legacy = [...p.queries.titles, ...p.queries.keywords];
-  return legacy.length ? [{ id: 'default', tier: 1, enabled: true, searchOnly: false, queries: legacy, titleKeywords: [] }] : [];
+  return legacy.length ? [{ id: 'default', tier: 1, enabled: true, searchOnly: false, queries: legacy, titleKeywords: [], allowSeniorityWords: [] }] : [];
 }
 
 /** Unique search terms with the role types that asked for them (a term shared by two roles is searched once). */
