@@ -7,7 +7,7 @@ import type { SiteContext } from '../sites/types.js';
 import { BlockedError, closeContext, getPage } from '../browser/session.js';
 import { toJob } from '../core/job.js';
 import { findCrossSiteDuplicate } from '../core/dedupe.js';
-import { prefilter, primaryRole } from '../core/prefilter.js';
+import { prefilter, scoringRole } from '../core/prefilter.js';
 import { effectiveLimits, loadPrefs, searchPlan } from '../core/prefs.js';
 import { experienceInput, extractRequiredYears } from '../core/experience.js';
 import { candidateContext, scoreJob } from '../llm/score.js';
@@ -193,7 +193,8 @@ function applyPrefilter(repo: Repo, run: ActiveRun, prefs: ReturnType<typeof loa
     /* invalid profile: the scorer reports it; prefilter works without aliases */
   }
   for (const j of repo.jobsNeedingPrefilter(run.site)) {
-    const r = prefilter(j, prefs, { aliasGroups });
+    const regions = ((j.raw as { regions?: unknown } | null)?.regions as string[] | undefined) ?? [];
+    const r = prefilter({ ...j, regions }, prefs, { aliasGroups });
     repo.setPrefilter(j.id, r.pass, r.reason);
     if (r.pass) run.stats.prefilterPassed++;
     else run.stats.prefilterSkipped++;
@@ -220,10 +221,15 @@ async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<void> {
     }
     try {
       const t0 = Date.now();
-      const role = primaryRole(j, prefs);
+      const role = scoringRole(j, prefs);
       const s = await scoreJob(j, candidate, { cache: repo, role });
       repo.saveScore(j.id, { ...s, contentHash: j.contentHash, roleType: role?.id ?? null });
       run.stats.scored++;
+      if (s.isTrainingProgram) {
+        repo.setStatus(j.id, 'skipped_not_a_job', 'training program / course, not a job (scorer)');
+        run.stats.notAJob = (run.stats.notAJob ?? 0) + 1;
+        continue;
+      }
       // LLM fallback only when the regex found nothing (regex wins when both exist)
       if (ex.requiredYears === null && s.requiredYearsMin !== null) {
         repo.setExperience(j.id, { years: s.requiredYearsMin, source: 'llm', text: s.requiredYearsQuote, juniorText: ex.juniorText });

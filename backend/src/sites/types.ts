@@ -18,6 +18,8 @@ export const JOB_STATUSES = [
   'skipped_experience',
   /** a required screening statement is false for the candidate */
   'skipped_screening',
+  /** the post is a training program / course, not a job */
+  'skipped_not_a_job',
 ] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 

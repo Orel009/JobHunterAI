@@ -12,6 +12,8 @@ const valid = {
   requiredYearsMin: 2,
   requiredYearsQuote: 'ניסיון של שנתיים',
   seniority: 'mid',
+  devContentScore: 80,
+  isTrainingProgram: false,
 };
 const msgs = [{ role: 'user' as const, content: 'x' }];
 

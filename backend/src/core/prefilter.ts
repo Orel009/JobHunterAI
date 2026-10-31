@@ -8,7 +8,7 @@ export interface PrefilterResult {
   reason: string;
 }
 
-type PrefilterInput = Pick<Job, 'title' | 'company' | 'location'>;
+type PrefilterInput = Pick<Job, 'title' | 'company' | 'location'> & { regions?: string[] };
 type PrefilterPrefs = Pick<Prefs, 'locations' | 'filters'> & Partial<Pick<Prefs, 'roleTypes' | 'queries'>>;
 
 /**
@@ -33,7 +33,7 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
   const f = {
     ...prefs.filters,
     includeTitleKeywords: expandWithAliases(
-      [...prefs.filters.includeTitleKeywords, ...activeRoleTypes({ roleTypes: prefs.roleTypes ?? [], queries: prefs.queries ?? { titles: [], keywords: [] } }).flatMap((r) => r.titleKeywords)],
+      [...prefs.filters.includeTitleKeywords, ...activeRoleTypes({ roleTypes: prefs.roleTypes ?? [], queries: prefs.queries ?? { titles: [], keywords: [] } }).filter((r) => !r.searchOnly).flatMap((r) => r.titleKeywords)],
       groups,
     ),
     excludeTitleKeywords: expandWithAliases(prefs.filters.excludeTitleKeywords, groups),
@@ -52,14 +52,14 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
     return { pass: false, reason: 'no include keyword in title' };
   }
 
-  if (prefs.locations.length > 0 && job.location.trim()) {
-    const loc = normalizeText(job.location);
-    const ok =
-      prefs.locations.some((l) => {
-        const n = normalizeText(l);
-        return !!n && (containsKeyword(loc, l) || containsKeyword(n, job.location));
-      }) || f.remoteKeywords.some((k) => containsKeyword(loc, k));
-    if (!ok) return { pass: false, reason: `location: ${job.location}` };
+  const places = [job.location, ...(job.regions ?? [])].map((p) => p.trim()).filter(Boolean);
+  if (prefs.locations.length > 0 && places.length > 0) {
+    // city OR the site's region field; both directions so "השרון" matches "שרון" and "תל אביב" matches "תל אביב יפו"
+    const matches = (place: string) => {
+      const n = normalizeText(place);
+      return prefs.locations.some((l) => containsKeyword(n, l) || containsKeyword(normalizeText(l), place)) || f.remoteKeywords.some((k) => containsKeyword(n, k));
+    };
+    if (!places.some(matches)) return { pass: false, reason: `location: ${job.location}${job.regions?.length ? ` (regions: ${job.regions.join(', ')})` : ''}` };
   }
 
   return { pass: true, reason: 'ok' };
@@ -72,14 +72,21 @@ export function rolesMatchingTitle(title: string, roles: RoleType[]): RoleType[]
 }
 
 /**
- * The role type a job is judged and ranked as (best tier wins at each step):
- *   1. role types that found it AND whose title keywords match the title
- *   2. else role types whose title keywords match
- *   3. else role types whose queries found it
+ * The role type a job is judged and ranked as: the best tier among non-search-only role types whose title
+ * keywords match the title. Search-only role types (e.g. "junior") never decide the role or tier.
+ * No match → no role type, and the job is ranked as tier 3.
  */
 export function primaryRole(job: { title: string; roleTypes: string[] }, prefs: Pick<Prefs, 'roleTypes' | 'queries'>): RoleType | null {
-  const roles = activeRoleTypes(prefs);
-  const byTier = (rs: RoleType[]) => [...rs].sort((a, b) => a.tier - b.tier)[0] ?? null;
-  const titled = rolesMatchingTitle(job.title, roles);
-  return byTier(titled.filter((r) => job.roleTypes.includes(r.id))) ?? byTier(titled) ?? byTier(roles.filter((r) => job.roleTypes.includes(r.id)));
+  const roles = activeRoleTypes(prefs).filter((r) => !r.searchOnly);
+  return [...rolesMatchingTitle(job.title, roles)].sort((a, b) => a.tier - b.tier)[0] ?? null;
+}
+
+/** Tier used for ranking: the primary role's tier, or 3 when no role type matches the title. */
+export const rankTier = (role: RoleType | null): 1 | 2 | 3 => role?.tier ?? 3;
+
+/** Role context for the scorer: the primary role, else the best non-search-only role type whose query found it. */
+export function scoringRole(job: { title: string; roleTypes: string[] }, prefs: Pick<Prefs, 'roleTypes' | 'queries'>): RoleType | null {
+  const p = primaryRole(job, prefs);
+  if (p) return p;
+  return [...activeRoleTypes(prefs).filter((r) => !r.searchOnly && job.roleTypes.includes(r.id))].sort((a, b) => a.tier - b.tier)[0] ?? null;
 }

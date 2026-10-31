@@ -11,7 +11,7 @@ export function RankBadge({ rank }: { rank: Rank }) {
     <span className="rank" title={`score ${rank.score} · experience ${sign(rank.experience)} (${rank.category}) · tier ${sign(rank.tier)}${rank.roleType ? ` (${rank.roleType}, tier ${rank.roleTier})` : ''}`}>
       <span className={`score ${cls}`}>{rank.rank}</span>
       <span className="rank-parts">
-        {rank.score} <i>exp</i> {sign(rank.experience)} <i>{CAT[rank.category]}</i> · <i>tier</i> {sign(rank.tier)}
+        {rank.rawScore !== rank.score ? <span title={`tier 3: min(score ${rank.rawScore}, dev content)`}>{rank.score}*</span> : rank.score} <i>exp</i> {sign(rank.experience)} <i>{CAT[rank.category]}</i> · <i>tier</i> {sign(rank.tier)}
       </span>
     </span>
   );

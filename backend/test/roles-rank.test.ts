@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { prefilter, primaryRole, rolesMatchingTitle } from '../src/core/prefilter.js';
+import { prefilter, primaryRole, rankTier, rolesMatchingTitle, scoringRole } from '../src/core/prefilter.js';
 import { activeRoleTypes, DEFAULT_SENIORITY_EXCLUDES, PrefsSchema, searchPlan } from '../src/core/prefs.js';
 import { experienceCategory, rankJob } from '../src/core/rank.js';
 import { resolveField, type ResolveDeps } from '../src/apply/resolve.js';
@@ -14,6 +14,7 @@ const prefs = PrefsSchema.parse({
     { id: 'backend', tier: 1, queries: ['Backend Developer', 'Full Stack Developer'], titleKeywords: ['backend', '.NET', 'Node.js'] },
     { id: 'automation', tier: 2, queries: ['QA Automation'], titleKeywords: ['automation', 'אוטומציה'] },
     { id: 'support', tier: 3, queries: ['תמיכה טכנית'], titleKeywords: ['תמיכה טכנית', 'support'] },
+    { id: 'junior', tier: 1, searchOnly: true, queries: ['Junior Developer'], titleKeywords: ['junior'] },
     { id: 'off', tier: 2, enabled: false, queries: ['Data Engineer'], titleKeywords: ['data'] },
   ],
   filters: { excludeTitleKeywords: ['Java'] },
@@ -46,15 +47,20 @@ describe('role types', () => {
     const plan = searchPlan(prefs);
     expect(plan.find((p) => p.query === 'Full Stack Developer')?.roleIds).toEqual(['fullstack', 'backend']);
     expect(plan.some((p) => p.query === 'Data Engineer')).toBe(false);
-    expect(activeRoleTypes(prefs)).toHaveLength(4);
+    expect(activeRoleTypes(prefs)).toHaveLength(5);
   });
-  it('primary role prefers role types that found the job AND match its title', () => {
-    expect(primaryRole({ title: 'Node.js Backend & Automation Developer', roleTypes: ['automation'] }, prefs)?.id).toBe('automation');
-    expect(primaryRole({ title: 'Node.js Backend & Automation Developer', roleTypes: ['automation', 'backend'] }, prefs)?.id).toBe('backend');
-  });
-  it('primary role: best tier among title matches, else among the roles that found it', () => {
+  it('primary role = best tier among role types matching the title (whoever found it)', () => {
+    expect(primaryRole({ title: 'Node.js Backend & Automation Developer', roleTypes: ['automation'] }, prefs)?.id).toBe('backend');
     expect(primaryRole({ title: 'QA Automation Engineer', roleTypes: ['fullstack'] }, prefs)?.id).toBe('automation');
-    expect(primaryRole({ title: 'Software Engineer', roleTypes: ['support', 'automation'] }, prefs)?.id).toBe('automation');
+  });
+  it('no title match → no role, ranked as tier 3; search-only roles never decide', () => {
+    expect(primaryRole({ title: 'Software Engineer', roleTypes: ['support', 'automation'] }, prefs)).toBeNull();
+    expect(rankTier(primaryRole({ title: 'Junior IT Support Technician', roleTypes: ['junior'] }, prefs))).toBe(3);
+    expect(primaryRole({ title: 'Junior Full Stack Developer', roleTypes: ['junior'] }, prefs)?.id).toBe('fullstack');
+    expect(scoringRole({ title: 'Software Engineer', roleTypes: ['support', 'automation'] }, prefs)?.id).toBe('automation');
+  });
+  it('search-only title keywords do not count as include keywords', () => {
+    expect(prefilter(j('Junior Accountant'), prefs).reason).toBe('no include keyword in title');
     expect(rolesMatchingTitle('Node.js Backend Developer', activeRoleTypes(prefs)).map((r) => r.id)).toEqual(['backend']);
   });
   it('legacy queries become one tier-1 role type', () => {
@@ -72,12 +78,17 @@ describe('ranking', () => {
     expect(experienceCategory({ requiredYears: null, juniorText: null, seniority: 'junior' })).toBe('junior');
     expect(experienceCategory({ requiredYears: null, juniorText: null })).toBe('unknown');
   });
-  it('rank = score + experience + tier (defaults +15/+5/-10/0 and +5/0/-10)', () => {
+  it('rank = score + experience + tier (defaults +15/+5/-10/0 and +5/0/-25)', () => {
     expect(rankJob({ score: 70, requiredYears: 1, juniorText: null, tier: 1 }, R)).toMatchObject({ rank: 90, experience: 15, tier: 5 });
     expect(rankJob({ score: 70, requiredYears: 2, juniorText: null, tier: 2 }, R)).toMatchObject({ rank: 75 });
-    expect(rankJob({ score: 80, requiredYears: 3, juniorText: null, tier: 3 }, R)).toMatchObject({ rank: 60 });
+    expect(rankJob({ score: 80, requiredYears: 3, juniorText: null, tier: 3 }, R)).toMatchObject({ rank: 45 });
     expect(rankJob({ score: 60, requiredYears: null, juniorText: null, tier: null }, R)).toMatchObject({ rank: 60, experience: 0, tier: 0 });
     expect(rankJob({ score: null, requiredYears: 1, juniorText: null, tier: 1 }, R).rank).toBeNull();
+  });
+  it('tier 3 ranks on min(score, devContentScore)', () => {
+    expect(rankJob({ score: 95, devContentScore: 10, requiredYears: 0, juniorText: null, tier: 3 }, R)).toMatchObject({ rank: 0, score: 10, rawScore: 95 });
+    expect(rankJob({ score: 70, devContentScore: 90, requiredYears: null, juniorText: null, tier: 3 }, R).rank).toBe(45);
+    expect(rankJob({ score: 95, devContentScore: 10, requiredYears: null, juniorText: null, tier: 1 }, R).rank).toBe(100); // only tier 3
   });
   it('weights are configurable', () => {
     const custom = PrefsSchema.parse({ ranking: { experienceBoost: { junior: 30 }, tierBoost: { tier1: 0 } } }).ranking;
@@ -148,5 +159,37 @@ describe('years of experience', () => {
   it('no declaredExperience → general statements stay pending', async () => {
     const p = ProfileSchema.parse({ ...profile, declaredExperience: null });
     expect(await resolveField(q('האם יש לך שנתיים ניסיון בפיתוח?'), deps('general', p))).toMatchObject({ status: 'pending' });
+  });
+});
+
+describe('locations: city or the site region field', () => {
+  const p = PrefsSchema.parse({ locations: ['נתניה', 'השרון', 'תל אביב'], filters: { remoteKeywords: ['remote', 'היברידי'] } });
+  const job = (location: string, regions: string[] = []) => ({ title: 'x', company: 'c', location, regions });
+  it('matches the city, the region field (both directions) or remote words', () => {
+    expect(prefilter(job('נתניה'), p).pass).toBe(true);
+    expect(prefilter(job('תל אביב יפו'), p).pass).toBe(true);
+    expect(prefilter(job('אבן יהודה', ['נתניה / אבן יהודה']), p).pass).toBe(true);
+    expect(prefilter(job('צור יגאל', ['שרון']), p).pass).toBe(true); // "השרון" ↔ "שרון"
+    expect(prefilter(job('חיפה', ['חיפה', 'צפון']), p).reason).toBe('location: חיפה (regions: חיפה, צפון)');
+    expect(prefilter(job('Remote'), p).pass).toBe(true);
+  });
+});
+
+describe('title excludes for support / courses', () => {
+  const p = PrefsSchema.parse({
+    filters: { includeTitleKeywords: ['תמיכה טכנית', 'developer', 'מפתח'], excludeTitleKeywords: ['נציג', 'נציגת', 'נציגי', 'נציג/ה', 'helpdesk', 'help desk', 'מחשוב', 'מוקד', 'call center', 'שירות לקוחות', 'הכשרה', 'קורס', 'הכשרה והשמה', 'מסלול הכשרה', 'הסבה', 'bootcamp', 'course', 'training program'] },
+  });
+  it.each([
+    ['נציג/ת תמיכה טכנית', false],
+    ['נציגי/ות תמיכה טכנית', false],
+    ['תמיכה טכנית ומחשוב', false],
+    ['Helpdesk Developer', false],
+    ['AI software engineer - הכשרה והשמה למשרות פיתוח', false],
+    ['מסלול הכשרה למפתחים', false],
+    ['Full Stack Developer course', false],
+    ['מפתח/ת תוכנה', true],
+    ['תמיכה טכנית אפליקטיבית למפתחים', true],
+  ])('%s → pass=%s', (title, pass) => {
+    expect(prefilter({ title, company: 'c', location: '' }, p).pass).toBe(pass);
   });
 });

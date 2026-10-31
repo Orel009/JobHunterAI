@@ -119,3 +119,4 @@ tr.pending-row { background: #fff8e1; }
 .exp-row q { font-size: 12px; }
 .status-skipped_experience, .status-skipped_screening { background: #f1f1f1; color: #888; }
 .prov-declared_experience { background: #fce4ec; }
+.status-skipped_not_a_job { background: #f1f1f1; color: #888; }

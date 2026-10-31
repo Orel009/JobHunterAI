@@ -18,6 +18,10 @@ export const ScoreSchema = z.object({
   /** short quote from the post supporting requiredYearsMin (provenance), or null */
   requiredYearsQuote: z.string().nullable(),
   seniority: z.enum(['junior', 'mid', 'senior', 'unknown']),
+  /** 0-100: how much of the job is real software development (code, APIs, databases, debugging) */
+  devContentScore: z.number().int().min(0).max(100),
+  /** true when the post is a course / bootcamp / training program ("הכשרה והשמה"), not a job */
+  isTrainingProgram: z.boolean(),
 });
 
 export interface ScoreRole {
@@ -71,6 +75,8 @@ export function buildScoreMessages(
         'reasoningHe: exactly 2 short sentences in natural, grammatical Hebrew explaining the score.',
         'requiredYearsMin: minimum years of experience the post REQUIRES (ignore anything marked יתרון / advantage / nice to have); a range counts as its minimum; several requirements → the highest minimum; null if none is stated. requiredYearsQuote: the exact short phrase from the post, or null.',
         'seniority: how the POST describes the role — junior (entry level, students, graduates, 0-1 years), mid, senior, or unknown.',
+        'devContentScore: 0-100, how much of the daily work is real software development (writing code, APIs, databases, debugging). Call-center / customer service / IT helpdesk / hardware support ≈ 0-20.',
+        'isTrainingProgram: true if the post is a course, bootcamp, "הכשרה והשמה" or any training program the candidate would join as a student, not a job.',
         role
           ? `Judge fit for the role type "${roleName}"${role.notes ? ` — ${role.notes}` : ''}: evaluate the candidate for THIS kind of role, not only as a full stack developer.`
           : '',

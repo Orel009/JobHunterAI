@@ -28,6 +28,7 @@ roleTypes:
   - id: junior
     label: Junior Developer
     tier: 1
+    searchOnly: true   # searched only; a job's tier comes from its real role type
     queries: [Junior Developer, מפתח ג'וניור, ג'וניור]
     titleKeywords: [junior, jr, ג'וניור, entry level, בוגרי קורס, ללא ניסיון]
   # ---------- tier 2 ----------
@@ -55,7 +56,7 @@ roleTypes:
   - id: support
     label: Technical Support Engineer / Application Support
     tier: 3
-    notes: development-oriented support only (code, SQL, APIs, debugging); score call-center / customer-service roles low
+    notes: development-oriented support only (code, SQL, APIs, debugging); tier 3 is ranked on min(score, devContentScore)
     queries: [Application Support, Technical Support Engineer, תמיכה טכנית]
     titleKeywords: [application support, technical support, support engineer, תמיכה טכנית, תמיכה אפליקטיבית]
 
@@ -73,7 +74,7 @@ ranking:
   tierBoost:
     tier1: 5
     tier2: 0
-    tier3: -10
+    tier3: -25
 
 # Accepted job locations. A job passes if its location contains one of these
 # (or matches remoteKeywords). Jobs with no location pass. Empty list = any location.
@@ -89,11 +90,13 @@ filters:
   # Extra title keywords (in addition to every enabled role type's titleKeywords).
   includeTitleKeywords: []
   # Whole words, case-insensitive ("Java" does not exclude "JavaScript").
-  excludeTitleKeywords: [בודק ידני, manual QA, manual tester, מכירות, sales, embedded, מוקד, call center]
+  excludeTitleKeywords: [בודק ידני, manual QA, manual tester, מכירות, sales, embedded,
+    נציג, נציגת, נציגי, נציג/ה, helpdesk, help desk, מחשוב, מוקד, call center, שירות לקוחות,
+    הכשרה, קורס, הכשרה והשמה, מסלול הכשרה, הסבה, bootcamp, course, training program]
   # Seniority words in the title → skipped before any LLM call (whole words; list inflections, e.g. בכיר + בכירה).
   excludeSeniorityKeywords: [Senior, Sr, Lead, Team Lead, Tech Lead, Principal, Staff, Architect, Head of, Manager, Director, בכיר, בכירה, ראש צוות, ארכיטקט, מנהל פיתוח]
   excludeCompanies: []
-  remoteKeywords: [מהבית, remote, היברידי, hybrid, כל הארץ]
+  remoteKeywords: [מהבית, עבודה מהבית, remote, היברידי, hybrid, כל הארץ]
 
 # Used by the scorer only until data/profile/profile.json exists.
 # TRUE FACTS ONLY: skills, years, education, the kind of role you want.

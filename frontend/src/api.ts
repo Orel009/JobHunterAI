@@ -10,13 +10,15 @@ export type JobStatus =
   | 'blocked'
   | 'skipped'
   | 'skipped_experience'
-  | 'skipped_screening';
+  | 'skipped_screening'
+  | 'skipped_not_a_job';
 
-export const STATUSES: JobStatus[] = ['discovered', 'scored', 'queued', 'needs_review', 'dry_run_ok', 'submitted', 'failed', 'blocked', 'skipped', 'skipped_experience', 'skipped_screening'];
+export const STATUSES: JobStatus[] = ['discovered', 'scored', 'queued', 'needs_review', 'dry_run_ok', 'submitted', 'failed', 'blocked', 'skipped', 'skipped_experience', 'skipped_screening', 'skipped_not_a_job'];
 
 export interface Rank {
   rank: number | null;
   score: number | null;
+  rawScore: number | null;
   experience: number;
   tier: number;
   category: 'junior' | 'years2' | 'years3' | 'above3' | 'unknown';

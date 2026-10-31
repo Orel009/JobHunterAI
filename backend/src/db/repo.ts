@@ -56,6 +56,8 @@ export interface StoredJob extends Job {
 }
 
 export interface ScoreRecord {
+  devContentScore?: number | null;
+  isTrainingProgram?: boolean | null;
   requiredYearsMin?: number | null;
   requiredYearsQuote?: string | null;
   seniority?: string | null;
@@ -220,16 +222,18 @@ export class Repo {
       this.db
         .prepare(
           `INSERT INTO scores (job_id, content_hash, model, score, matched_skills, missing_requirements, seniority_fit, reasoning_he, created_at,
-             required_years_min, required_years_quote, seniority, role_type)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+             required_years_min, required_years_quote, seniority, role_type, dev_content_score, is_training_program)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(job_id) DO UPDATE SET content_hash=excluded.content_hash, model=excluded.model, score=excluded.score,
              matched_skills=excluded.matched_skills, missing_requirements=excluded.missing_requirements,
              seniority_fit=excluded.seniority_fit, reasoning_he=excluded.reasoning_he, created_at=excluded.created_at,
              required_years_min=excluded.required_years_min, required_years_quote=excluded.required_years_quote,
-             seniority=excluded.seniority, role_type=excluded.role_type`,
+             seniority=excluded.seniority, role_type=excluded.role_type, dev_content_score=excluded.dev_content_score,
+             is_training_program=excluded.is_training_program`,
         )
         .run(jobId, s.contentHash, s.model, s.score, JSON.stringify(s.matchedSkills), JSON.stringify(s.missingRequirements), s.seniorityFit, s.reasoningHe, now,
-          s.requiredYearsMin ?? null, s.requiredYearsQuote ?? null, s.seniority ?? null, s.roleType ?? null);
+          s.requiredYearsMin ?? null, s.requiredYearsQuote ?? null, s.seniority ?? null, s.roleType ?? null, s.devContentScore ?? null,
+          s.isTrainingProgram === undefined || s.isTrainingProgram === null ? null : s.isTrainingProgram ? 1 : 0);
       this.db.prepare(`UPDATE jobs SET status='scored', status_reason=NULL, updated_at=? WHERE id=? AND status='discovered'`).run(now, jobId);
     });
   }
@@ -246,7 +250,7 @@ export class Repo {
     const rows = this.db
       .prepare(
         `SELECT j.*, s.score, s.matched_skills, s.missing_requirements, s.seniority_fit, s.reasoning_he, s.model AS score_model,
-                s.required_years_min, s.required_years_quote, s.seniority, s.role_type
+                s.required_years_min, s.required_years_quote, s.seniority, s.role_type, s.dev_content_score, s.is_training_program
          FROM jobs j LEFT JOIN scores s ON s.job_id = j.id ${w}
          ORDER BY (s.score IS NULL), s.score DESC, j.first_seen_at DESC LIMIT ? OFFSET ?`,
       )
@@ -271,6 +275,8 @@ export class Repo {
                 requiredYearsQuote: (r.required_years_quote as string | null) ?? null,
                 seniority: (r.seniority as string | null) ?? null,
                 roleType: (r.role_type as string | null) ?? null,
+                devContentScore: (r.dev_content_score as number | null) ?? null,
+                isTrainingProgram: r.is_training_program === null || r.is_training_program === undefined ? null : !!r.is_training_program,
               },
       })),
     };
@@ -290,6 +296,8 @@ export class Repo {
       requiredYearsQuote: (r.required_years_quote as string | null) ?? null,
       seniority: (r.seniority as string | null) ?? null,
       roleType: (r.role_type as string | null) ?? null,
+      devContentScore: (r.dev_content_score as number | null) ?? null,
+      isTrainingProgram: r.is_training_program === null || r.is_training_program === undefined ? null : !!r.is_training_program,
     };
   }
 

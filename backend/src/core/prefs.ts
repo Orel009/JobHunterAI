@@ -19,6 +19,8 @@ export const RoleTypeSchema = z.object({
   /** 1 = core, 2 = good, 3 = fallback */
   tier: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   enabled: z.boolean().default(true),
+  /** search-only (e.g. "junior"): its queries are searched, but it never decides a job's tier/role or its title keywords */
+  searchOnly: z.boolean().default(false),
   /** search terms (Hebrew + English); each is searched on every site */
   queries: strList,
   /** a job title must contain one of these (whole words) for the job to count as this role type */
@@ -65,7 +67,7 @@ export const PrefsSchema = z.object({
           unknown: z.number().default(0),
         })
         .prefault({}),
-      tierBoost: z.object({ tier1: z.number().default(5), tier2: z.number().default(0), tier3: z.number().default(-10) }).prefault({}),
+      tierBoost: z.object({ tier1: z.number().default(5), tier2: z.number().default(0), tier3: z.number().default(-25) }).prefault({}),
     })
     .prefault({}),
   /** Used by the scorer only until data/profile/profile.json exists. True facts only. */
@@ -101,7 +103,7 @@ export function loadPrefs(file = config.paths.preferences): Prefs {
 export function activeRoleTypes(p: Pick<Prefs, 'roleTypes' | 'queries'>): RoleType[] {
   if (p.roleTypes.length > 0) return p.roleTypes.filter((r) => r.enabled);
   const legacy = [...p.queries.titles, ...p.queries.keywords];
-  return legacy.length ? [{ id: 'default', tier: 1, enabled: true, queries: legacy, titleKeywords: [] }] : [];
+  return legacy.length ? [{ id: 'default', tier: 1, enabled: true, searchOnly: false, queries: legacy, titleKeywords: [] }] : [];
 }
 
 /** Unique search terms with the role types that asked for them (a term shared by two roles is searched once). */
