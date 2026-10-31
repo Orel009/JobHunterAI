@@ -17,6 +17,7 @@ import { usageReport } from '../llm/usage.js';
 import { registerLlmRoutes } from './llm-routes.js';
 import { registerOnboardingRoutes } from './onboarding-routes.js';
 import { registerLinkedInRoutes } from './linkedin-routes.js';
+import { registerHistoryRoutes } from './history-routes.js';
 import { linkedInEnabled } from '../linkedin/settings.js';
 import { prepareJobs, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
@@ -150,6 +151,7 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   registerLlmRoutes(app);
   registerOnboardingRoutes(app, db);
   registerLinkedInRoutes(app, db);
+  registerHistoryRoutes(app, db);
   registerCvRoutes(app, {
     cache: repo,
     rescore: () => {

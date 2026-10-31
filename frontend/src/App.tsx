@@ -11,6 +11,7 @@ import { SettingsScreen } from './SettingsScreen';
 import { Wizard } from './Wizard';
 import { LinkedInScreen } from './LinkedInScreen';
 import { MarketScreen } from './MarketScreen';
+import { HistoryScreen } from './HistoryScreen';
 
 const TABS = [
   { id: 'jobs', label: 'Jobs', enabled: true },
@@ -21,7 +22,7 @@ const TABS = [
   { id: 'market', label: 'Market', enabled: true },
   { id: 'linkedin', label: 'LinkedIn', enabled: true },
   { id: 'settings', label: 'Settings', enabled: true },
-  { id: 'history', label: 'History (Phase 3)', enabled: false },
+  { id: 'history', label: 'History', enabled: true },
 ] as const;
 
 type ProfileState = Awaited<ReturnType<typeof profileStatus>>;
@@ -143,6 +144,7 @@ export function App() {
       {onboarding === false && tab === 'profile' && <ProfileScreen onChanged={refresh} />}
       {onboarding === false && tab === 'prefs' && <PreferencesEditor onSaved={refresh} />}
       {onboarding === false && tab === 'linkedin' && status?.linkedin.enabled && <LinkedInScreen busy={!!status.activeRun} onChanged={refresh} />}
+      {onboarding === false && tab === 'history' && <HistoryScreen />}
       {onboarding === false && tab === 'market' && <MarketScreen onSaved={refresh} />}
       {onboarding === false && tab === 'settings' && <SettingsScreen onSaved={refresh} />}
       <LogPanel />

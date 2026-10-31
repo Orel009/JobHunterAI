@@ -173,3 +173,14 @@ textarea { font: inherit; }
 .li-panel .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
 .li-panel .row input { flex: 1; min-width: 240px; }
 .helper-table td { padding: 3px 8px 3px 0; font-size: 13px; }
+
+/* ---------- History ---------- */
+.history .stats { margin: 8px 0 12px; }
+.history .bar { display: inline-block; height: 10px; min-width: 2px; background: #6b5bd6; border-radius: 3px; vertical-align: middle; }
+.history td:has(.bar) { width: 240px; }
+.timeline { list-style: none; padding: 0; margin: 6px 0; font-size: 13px; }
+.timeline li { padding: 2px 0; }
+.pill.outcome-screening_call, .pill.outcome-interview, .pill.outcome-home_assignment { background: #e0ecff; }
+.pill.outcome-offer { background: #d6f2dc; }
+.pill.outcome-rejected, .pill.outcome-withdrawn { background: #f1e3e3; }
+a.button { display: inline-block; padding: 4px 10px; border-radius: 6px; border: 1px solid #c8cdd6; text-decoration: none; }
