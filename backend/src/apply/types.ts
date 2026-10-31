@@ -9,7 +9,8 @@ export interface FormField {
   options?: string[];
 }
 
-export type ProvenanceSource = 'profile' | 'bank' | 'skill_years' | 'draft' | 'none';
+/** user = typed in the review queue for this application only (not saved to the bank) */
+export type ProvenanceSource = 'profile' | 'bank' | 'skill_years' | 'draft' | 'user' | 'none';
 
 export interface Provenance {
   source: ProvenanceSource;

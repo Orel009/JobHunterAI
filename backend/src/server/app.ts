@@ -9,6 +9,8 @@ import { JOB_STATUSES } from '../sites/types.js';
 import { getActiveRun, startRun, stopRun } from '../pipeline/runner.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
 import { listLocalModels } from '../llm/ollama.js';
+import { prepareJobs, ServiceError } from '../apply/service.js';
+import { registerApplyRoutes } from './apply-routes.js';
 
 export function buildApp(db: DB) {
   // No per-request logging (the dashboard polls); errors are logged below.
@@ -16,7 +18,7 @@ export function buildApp(db: DB) {
   const repo = new Repo(db);
 
   app.setErrorHandler((err, req, reply) => {
-    const status = err instanceof z.ZodError ? 400 : (err as { statusCode?: number }).statusCode ?? 500;
+    const status = err instanceof z.ZodError ? 400 : err instanceof ServiceError ? err.status : ((err as { statusCode?: number }).statusCode ?? 500);
     if (status >= 500) log.error({ url: req.url, err: err instanceof Error ? err.message : String(err) }, 'http error');
     reply.status(status).send({ error: err instanceof z.ZodError ? z.prettifyError(err) : err instanceof Error ? err.message : String(err) });
   });
@@ -73,13 +75,18 @@ export function buildApp(db: DB) {
     return { ok: true };
   });
 
-  /** Phase 1: queues the job; the apply flow (Phase 2) picks up `queued` jobs. */
+  /** Queues the job and starts preparing its plan (opens the apply panel, never submits). */
   app.post<{ Params: { id: string } }>('/api/jobs/:id/apply', async (req, reply) => {
     const job = repo.getJob(req.params.id);
     if (!job) return reply.status(404).send({ error: 'not found' });
-    repo.setStatus(req.params.id, 'queued', 'queued manually (apply flow arrives in Phase 2)');
-    return { ok: true, note: 'queued — apply flow is Phase 2' };
+    if (getActiveRun()) {
+      repo.setStatus(job.id, 'queued', 'waiting for the current run to finish');
+      return { ok: true, note: 'queued — click "Prepare queued" when the current run finishes' };
+    }
+    return { ok: true, runId: prepareJobs(db, [job.id]), note: 'preparing plan…' };
   });
+
+  registerApplyRoutes(app, db);
 
   const RunBody = z.object({ site: z.string(), kind: z.enum(['discover', 'score', 'full']).default('full') });
   app.post('/api/runs', async (req, reply) => {

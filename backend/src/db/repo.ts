@@ -246,6 +246,19 @@ export class Repo {
     };
   }
 
+  getScore(jobId: string): Omit<ScoreRecord, 'contentHash' | 'createdAt'> | null {
+    const r = this.db.prepare('SELECT * FROM scores WHERE job_id = ?').get(jobId) as Record<string, unknown> | undefined;
+    if (!r) return null;
+    return {
+      score: r.score as number,
+      matchedSkills: JSON.parse(r.matched_skills as string) as string[],
+      missingRequirements: JSON.parse(r.missing_requirements as string) as string[],
+      seniorityFit: r.seniority_fit as string,
+      reasoningHe: r.reasoning_he as string,
+      model: r.model as string,
+    };
+  }
+
   statusCounts(): Record<string, number> {
     const rows = this.db.prepare('SELECT status, COUNT(*) AS n FROM jobs GROUP BY status').all() as Array<{ status: string; n: number }>;
     return Object.fromEntries(rows.map((r) => [r.status, r.n]));

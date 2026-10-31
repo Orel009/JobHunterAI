@@ -7,5 +7,23 @@
   "loadMoreText": "הצג עוד משרות",
   "dom": {
     "jobCard": "a[href^='/job/']"
+  },
+  "apply": {
+    "_source": "data-nagish hooks from the site frontend bundle (2026-10-31); verify on the live logged-in panel",
+    "applyButton": "button[data-nagish=\"job-details-apply-button\"]",
+    "alreadyAppliedButtonText": "הוגש|הגשת כבר|נשלח",
+    "modal": "[data-nagish=\"apply-flow-modal\"]",
+    "loginModal": "[class*=\"loginModal\"]",
+    "cvItem": "[data-nagish=\"apply-flow-cv-item\"]",
+    "cvRadio": "[data-nagish=\"apply-flow-cv-select-input\"]",
+    "cvTitle": "label span",
+    "screeningCheckbox": "[data-nagish=\"apply-flow-screening-question-checkbox\"]",
+    "consentCheckbox": "[data-nagish=\"apply-flow-consent-checkbox\"]",
+    "coverLetterToggle": "[data-nagish=\"apply-flow-preliminary-letter-toggle\"]",
+    "coverLetterField": "[data-nagish=\"apply-flow-preliminary-letter-field\"]",
+    "submitButton": "[data-nagish=\"apply-flow-submit-button\"]",
+    "successModal": "[data-nagish=\"apply-flow-success-modal\"]",
+    "error": "[data-testid=\"apply-flow-error\"]",
+    "sendCvPattern": "/api/cv/sendsinglecv"
   }
 }

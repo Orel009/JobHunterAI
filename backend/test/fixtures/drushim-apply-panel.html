@@ -1,0 +1,53 @@
+<!doctype html>
+<!--
+  SYNTHETIC fixture of the Drushim apply panel, reconstructed from the data-nagish hooks in the site's frontend bundle
+  (2026-10-31). Replace with a sanitized capture of the live logged-in panel once available. No personal data.
+-->
+<html dir="rtl" lang="he">
+  <head><meta charset="utf-8" /><title>Full Stack Developer | דרושים</title></head>
+  <body>
+    <h1>Full Stack Developer</h1>
+    <button type="button" data-nagish="job-details-apply-button">הגשה</button>
+    <div data-nagish="apply-flow-modal" style="display: none">
+      <ul data-nagish="apply-flow-cv-list">
+        <li data-nagish="apply-flow-cv-item">
+          <input type="radio" name="apply-cv" id="apply-cv-0" value="111" data-nagish="apply-flow-cv-select-input" checked />
+          <label for="apply-cv-0"><span>קורות חיים - דוגמה.pdf</span><span>נוסף ב-01/10/2026</span></label>
+        </li>
+        <li data-nagish="apply-flow-cv-item">
+          <input type="radio" name="apply-cv" id="apply-cv-1" value="222" data-nagish="apply-flow-cv-select-input" />
+          <label for="apply-cv-1"><span>Sample - Resume.pdf</span><span>נוסף ב-02/10/2026</span></label>
+        </li>
+      </ul>
+      <ul class="screening">
+        <li><label><input type="checkbox" data-nagish="apply-flow-screening-question-checkbox" />האם יש לך ידע בתוכנת פריורטי ?</label></li>
+        <li><label><input type="checkbox" data-nagish="apply-flow-screening-question-checkbox" />האם את/ה מבין שהעבודה מבוצעת במשרד ולא ניתן לעבוד היברידי</label></li>
+      </ul>
+      <button type="button" data-nagish="apply-flow-preliminary-letter-toggle">מכתב מקדים</button>
+      <label><input type="checkbox" data-nagish="apply-flow-consent-checkbox" data-testid="apply-flow-consent" />אני מאשר/ת שליחת פרטיי למעסיק</label>
+      <div data-testid="apply-flow-error"></div>
+      <button type="button" data-nagish="apply-flow-submit-button" disabled>שליחת מועמדות</button>
+    </div>
+    <div data-nagish="apply-flow-success-modal" style="display: none">קורות החיים נשלחו בהצלחה!</div>
+    <script>
+      fetch('https://gw.drushim.co.il/auth/seeker-details', { credentials: 'include' });
+      const modal = document.querySelector('[data-nagish="apply-flow-modal"]');
+      const submit = document.querySelector('[data-nagish="apply-flow-submit-button"]');
+      document.querySelector('[data-nagish="job-details-apply-button"]').onclick = () => (modal.style.display = 'block');
+      const boxes = [...document.querySelectorAll('[data-nagish="apply-flow-screening-question-checkbox"], [data-nagish="apply-flow-consent-checkbox"]')];
+      const sync = () => (submit.disabled = !boxes.every((b) => b.checked));
+      boxes.forEach((b) => b.addEventListener('change', sync));
+      submit.onclick = async () => {
+        const cvc = document.querySelector('[data-nagish="apply-flow-cv-select-input"]:checked').value;
+        try {
+          const r = await fetch(`https://webapi.drushim.co.il/api/cv/sendsinglecv?JobCode=38834331&cvc=${cvc}`, { method: 'POST', body: JSON.stringify({ Index: 0, AllowNoCV: false, PreliminaryLetter: '', NewWebsite: true }) });
+          const j = await r.json();
+          if ((j.Successful || []).length) document.querySelector('[data-nagish="apply-flow-success-modal"]').style.display = 'block';
+          else document.querySelector('[data-testid="apply-flow-error"]').textContent = 'כבר הגשת מועמדות למשרה זו';
+        } catch (e) {
+          document.querySelector('[data-testid="apply-flow-error"]').textContent = 'blocked';
+        }
+      };
+    </script>
+  </body>
+</html>

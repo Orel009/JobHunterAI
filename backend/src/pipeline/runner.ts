@@ -26,15 +26,17 @@ export interface RunStats {
   scoreErrors: number;
 }
 
-interface ActiveRun {
+export interface ActiveRun {
   id: number;
   site: string;
-  kind: RunKind;
+  kind: string;
   startedAt: string;
   stage: string;
-  stats: RunStats;
+  stats: RunStats & Record<string, number>;
   controller: AbortController;
 }
+
+export type TaskFn = (run: ActiveRun, repo: Repo, L: typeof log) => Promise<void>;
 
 let active: ActiveRun | null = null;
 
@@ -48,10 +50,18 @@ export function stopRun(): boolean {
   return true;
 }
 
-/** Starts a run in the background (one at a time: there is one browser profile and one tab). */
+/** Starts a discovery/scoring run in the background. */
 export function startRun(db: DB, site: string, kind: RunKind): number {
-  if (active) throw new Error(`A run is already active (#${active.id} ${active.site}/${active.kind})`);
   getAdapter(site); // validates site
+  return startTask(db, site, kind, async (run, repo, L) => {
+    if (kind !== 'score') await discover(repo, run, L);
+    if (kind !== 'discover') await score(repo, run, L);
+  });
+}
+
+/** Runs any browser task exclusively (one at a time: there is one browser profile and one tab). */
+export function startTask(db: DB, site: string, kind: string, fn: TaskFn): number {
+  if (active) throw new Error(`A run is already active (#${active.id} ${active.site}/${active.kind})`);
   const repo = new Repo(db);
   const id = repo.startRun(site, kind);
   const run: ActiveRun = {
@@ -64,7 +74,7 @@ export function startRun(db: DB, site: string, kind: RunKind): number {
     stats: { queries: 0, seen: 0, inserted: 0, updated: 0, duplicates: 0, prefilterPassed: 0, prefilterSkipped: 0, detailsFetched: 0, scored: 0, scoreErrors: 0 },
   };
   active = run;
-  void execute(repo, run).finally(() => {
+  void execute(repo, run, fn).finally(() => {
     active = null;
   });
   return id;
@@ -73,14 +83,17 @@ export function startRun(db: DB, site: string, kind: RunKind): number {
 /** Same as startRun but awaits completion (CLI). */
 export async function runToCompletion(db: DB, site: string, kind: RunKind): Promise<void> {
   startRun(db, site, kind);
-  while (active) await new Promise((r) => setTimeout(r, 500));
+  await waitIdle();
 }
 
-async function execute(repo: Repo, run: ActiveRun): Promise<void> {
-  const L = log.child({ runId: run.id, site: run.site });
+export async function waitIdle(): Promise<void> {
+  while (active) await new Promise((r) => setTimeout(r, 300));
+}
+
+async function execute(repo: Repo, run: ActiveRun, fn: TaskFn): Promise<void> {
+  const L = log.child({ runId: run.id, site: run.site, kind: run.kind });
   try {
-    if (run.kind !== 'score') await discover(repo, run, L);
-    if (run.kind !== 'discover') await score(repo, run, L);
+    await fn(run, repo, L);
     const status = run.controller.signal.aborted ? 'stopped' : 'done';
     repo.finishRun(run.id, status, run.stats);
     L.info({ stats: run.stats }, `run ${status}`);
