@@ -229,7 +229,7 @@ export class Repo {
   jobsForRefilter(): StoredJob[] {
     const rows = this.db
       .prepare(
-        `SELECT * FROM jobs WHERE duplicate_of IS NULL AND (status IN ('discovered','scored','skipped_salary') OR (status = 'skipped' AND status_reason LIKE 'prefilter:%'))`,
+        `SELECT * FROM jobs WHERE duplicate_of IS NULL AND (status IN ('discovered','scored','skipped_salary','skipped_company') OR (status = 'skipped' AND status_reason LIKE 'prefilter:%'))`,
       )
       .all() as unknown as JobRow[];
     return rows.map(fromRow);
@@ -248,10 +248,10 @@ export class Repo {
     this.db
       .prepare(
         `UPDATE jobs SET prefilter_pass = 1, prefilter_reason = 'ok',
-           status = CASE WHEN status IN ('skipped','skipped_salary') THEN
+           status = CASE WHEN status IN ('skipped','skipped_salary','skipped_company') THEN
              CASE WHEN EXISTS (SELECT 1 FROM scores s WHERE s.job_id = jobs.id AND s.content_hash = jobs.content_hash) THEN 'scored' ELSE 'discovered' END
              ELSE status END,
-           status_reason = CASE WHEN status IN ('skipped','skipped_salary') THEN NULL ELSE status_reason END,
+           status_reason = CASE WHEN status IN ('skipped','skipped_salary','skipped_company') THEN NULL ELSE status_reason END,
            updated_at = ? WHERE id = ?`,
       )
       .run(now, id);

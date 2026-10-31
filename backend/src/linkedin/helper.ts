@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import type { DB } from '../db/index.js';
 import type { StoredJob } from '../db/repo.js';
 import { AnswersBank } from '../apply/bank.js';
+import { hardRuleCategory } from '../apply/classify.js';
 import { chooseCv } from '../apply/cv.js';
 import { findSkill, loadProfile, skillYears } from '../profile/facts.js';
 import { loadPrefs } from '../core/prefs.js';
@@ -68,9 +69,16 @@ export function applyHelper(db: DB, job: StoredJob, matchedSkills: string[] = []
   }
 
   const sal = jobSalaryContext(job, loadPrefs());
+  // same order as applications: posted range → your answer in the bank → your salary settings → nothing (decide yourself)
+  const bankSalary = new AnswersBank(db).active().filter((e) => e.answer && hardRuleCategory(e.question, 'text') === 'salary');
   const salary: HelperItem[] = (['text', 'number'] as const).map((kind) => {
+    const label = kind === 'text' ? 'Salary expectation (text)' : 'Salary expectation (number only)';
     const a = composeSalaryAnswer(sal.posted, sal.settings, kind);
-    return { label: kind === 'text' ? 'Salary expectation (text)' : 'Salary expectation (number only)', value: a.value ?? '', source: `${a.basis}: ${a.detail}` };
+    if (a.basis !== 'posted range') {
+      const e = bankSalary.find((x) => (kind === 'number' ? /^\d[\d,]*$/.test(x.answer!.trim()) : true));
+      if (e) return { label, value: e.answer!, source: `answers bank #${e.id} (no salary posted)` };
+    }
+    return { label, value: a.value ?? '', source: `${a.basis}: ${a.detail}` };
   });
 
   return {

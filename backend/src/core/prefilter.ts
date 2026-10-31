@@ -7,8 +7,8 @@ import { belowFloor, describeSalary, fmtIls, salarySettings } from './salary.js'
 export interface PrefilterResult {
   pass: boolean;
   reason: string;
-  /** a more specific skip status than 'skipped' (e.g. skipped_salary) */
-  status?: 'skipped_salary';
+  /** a more specific skip status than 'skipped' */
+  status?: 'skipped_salary' | 'skipped_company';
 }
 
 type PrefilterInput = Pick<Job, 'title' | 'company' | 'location'> & {
@@ -46,6 +46,42 @@ export function disabledRoleKeywords(roles: RoleType[], extraInclude: string[] =
   return roles.filter((r) => !r.enabled && !r.searchOnly).flatMap((r) => r.titleKeywords.filter((k) => !keep.has(normalizeText(k))).map((k): [string, string] => [k, r.id]));
 }
 
+/**
+ * excludeCompanies entries match the company name as whole words, case-insensitive, after normalizing
+ * ("matrix" matches "Matrix R&D Services", "matrix (בנקאות)", "צפון matrix"). List Hebrew and English names separately.
+ */
+export function excludedCompanyMatch(company: string, excludes: string[]): string | null {
+  const c = normalizeCompany(company);
+  if (!c) return null;
+  return excludes.find((e) => {
+    const n = normalizeCompany(e);
+    return !!n && (c === n || containsKeyword(c, n));
+  }) ?? null;
+}
+
+// "מוביל/ה", "מוביל/ת", "מוביל.ת", "מובילה", "מוביל" — as a word of its own
+const LEAD = /(?<![א-ת])(מוביל\s*[/.\\(]\s*[הת]\)?|מובילה|מוביל)(?![א-ת])/g;
+/** words that make "מוביל/ת X" a role: team / innovation / technology / development / domain / product lead */
+const LEAD_DOMAIN = /^\s*[בהלו]?(חדשנות|צוות|טכנולוג|פיתוח|תחום|פרויקט|מוצר|מערך|תהליכ|הנדס|מחלק|תשתיות|אבטחת)/;
+const TITLE_START = /^[\s\-–|:!*"'(]*(?:דרוש[^\s]*\s+|דרושים[^\s]*\s+)?$/;
+const AFTER_SEPARATOR = /[-–|,:(]\s*$/;
+
+/**
+ * "מוביל/ת" as the role noun (a lead position) — never "מוביל" as an adjective ("לארגון מוביל", "חברה מובילה").
+ * A role when it opens the title ("מוביל/ת צוות תוכנה", "מובילה טכנולוגית"), or when a domain word follows it and it
+ * is the gendered slash form (companies never get one: "מהנדס/ת FAE מוביל/ה בתחום") or comes right after a separator.
+ */
+export function leadRoleNoun(title: string): string | null {
+  for (const m of title.matchAll(LEAD)) {
+    const before = title.slice(0, m.index);
+    const after = title.slice(m.index! + m[0].length);
+    if (TITLE_START.test(before)) return m[0];
+    const slashed = /[/.\\(]/.test(m[0]);
+    if (LEAD_DOMAIN.test(after) && (slashed || AFTER_SEPARATOR.test(before))) return m[0];
+  }
+  return null;
+}
+
 /** Deterministic gate before any LLM call. Order matters: the first failing rule is the reason. */
 export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { aliasGroups?: string[][] } = {}): PrefilterResult {
   const title = normalizeText(job.title);
@@ -59,11 +95,13 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
     excludeTitleKeywords: expandWithAliases(prefs.filters.excludeTitleKeywords, groups),
   };
 
-  const excludedCompany = f.excludeCompanies.find((c) => normalizeCompany(c) === normalizeCompany(job.company));
-  if (excludedCompany) return { pass: false, reason: `excluded company: ${excludedCompany}` };
+  const excludedCompany = excludedCompanyMatch(job.company, f.excludeCompanies);
+  if (excludedCompany) return { pass: false, status: 'skipped_company', reason: `excluded company: ${job.company} (matches "${excludedCompany}")` };
 
   const seniority = f.excludeSeniorityKeywords.find((k) => containsKeyword(title, k));
   if (seniority) return { pass: false, reason: `seniority: "${seniority}"` };
+  const lead = leadRoleNoun(job.title);
+  if (lead) return { pass: false, reason: `seniority: "${lead}" (team / domain lead)` };
 
   const excluded = f.excludeTitleKeywords.find((k) => containsKeyword(title, k));
   if (excluded) return { pass: false, reason: `excluded title keyword: "${excluded}"` };

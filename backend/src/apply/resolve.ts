@@ -12,7 +12,7 @@ import { canonicalizeSkillMentions, listFacts, skillKey, skillYears } from '../p
 import { yesNo, type BankEntry, bankTypeFor } from './bank.js';
 import { asksYearsCount, draftAllowed, hardRuleCategory, parseMinYears, questionKey } from './classify.js';
 import type { FormField, ResolvedField } from './types.js';
-import { composeSalaryAnswer, type PostedSalary, type SalarySettings } from '../core/salary.js';
+import { composeSalaryAnswer, type PostedSalary, type SalaryAnswer, type SalarySettings } from '../core/salary.js';
 
 export interface DraftResult {
   text: string | null;
@@ -148,12 +148,13 @@ export async function resolveField(field: FormField, deps: ResolveDeps): Promise
   const p = fromProfile(field, deps.profile);
   if (p) return { ...base, status: 'resolved', value: p.value, provenance: { source: 'profile', ref: p.ref } };
 
-  // salary: posted range → "X–Y ₪ ברוטו" / X; no range → your fallback. Nothing set → an answer you gave in the bank, else pending.
-  let salaryPending: string | null = null;
+  // salary: a posted range always wins (upper half, even over an answer in the bank). Without one: your answer in the
+  // bank, then textAnswerNoRange / numericFallback (after the bank, below), else pending.
+  let salaryFallback: SalaryAnswer | null = null;
   if (category === 'salary' && deps.salary && (field.type === 'text' || field.type === 'textarea' || field.type === 'number')) {
     const a = composeSalaryAnswer(deps.salary.posted, deps.salary.settings, field.type === 'number' ? 'number' : 'text');
-    if (a.status === 'resolved') return { ...base, status: 'resolved', value: a.value, provenance: { source: 'salary', ref: a.basis, detail: a.detail } };
-    salaryPending = `salary: ${a.detail}`;
+    if (a.basis === 'posted range') return { ...base, status: 'resolved', value: a.value, provenance: { source: 'salary', ref: a.basis, detail: a.detail } };
+    salaryFallback = a;
   }
 
   // (b) exact key, then LLM matcher over a shortlist
@@ -177,6 +178,11 @@ export async function resolveField(field: FormField, deps: ResolveDeps): Promise
       const v = normalizeChoice(entry.answer, field);
       if (v !== null) return { ...base, status: 'resolved', value: v, provenance: { source: 'bank', ref: String(entry.id), confidence: m.confidence, detail: entry.question } };
     }
+  }
+
+  // salary without a posted range and no answer in the bank: your salary settings
+  if (salaryFallback?.status === 'resolved') {
+    return { ...base, status: 'resolved', value: salaryFallback.value, provenance: { source: 'salary', ref: salaryFallback.basis, detail: salaryFallback.detail } };
   }
 
   // (c)
@@ -207,7 +213,7 @@ export async function resolveField(field: FormField, deps: ResolveDeps): Promise
     status: 'pending',
     value: null,
     provenance: { source: 'none' },
-    reason: salaryPending ?? (y && 'pending' in y ? y.pending : category ? `needs your answer (${category})` : 'needs your answer'),
+    reason: (salaryFallback && `salary: ${salaryFallback.detail}`) ?? (y && 'pending' in y ? y.pending : category ? `needs your answer (${category})` : 'needs your answer'),
   };
 }
 

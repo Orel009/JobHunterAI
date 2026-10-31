@@ -180,7 +180,7 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
             <Field label="Seniority excludes (list each form: בכיר + בכירה)">
               <TextList value={p.filters.excludeSeniorityKeywords} rows={6} onChange={(v) => up((d) => void (d.filters.excludeSeniorityKeywords = v))} />
             </Field>
-            <Field label="Excluded companies">
+            <Field label="Excluded companies" hint="whole words, case-insensitive (matrix → “Matrix R&D”, “matrix (בנקאות)”); list Hebrew and English names separately → skipped_company">
               <TextList value={p.filters.excludeCompanies} onChange={(v) => up((d) => void (d.filters.excludeCompanies = v))} />
             </Field>
           </div>

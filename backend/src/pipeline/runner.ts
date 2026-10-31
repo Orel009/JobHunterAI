@@ -243,7 +243,7 @@ export function refilterExisting(repo: Repo, prefs = loadPrefs()): { checked: nu
   for (const j of repo.jobsForRefilter()) {
     out.checked++;
     const r = prefilterJob(j, prefs, aliasGroups);
-    const wasSkipped = j.status === 'skipped' || j.status === 'skipped_salary';
+    const wasSkipped = j.status === 'skipped' || j.status === 'skipped_salary' || j.status === 'skipped_company';
     if (!r.pass && !wasSkipped) out.newlySkipped++;
     if (r.pass && wasSkipped) out.restored++;
     repo.refilter(j.id, r.pass, r.reason, r.status);

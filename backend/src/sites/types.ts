@@ -25,6 +25,8 @@ export const JOB_STATUSES = [
   'skipped_not_a_job',
   /** the posted monthly salary is below the role type's floor */
   'skipped_salary',
+  /** the company is in filters.excludeCompanies */
+  'skipped_company',
 ] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
