@@ -82,6 +82,24 @@ export function findSkill(profile: Profile, mention: string): Profile['skills'][
   return profile.skills.find((s) => skillKey(s.name) === k || s.aliases.some((a) => skillKey(a) === k)) ?? null;
 }
 
+/** Every way each skill can be written: [canonical name, ...aliases]. Used to expand keyword matching. */
+export const skillAliasGroups = (p: Profile | null): string[][] => (p ? p.skills.map((s) => [s.name, ...s.aliases]) : []);
+
+/**
+ * Rewrites alias mentions in already-normalized text to the canonical skill key, whole words only, longest first
+ * ("es6" → "javascript", "oop" → "object oriented programming"). Lets "ES6" and "JavaScript" questions share a bank answer.
+ */
+export function canonicalizeSkillMentions(textNorm: string, p: Profile | null): string {
+  if (!p) return textNorm;
+  const pairs = p.skills
+    .flatMap((s) => s.aliases.map((a) => [skillKey(a), skillKey(s.name)] as const))
+    .filter(([a, c]) => a && c && a !== c)
+    .sort((x, y) => y[0].length - x[0].length);
+  let out = ` ${textNorm} `;
+  for (const [alias, canon] of pairs) out = out.split(` ${alias} `).join(` ${canon} `);
+  return out.trim();
+}
+
 // ---------- facts ----------
 export interface Fact {
   id: string;
@@ -111,7 +129,9 @@ export function listFacts(p: Profile, now = new Date()): Fact[] {
   }
   for (const s of p.skills) {
     const y = skillYears(p, s.id, now);
-    f.push({ id: s.id, text: `Skill: ${s.name}${y.years !== null ? ` (${y.years} years, ${y.source})` : ''}` });
+    const aka = s.aliases.length ? ` (also written: ${s.aliases.join(', ')})` : '';
+    const lvl = s.level === 'basic' ? ' [basic level]' : '';
+    f.push({ id: s.id, text: `Skill: ${s.name}${aka}${lvl}${y.years !== null ? ` — ${y.years} years, ${y.source}` : ''}` });
   }
   for (const l of p.languages) f.push({ id: l.id, text: `Language: ${bi(l.name)} — ${bi(l.level)}` });
   return f;

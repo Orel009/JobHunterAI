@@ -56,6 +56,11 @@ export const ProfileSchema = z.object({
         aliases: z.array(z.string()).default([]),
         /** years only when the CV states them explicitly */
         statedYears: z.number().nonnegative().nullable().default(null),
+        /**
+         * strong (default): may auto-answer screening/years questions.
+         * basic: counts for scoring and matching, but NEVER auto-answers a yes/no or years statement (always pending).
+         */
+        level: z.enum(['strong', 'basic']).default('strong'),
         sources: Src.default([]),
       }),
     )

@@ -10,6 +10,7 @@ import { findCrossSiteDuplicate } from '../core/dedupe.js';
 import { prefilter } from '../core/prefilter.js';
 import { effectiveLimits, loadPrefs, searchTerms } from '../core/prefs.js';
 import { candidateContext, scoreJob } from '../llm/score.js';
+import { loadProfile, skillAliasGroups } from '../profile/facts.js';
 
 export type RunKind = 'discover' | 'score' | 'full';
 
@@ -160,8 +161,14 @@ async function discover(repo: Repo, run: ActiveRun, L: typeof log): Promise<void
 }
 
 function applyPrefilter(repo: Repo, run: ActiveRun, prefs: ReturnType<typeof loadPrefs>): void {
+  let aliasGroups: string[][] = [];
+  try {
+    aliasGroups = skillAliasGroups(loadProfile());
+  } catch {
+    /* invalid profile: the scorer reports it; prefilter works without aliases */
+  }
   for (const j of repo.jobsNeedingPrefilter(run.site)) {
-    const r = prefilter(j, prefs);
+    const r = prefilter(j, prefs, { aliasGroups });
     repo.setPrefilter(j.id, r.pass, r.reason);
     if (r.pass) run.stats.prefilterPassed++;
     else run.stats.prefilterSkipped++;

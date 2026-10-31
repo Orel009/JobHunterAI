@@ -282,7 +282,7 @@ export function mergeProfiles(
     const k = skillKey(name);
     let s = skillByKey.get(k);
     if (!s) {
-      s = { id: uniqueId(`skill.${k.replace(/\s+/g, '-').replace(/#/g, 'sharp').replace(/\+/g, 'p') || 'x'}`, used), name, aliases: [], statedYears, sources: [lang] };
+      s = { id: uniqueId(`skill.${k.replace(/\s+/g, '-').replace(/#/g, 'sharp').replace(/\+/g, 'p') || 'x'}`, used), name, aliases: [], statedYears, level: 'strong', sources: [lang] };
       skillByKey.set(k, s);
       skills.push(s);
       return s.id;

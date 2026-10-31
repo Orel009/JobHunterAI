@@ -8,7 +8,7 @@
  */
 import { normalizeText } from '../core/text.js';
 import type { Profile } from '../profile/schema.js';
-import { listFacts, skillKey, skillYears } from '../profile/facts.js';
+import { canonicalizeSkillMentions, listFacts, skillKey, skillYears } from '../profile/facts.js';
 import { yesNo, type BankEntry, bankTypeFor } from './bank.js';
 import { asksYearsCount, draftAllowed, hardRuleCategory, parseMinYears, questionKey } from './classify.js';
 import type { FormField, ResolvedField } from './types.js';
@@ -68,17 +68,22 @@ export function skillsMentioned(profile: Profile, question: string): Profile['sk
   );
 }
 
-function fromSkillYears(field: FormField, profile: Profile | null, now: Date): { value: string; ref: string; detail: string } | 'pending' | null {
+type YearsResult = { value: string; ref: string; detail: string } | { pending: string } | null;
+
+function fromSkillYears(field: FormField, profile: Profile | null, now: Date): YearsResult {
   const minYears = parseMinYears(field.label);
   const countQ = asksYearsCount(field.label);
   if (minYears === null && !countQ) return null;
-  if (!profile) return 'pending';
+  if (!profile) return { pending: 'years question: no profile yet' };
   const skills = skillsMentioned(profile, field.label);
   // keep the most specific matches ("react native" over "react")
   const specific = skills.filter((s) => !skills.some((o) => o !== s && skillKey(o.name).includes(skillKey(s.name)) && skillKey(o.name) !== skillKey(s.name)));
-  if (specific.length === 0) return 'pending';
+  if (specific.length === 0) return { pending: 'years question: skill not in your profile' };
+  // RULE: a basic-level skill counts for scoring/matching but never auto-answers a screening/years statement
+  const basic = specific.filter((s) => s.level === 'basic');
+  if (basic.length) return { pending: `basic-level skill (${basic.map((s) => s.name).join(', ')}): answer this yourself` };
   const ys = specific.map((s) => ({ s, y: skillYears(profile, s.id, now) }));
-  if (ys.some((x) => x.y.years === null)) return 'pending';
+  if (ys.some((x) => x.y.years === null)) return { pending: 'years question: no dated role lists this skill' };
   const min = Math.min(...ys.map((x) => x.y.years!));
   const ref = ys.map((x) => x.s.id).join(',');
   const detail = ys.map((x) => `${x.s.name}: ${x.y.years}y ${x.y.source}${x.y.from.length ? ` from ${x.y.from.join('+')}` : ''}`).join('; ');
@@ -126,9 +131,16 @@ export async function resolveField(field: FormField, deps: ResolveDeps): Promise
     const v = normalizeChoice(exact.answer, field);
     if (v !== null) return { ...base, status: 'resolved', value: v, provenance: { source: 'bank', ref: String(exact.id), confidence: 1, detail: 'exact question' } };
   }
+  // same question once skill aliases are unified ("ES6" ≡ "JavaScript", "OOP" ≡ "Object-Oriented Programming")
+  if (deps.profile) {
+    const canon = canonicalizeSkillMentions(normKey, deps.profile);
+    const hit = deps.bank.active().find((e) => e.answer && canonicalizeSkillMentions(e.normKey, deps.profile) === canon);
+    const v = hit ? normalizeChoice(hit.answer!, field) : null;
+    if (hit && v !== null) return { ...base, status: 'resolved', value: v, provenance: { source: 'bank', ref: String(hit.id), confidence: 1, detail: `same question via skill synonyms: ${hit.question}` } };
+  }
   const candidates = shortlist(field.label, deps.bank.active(), field.type);
   if (candidates.length > 0) {
-    const m = await deps.matchBank(field.label, candidates);
+    const m = await deps.matchBank(withSynonymHint(field.label, deps.profile), candidates);
     const entry = m.entryId !== null ? candidates.find((c) => c.id === m.entryId) : undefined;
     if (entry?.answer && m.confidence >= deps.minConfidence) {
       const v = normalizeChoice(entry.answer, field);
@@ -138,13 +150,13 @@ export async function resolveField(field: FormField, deps: ResolveDeps): Promise
 
   // (c)
   const y = fromSkillYears(field, deps.profile, now);
-  if (y && y !== 'pending') {
+  if (y && 'value' in y) {
     const v = normalizeChoice(y.value, field) ?? y.value;
     return { ...base, status: 'resolved', value: v, provenance: { source: 'skill_years', ref: y.ref, detail: y.detail } };
   }
 
   // (d)
-  if (y !== 'pending' && draftAllowed(field.label, field.type)) {
+  if (!(y && 'pending' in y) && draftAllowed(field.label, field.type)) {
     if (!field.required) return { ...base, status: 'empty_optional', value: null, provenance: { source: 'none' }, reason: 'optional free text left empty' };
     const d = await deps.draft(field, { jobTitle: deps.job.title, jobText: deps.job.text, language: deps.job.language });
     if (d.text && !d.rejectedReason && !d.unanswerable) {
@@ -164,8 +176,18 @@ export async function resolveField(field: FormField, deps: ResolveDeps): Promise
     status: 'pending',
     value: null,
     provenance: { source: 'none' },
-    reason: y === 'pending' ? 'years question: skill not in profile or no supporting dates' : category ? `needs your answer (${category})` : 'needs your answer',
+    reason: y && 'pending' in y ? y.pending : category ? `needs your answer (${category})` : 'needs your answer',
   };
+}
+
+/** Tells the bank matcher which skill names are synonyms (it still only returns an entry id). */
+export function withSynonymHint(question: string, profile: Profile | null): string {
+  if (!profile) return question;
+  const hints = skillsMentioned(profile, question)
+    .filter((s) => s.aliases.length)
+    .map((s) => `${[s.name, ...s.aliases].join(' = ')}`);
+  return hints.length ? `${question}
+(synonyms: ${hints.join('; ')})` : question;
 }
 
 /** Known fact ids (for validating draft citations). */
