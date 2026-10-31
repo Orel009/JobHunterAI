@@ -1,0 +1,42 @@
+{
+  "UserProfile": {
+    "FirstName": "ישראלה",
+    "LastName": "ישראלי",
+    "Email": "test.user@example.com",
+    "JobAppliedCount": 3,
+    "JobHistory": {
+      "39000001": {
+        "SentDate": "2026-10-28T08:10:57.44",
+        "SentCV": 4
+      },
+      "39000002": {
+        "SentDate": "2026-10-28T08:08:29.64",
+        "SentCV": 4
+      },
+      "39000003": {
+        "SentDate": "2026-10-31T19:04:04.71",
+        "SentCV": 4
+      }
+    },
+    "Profile": {
+      "Phone": "0500000000",
+      "CVsToDisplay": [
+        {
+          "Code": 4,
+          "Title": "קורות חיים - דוגמה",
+          "UpdateDate": "2026-10-05T11:42:14.317",
+          "IsLastSent": true,
+          "IsValid": true
+        },
+        {
+          "Code": 3,
+          "Title": "Sample - Resume",
+          "UpdateDate": "2026-08-30T07:45:33.903",
+          "IsLastSent": false,
+          "IsValid": true
+        }
+      ]
+    }
+  },
+  "_note": "sanitized from the live GET …/drushim-homepage/api/webapi/api/seeker/userdata/ (2026-10-31); appliedJobIds = Object.keys(JobHistory)"
+}

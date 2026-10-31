@@ -1,48 +1,37 @@
 <!doctype html>
 <!--
-  SYNTHETIC fixture of the Drushim apply panel, reconstructed from the data-nagish hooks in the site's frontend bundle
-  (2026-10-31). Replace with a sanitized capture of the live logged-in panel once available. No personal data.
+  Drushim job page + apply panel, CAPTURED from the live logged-in site (2026-10-31, job 38728539) with all writes
+  blocked, then sanitized: personal details and CV names replaced, styles/classes/icons removed. The data-nagish /
+  data-testid hooks, element structure and texts are the site's own. The small script below only mimics the site's
+  behavior (open on click, submit enabled when every statement is ticked, POST sendsinglecv, success modal).
 -->
 <html dir="rtl" lang="he">
-  <head><meta charset="utf-8" /><title>Full Stack Developer | דרושים</title></head>
+  <head><meta charset="utf-8" /><title>Fullstack Developer – PHP | דרושים</title></head>
   <body>
-    <h1>Full Stack Developer</h1>
-    <button type="button" data-nagish="job-details-apply-button">הגשה</button>
-    <div data-nagish="apply-flow-modal" style="display: none">
-      <ul data-nagish="apply-flow-cv-list">
-        <li data-nagish="apply-flow-cv-item">
-          <input type="radio" name="apply-cv" id="apply-cv-0" value="111" data-nagish="apply-flow-cv-select-input" checked />
-          <label for="apply-cv-0"><span>קורות חיים - דוגמה.pdf</span><span>נוסף ב-01/10/2026</span></label>
-        </li>
-        <li data-nagish="apply-flow-cv-item">
-          <input type="radio" name="apply-cv" id="apply-cv-1" value="222" data-nagish="apply-flow-cv-select-input" />
-          <label for="apply-cv-1"><span>Sample - Resume.pdf</span><span>נוסף ב-02/10/2026</span></label>
-        </li>
-      </ul>
-      <ul class="screening">
-        <li><label><input type="checkbox" data-nagish="apply-flow-screening-question-checkbox" />האם יש לך ידע בתוכנת פריורטי ?</label></li>
-        <li><label><input type="checkbox" data-nagish="apply-flow-screening-question-checkbox" />האם את/ה מבין שהעבודה מבוצעת במשרד ולא ניתן לעבוד היברידי</label></li>
-      </ul>
-      <button type="button" data-nagish="apply-flow-preliminary-letter-toggle">מכתב מקדים</button>
-      <label><input type="checkbox" data-nagish="apply-flow-consent-checkbox" data-testid="apply-flow-consent" />אני מאשר/ת שליחת פרטיי למעסיק</label>
-      <div data-testid="apply-flow-error"></div>
-      <button type="button" data-nagish="apply-flow-submit-button" disabled>שליחת מועמדות</button>
-    </div>
-    <div data-nagish="apply-flow-success-modal" style="display: none">קורות החיים נשלחו בהצלחה!</div>
+    <button type="button" data-nagish="job-details-apply-button"><span>הגשה</span></button>
+    <div id="panel-host" hidden><div><div><div tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="חלון קופץ" data-nagish="apply-flow-modal"><button aria-label="סגור חלון" data-testid="modal-close-button"></button><div><div><div><button type="button" aria-label="חזרה למשרה" data-nagish="apply-flow-back-button"></button></div><article><div><div data-testid="image-box"><div></div></div></div><div><h3 data-nagish="apply-flow-job-chip-title"><bdi>Fullstack Developer – PHP - Aravel  -Vue.js</bdi></h3><p data-nagish="apply-flow-job-chip-company"><bdi>אקספים</bdi></p><p><span>1-2 שנות ניסיון</span><span aria-hidden="true"></span><span>משרה מלאה</span></p></div></article><div><div><section><div><h2 data-nagish="apply-flow-profile-name-title" data-hj-suppress="true">ישראלה ישראלי</h2><button type="button" aria-label="עריכת פרטים אישיים" data-nagish="apply-flow-profile-edit-details-button"></button></div><div data-testid="personal-details"><ul data-nagish="personal-details-list"><li><span></span><span>חיפה</span></li><li><span></span><span>test.user@example.com</span></li><li><span></span><span>0500000000</span></li><li><span></span><span>1-2 שנים</span></li><li><span></span><span>Software Developer</span></li><li><span></span><span>1990</span></li></ul></div></section></div><div><section><input accept=".pdf,.docx" aria-label="בחירת קובץ קורות חיים" data-testid="cv-file-input" data-nagish="apply-flow-cv-file-input" type="file"><h3 data-nagish="apply-flow-cv-section-title">הקו״ח שלי</h3><div><div><button aria-disabled="false" data-nagish="apply-flow-cv-upload-button">הוספת קו״ח<div></div></button><button aria-disabled="false" data-nagish="apply-flow-cv-generate-button"><span>יצירת קו״ח עם AI</span></button></div></div><div><ul aria-busy="false" data-nagish="apply-flow-cv-list"><li data-nagish="apply-flow-cv-item"><div data-testid="radio"><input id="apply-cv-0" data-nagish="apply-flow-cv-select-input" data-testid="radio-input" type="radio" value="4" checked="" name="apply-cv"><label for="apply-cv-0" data-testid="radio-label"></label></div><label for="apply-cv-0"><span data-hj-suppress="true">קורות חיים - דוגמה.pdf</span><span>נוסף בתאריך ⁦05/10/2026 11:42⁩</span></label><div><button type="button" data-nagish="cv-file-menu-button" aria-label="פעולות על קורות חיים - דוגמה.pdf" aria-expanded="false" aria-haspopup="menu"></button><ul role="menu" data-testid="cv-file-menu-list" hidden=""><li role="none"><button type="button" role="menuitem" data-nagish="cv-file-menu-view-button">תצוגה מקדימה</button></li><li role="none"><button type="button" role="menuitem" data-nagish="cv-file-menu-download-button">הורדה</button></li><li role="none"><button type="button" role="menuitem" data-nagish="cv-file-menu-delete-button">מחיקה</button></li></ul></div></li><li data-nagish="apply-flow-cv-item"><div data-testid="radio"><input id="apply-cv-1" data-nagish="apply-flow-cv-select-input" data-testid="radio-input" type="radio" value="3" name="apply-cv"><label for="apply-cv-1" data-testid="radio-label"></label></div><label for="apply-cv-1"><span data-hj-suppress="true">Sample - Resume.pdf</span><span>נוסף בתאריך ⁦30/08/2026 07:45⁩</span></label><div><button type="button" data-nagish="cv-file-menu-button" aria-label="פעולות על Sample - Resume.pdf" aria-expanded="false" aria-haspopup="menu"></button><ul role="menu" data-testid="cv-file-menu-list" hidden=""><li role="none"><button type="button" role="menuitem" data-nagish="cv-file-menu-view-button">תצוגה מקדימה</button></li><li role="none"><button type="button" role="menuitem" data-nagish="cv-file-menu-download-button">הורדה</button></li><li role="none"><button type="button" role="menuitem" data-nagish="cv-file-menu-delete-button">מחיקה</button></li></ul></div></li></ul></div></section><section data-nagish="apply-flow-preliminary-letter"><button type="button" aria-expanded="false" data-nagish="apply-flow-preliminary-letter-toggle"><span>כמה מילים למעסיק</span></button></section><section data-nagish="apply-flow-screening-questions"><h3>דרישות חובה</h3><p>כדי לשלוח קורות חיים למשרה זו יש לענות על דרישות חובה:</p><ul><li><div data-testid="checkbox"><div><input data-nagish="apply-flow-screening-question-checkbox" data-testid="checkbox-input" type="checkbox" id="checkbox-15"></div><label data-testid="checkbox-label" for="checkbox-15"><span>האם יש לך 2–3 שנות ניסיון מעשי ב-Fullstack עם PHP/Laravel ו-Vue.js בסביבת Production?</span></label></div></li><li><div data-testid="checkbox"><div><input data-nagish="apply-flow-screening-question-checkbox" data-testid="checkbox-input" type="checkbox" id="checkbox-16"></div><label data-testid="checkbox-label" for="checkbox-16"><span>האם יש לך ניסיון מעשי עם MySQL, Linux ו-Git במסגרת עבודת הפיתוח?</span></label></div></li><li><div data-testid="checkbox"><div><input data-nagish="apply-flow-screening-question-checkbox" data-testid="checkbox-input" type="checkbox" id="checkbox-17"></div><label data-testid="checkbox-label" for="checkbox-17"><span>האם פיתחת פיצ'רים מקצה לקצה והיית מעורב בהעלאתם לסביבת Production?</span></label></div></li></ul></section></div></div></div><div><button aria-disabled="true" disabled="" data-nagish="apply-flow-submit-button">הגשת מועמדות<div></div></button></div></div></div></div></div></div>
+    <div data-nagish="apply-flow-success-modal" hidden>עבודה טובה! הגשת מועמדות למשרה בינתיים, מומלץ לבדוק משרות נוספות שמתאימות לך.&zwnj; &zwnj; &zwnj;</div>
+    <div data-testid="apply-flow-error"></div>
     <script>
       fetch('https://gw.drushim.co.il/auth/seeker-details', { credentials: 'include' });
-      const modal = document.querySelector('[data-nagish="apply-flow-modal"]');
+      const host = document.getElementById('panel-host');
       const submit = document.querySelector('[data-nagish="apply-flow-submit-button"]');
-      document.querySelector('[data-nagish="job-details-apply-button"]').onclick = () => (modal.style.display = 'block');
+      document.querySelector('[data-nagish="job-details-apply-button"]').onclick = () => (host.hidden = false);
       const boxes = [...document.querySelectorAll('[data-nagish="apply-flow-screening-question-checkbox"], [data-nagish="apply-flow-consent-checkbox"]')];
-      const sync = () => (submit.disabled = !boxes.every((b) => b.checked));
+      // like the live site: both disabled and aria-disabled follow the statements
+      const sync = () => {
+        const off = !boxes.every((b) => b.checked);
+        submit.disabled = off;
+        submit.setAttribute('aria-disabled', String(off));
+      };
+      sync();
       boxes.forEach((b) => b.addEventListener('change', sync));
       submit.onclick = async () => {
         const cvc = document.querySelector('[data-nagish="apply-flow-cv-select-input"]:checked').value;
         try {
-          const r = await fetch(`https://webapi.drushim.co.il/api/cv/sendsinglecv?JobCode=38834331&cvc=${cvc}`, { method: 'POST', body: JSON.stringify({ Index: 0, AllowNoCV: false, PreliminaryLetter: '', NewWebsite: true }) });
+          const r = await fetch('https://webapi.drushim.co.il/api/cv/sendsinglecv?JobCode=38728539&cvc=' + cvc, { method: 'POST', body: '{}' });
           const j = await r.json();
-          if ((j.Successful || []).length) document.querySelector('[data-nagish="apply-flow-success-modal"]').style.display = 'block';
+          if ((j.Successful || []).length) document.querySelector('[data-nagish="apply-flow-success-modal"]').hidden = false;
           else document.querySelector('[data-testid="apply-flow-error"]').textContent = 'כבר הגשת מועמדות למשרה זו';
         } catch (e) {
           document.querySelector('[data-testid="apply-flow-error"]').textContent = 'blocked';

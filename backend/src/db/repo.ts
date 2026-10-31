@@ -203,6 +203,45 @@ export class Repo {
       .run(pass ? 1 : 0, reason, pass ? 1 : 0, skipStatus, pass ? 1 : 0, skipStatus === 'skipped' ? `prefilter: ${reason}` : reason, nowIso(), id);
   }
 
+/**
+   * Jobs this account already applied to on the site (outside JobHunter, or before) → skipped "already_applied", so they
+   * never reach scoring or the review queue. Jobs JobHunter itself submitted keep their status. Open applications of
+   * those jobs are closed as skipped. Returns how many jobs changed.
+   */
+  markAlreadyApplied(site: string, applied: Map<string, string | null>): number {
+    if (applied.size === 0) return 0;
+    const now = nowIso();
+    let n = 0;
+    tx(this.db, () => {
+      const rows = this.db
+        .prepare(`SELECT id, external_id FROM jobs WHERE site = ? AND status IN ('discovered','scored','queued','needs_review','failed','dry_run_ok')`)
+        .all(site) as Array<{ id: string; external_id: string }>;
+      for (const r of rows) {
+        if (!applied.has(r.external_id)) continue;
+        const when = applied.get(r.external_id);
+        const reason = `already_applied: on ${site}${when ? ` (sent ${when.slice(0, 10)})` : ''}`;
+        this.db.prepare("UPDATE jobs SET status = 'skipped', status_reason = ?, updated_at = ? WHERE id = ?").run(reason, now, r.id);
+        this.db
+          .prepare("UPDATE applications SET status = 'skipped', error = ?, updated_at = ? WHERE job_id = ? AND status IN ('needs_review','approved','failed','dry_run_ok')")
+          .run(reason, now, r.id);
+        n++;
+      }
+    });
+    return n;
+  }
+
+  /** Failed jobs whose recorded error already says "applied before" → skipped already_applied (no site access needed). */
+  reclassifyAlreadyAppliedFailures(): number {
+    return Number(
+      this.db
+        .prepare(
+          `UPDATE jobs SET status = 'skipped', status_reason = 'already_applied: ' || COALESCE(status_reason, ''), updated_at = ?
+           WHERE status = 'failed' AND (status_reason LIKE '%already applied%' OR status_reason LIKE '%already_applied%' OR status_reason LIKE '%כבר הגשת%' OR status_reason LIKE '%הגשת כבר%')`,
+        )
+        .run(nowIso()).changes,
+    );
+  }
+
   /** Reads the posted salary of every job whose content changed since it was last read (core/salary.ts). */
   syncSalaries(read: (j: StoredJob) => { min: number | null; max: number | null; unit: string; source: string; text: string } | null): number {
     const rows = this.db.prepare('SELECT * FROM jobs WHERE salary_hash IS NULL OR salary_hash != content_hash').all() as unknown as JobRow[];

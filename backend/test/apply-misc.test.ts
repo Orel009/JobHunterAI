@@ -3,7 +3,7 @@ import { checkDraftCitations, relevantFacts } from '../src/apply/draft.js';
 import { chooseCv, hebrewRatio } from '../src/apply/cv.js';
 import { AnswersBank, yesNo } from '../src/apply/bank.js';
 import { readiness, drushimFieldsFromJob } from '../src/apply/plan.js';
-import { parseSendCvResponse, alreadyAppliedFromProfile } from '../src/sites/drushim/apply-parse.js';
+import { parseSendCvResponse, appliedJobsFromUserdata } from '../src/sites/drushim/apply-parse.js';
 import { openDb } from '../src/db/index.js';
 import { PrefsSchema } from '../src/core/prefs.js';
 import type { ResolvedField } from '../src/apply/types.js';
@@ -64,9 +64,17 @@ describe('already applied / send result', () => {
     expect(parseSendCvResponse({ IsError: true, Errors: { TokenExpired: 'x' } }, 1)).toMatchObject({ kind: 'error', needsLogin: true });
     expect(parseSendCvResponse({}, 1)).toMatchObject({ kind: 'error', key: 'send_cv_failed' });
   });
-  it('appliedJobIds from the seeker profile', () => {
-    expect(alreadyAppliedFromProfile(['38822551', 1], 38822551)).toBe(true);
-    expect(alreadyAppliedFromProfile(undefined, 1)).toBe(false);
+  it('applied jobs = the keys of userdata JobHistory (sanitized live response), with the sent date', () => {
+    const ud = JSON.parse(fs.readFileSync(new URL('./fixtures/drushim-userdata.json', import.meta.url), 'utf8'));
+    const m = appliedJobsFromUserdata(ud);
+    expect([...m.keys()]).toEqual(['39000001', '39000002', '39000003']);
+    expect(m.get('39000003')).toMatch(/^2026-10-31T/);
+    expect(appliedJobsFromUserdata(null).size).toBe(0);
+    expect(appliedJobsFromUserdata({ UserProfile: {} }).size).toBe(0);
+  });
+  it('the live success response of a real submission parses as submitted', () => {
+    const r = JSON.parse(fs.readFileSync(new URL('./fixtures/drushim-sendcv-success.json', import.meta.url), 'utf8'));
+    expect(parseSendCvResponse(r, r.Successful[0].JobCode)).toEqual({ kind: 'submitted' });
   });
 });
 

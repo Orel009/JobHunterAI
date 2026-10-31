@@ -4,6 +4,8 @@
   "loginUrl": "https://www.drushim.co.il/",
   "apiSearchPattern": "webapi\\.drushim\\.co\\.il/api/jobs/search\\?.*page=",
   "sessionProbePattern": "gw\\.drushim\\.co\\.il/auth/seeker-details",
+  "_userData": "observed 2026-10-31: the site's appliedJobIds = Object.keys(UserProfile.JobHistory) of this endpoint (job code → SentDate, SentCV)",
+  "userDataUrl": "https://www.drushim.co.il/drushim-homepage/api/webapi/api/seeker/userdata/",
   "loadMoreText": "הצג עוד משרות",
   "dom": {
     "jobCard": "a[href^='/job/']"
@@ -12,6 +14,9 @@
     "_source": "data-nagish hooks from the site frontend bundle (2026-10-31); verify on the live logged-in panel",
     "applyButton": "button[data-nagish=\"job-details-apply-button\"]",
     "alreadyAppliedButtonText": "הוגש|הגשת כבר|נשלח",
+    "_appliedChip": "observed 2026-10-31: an applied job's page has NO apply button and a chip <span>הגשת</span> in the job-details <article> (no data-nagish hook)",
+    "jobDetailsCard": "article:has([data-nagish=\"job-details-title\"])",
+    "appliedChipText": "^\\s*(הגשת|הוגשה|הוגש)\\s*$",
     "modal": "[data-nagish=\"apply-flow-modal\"]",
     "loginModal": "[class*=\"loginModal\"]",
     "cvItem": "[data-nagish=\"apply-flow-cv-item\"]",

@@ -5,6 +5,7 @@
 import type { BrowserContext } from 'playwright';
 import { closeContext, getContext, getPage } from './session.js';
 import cfg from '../sites/drushim/selectors.json' with { type: 'json' };
+import { watchSessionProbe } from '../sites/drushim/session-probe.js';
 
 export type LoginState = 'logged_in' | 'logged_out' | 'unknown';
 
@@ -24,7 +25,6 @@ export const setSession = (site: string, s: SessionInfo) => {
   states[site] = s;
 };
 
-const PROBE = new RegExp(cfg.sessionProbePattern);
 
 /**
  * Opens the persistent profile headless, loads the Drushim homepage and reads the seeker-details probe:
@@ -37,13 +37,14 @@ export async function checkDrushimSession(onContext?: (ctx: BrowserContext) => P
     const ctx = await getContext({ headless: true });
     await onContext?.(ctx);
     const page = await getPage({ headless: true });
-    const probe = page.waitForResponse((r) => PROBE.test(r.url()), { timeout: 30_000 }).catch(() => null);
+    // the first probe is often 401 until the site refreshes its token; wait for the settled answer
+    const probe = watchSessionProbe(page, 30_000);
     await page.goto(cfg.baseUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-    const r = await probe;
+    const state = await probe.settle();
     const now = new Date().toISOString();
-    if (!r) info = { state: 'unknown', checkedAt: now, detail: 'session probe not seen (site changed or slow?)' };
-    else if (r.status() === 200) info = { state: 'logged_in', checkedAt: now, detail: 'probe 200' };
-    else info = { state: 'logged_out', checkedAt: now, detail: `probe ${r.status()}` };
+    const seen = probe.statuses.join('→') || 'none';
+    if (state === 'unknown') info = { state: 'unknown', checkedAt: now, detail: 'session probe not seen (site changed or slow?)' };
+    else info = { state, checkedAt: now, detail: `probe ${seen}` };
   } catch (e) {
     info = { state: 'unknown', checkedAt: new Date().toISOString(), detail: e instanceof Error ? e.message.split('\n')[0]! : String(e) };
   } finally {

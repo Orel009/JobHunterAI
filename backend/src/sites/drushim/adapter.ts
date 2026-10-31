@@ -3,6 +3,7 @@ import type { RawJob, SearchQuery, SiteAdapter, SiteContext } from '../types.js'
 import { assertNotBlocked, pace } from '../../browser/session.js';
 import { log } from '../../log.js';
 import cfg from './selectors.json' with { type: 'json' };
+import { fetchAppliedJobs } from './apply.js';
 import {
   extractNextData,
   fromApiJob,
@@ -90,6 +91,10 @@ export const drushim: SiteAdapter = {
       if (list.length === 0) break;
       for (const j of list) yield fromApiJob(j);
     }
+  },
+
+  async appliedJobs(ctx) {
+    return fetchAppliedJobs(ctx.page);
   },
 
   async getDetails(job, ctx) {

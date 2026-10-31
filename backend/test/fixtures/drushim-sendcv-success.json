@@ -1,0 +1,41 @@
+{
+  "Successful": [
+    {
+      "JobCode": 38901838,
+      "SentDate": "31/10/2026",
+      "Expired": false,
+      "JobTitle": "מוביל/ת חדשנות ו-AI, חולון/באר שבע",
+      "SeekerToJobCodes": {
+        "38901838": 100000001
+      }
+    }
+  ],
+  "Failed": [],
+  "Platinum": [],
+  "PlatinumCount": 0,
+  "QueryParams": {
+    "AG": "M",
+    "sender": "old",
+    "sj": "38901838",
+    "c": 6,
+    "Goal8": ""
+  },
+  "IsError": false,
+  "Data": null,
+  "Errors": {},
+  "ErrorsMessages": {},
+  "SSAEvents": [],
+  "SEO": {
+    "MetaDataItems": [],
+    "CategoryDescription": "",
+    "SearchHeader": "",
+    "title": "",
+    "BreadCrumbs": {
+      "Keys": []
+    },
+    "CanonicalUrl": null,
+    "ArticleSchemaScript": null,
+    "ArticleFaQSchemaScript": null
+  },
+  "_note": "sanitized from the live POST sendsinglecv response of a real submission (2026-10-31); SSAEvents (tracking ids) removed"
+}

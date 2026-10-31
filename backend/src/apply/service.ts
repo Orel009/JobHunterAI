@@ -15,7 +15,7 @@ import { candidateGender } from '../profile/facts.js';
 import { rankStoredJob } from '../core/rank.js';
 import { getPage, pace } from '../browser/session.js';
 import { startTask } from '../pipeline/runner.js';
-import { ApplyError, fillPanel, installDryRunGuard, openPanel, screenshot, submitPanel, type PanelState } from '../sites/drushim/apply.js';
+import { ApplyError, fillPanel, installDryRunGuard, openPanel, screenshot, submitPanel, type PanelState, fetchAppliedJobs, screenshotPanel } from '../sites/drushim/apply.js';
 import { AnswersBank, bankTypeFor, yesNo } from './bank.js';
 import { hebrewRatio } from './cv.js';
 import { Applications, buildPlan, readiness, type ApplicationRow } from './plan.js';
@@ -74,8 +74,18 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
     const prefs = loadPrefs();
     new AnswersBank(db).seed(prefs, candidateGender());
     run.stats.prepared = 0;
+    // the site's own list of jobs this account applied to, read once per run
+    let applied: Map<string, string | null> | null = null;
+    if (jobs.some((j) => j.site === 'drushim' && j.applyType !== 'external' && j.applyType !== 'email')) {
+      applied = await fetchAppliedJobs(await getPage()).catch((e: unknown) => {
+        L.warn({ err: e instanceof Error ? e.message : String(e) }, 'could not read the already-applied list; each job page is still checked');
+        return null;
+      });
+      if (applied) run.stats.alreadyApplied = repo.markAlreadyApplied('drushim', applied);
+    }
     for (const job of jobs) {
       if (run.controller.signal.aborted) return;
+      if (applied?.has(job.externalId)) continue; // skipped already_applied above
       run.stage = `preparing ${job.title}`;
       if (job.applyType === 'external' || job.applyType === 'email') {
         const plan: ApplyPlan = { jobId: job.id, site: job.site, createdAt: new Date().toISOString(), cv: null, fields: [], readiness: 'needs_answers', notes: [`${job.applyType} apply → ${job.applyTarget} (handled manually in this phase)`] };
@@ -106,7 +116,7 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
           continue;
         }
         await partialFill(page, state, plan);
-        const shot = await screenshot(page, `app${app.id}-prepare`);
+        const shot = await screenshotPanel(page, `app${app.id}-prepare`);
         apps.update(app.id, { screenshotBefore: shot });
         savePlanFile(app.id, plan);
         repo.setStatus(job.id, 'needs_review', `plan ${plan.readiness}`);
@@ -115,7 +125,9 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
         if (e instanceof ApplyError && e.code === 'already_applied') {
-          repo.setStatus(job.id, 'skipped', `already applied: ${err}`);
+          repo.setStatus(job.id, 'skipped', `already_applied: ${err}`);
+          const last = apps.latestForJob(job.id);
+          if (last && last.status !== 'submitted') apps.update(last.id, { status: 'skipped', error: `already_applied: ${err}` });
           continue;
         }
         repo.setStatus(job.id, 'failed', err);
@@ -243,6 +255,16 @@ export function approveApplication(db: DB, appId: number): { runId: number; dryR
   const runId = startTask(db, 'drushim', dryRun ? 'dry_run' : 'submit', async (run, _repo, L) => {
     run.stage = `${dryRun ? 'dry run' : 'SUBMIT'}: ${job.title}`;
     const page = await getPage();
+    // applied on the site in the meantime (by hand, or another device)? → skipped, never failed
+    const applied = await fetchAppliedJobs(page).catch(() => null);
+    if (applied?.has(job.externalId)) {
+      const when = applied.get(job.externalId);
+      const reason = `already_applied: on drushim${when ? ` (sent ${when.slice(0, 10)})` : ''}`;
+      apps.update(appId, { status: 'skipped', error: reason });
+      repo.setStatus(job.id, 'skipped', reason);
+      L.info({ job: job.title }, reason);
+      return;
+    }
     const unguard = dryRun ? await installDryRunGuard(page) : async () => undefined;
     try {
       const state = await openPanel(page, job.url);
@@ -258,7 +280,7 @@ export function approveApplication(db: DB, appId: number): { runId: number; dryR
         return;
       }
       await fillPanel(page, state, app.plan);
-      const before = await screenshot(page, `app${appId}-${dryRun ? 'dryrun' : 'before-submit'}`);
+      const before = await screenshotPanel(page, `app${appId}-${dryRun ? 'dryrun' : 'before-submit'}`);
       savePlanFile(appId, app.plan);
       if (dryRun) {
         apps.update(appId, { status: 'dry_run_ok', screenshotBefore: before, error: null });
@@ -273,8 +295,9 @@ export function approveApplication(db: DB, appId: number): { runId: number; dryR
         repo.setStatus(job.id, 'submitted', 'submitted');
         L.info({ job: job.title }, 'SUBMITTED');
       } else if (r.outcome.kind === 'already_applied') {
-        apps.update(appId, { status: 'skipped', screenshotBefore: before, screenshotAfter: r.screenshotAfter, error: `already applied on ${r.outcome.sentDate}` });
-        repo.setStatus(job.id, 'skipped', `already applied on ${r.outcome.sentDate}`);
+        const reason = `already_applied: the site answered "sent ${r.outcome.sentDate}"`;
+        apps.update(appId, { status: 'skipped', screenshotBefore: before, screenshotAfter: r.screenshotAfter, error: reason });
+        repo.setStatus(job.id, 'skipped', reason);
       } else {
         apps.update(appId, { status: 'failed', screenshotBefore: before, screenshotAfter: r.screenshotAfter, confirmationText: r.confirmationText, error: r.outcome.message });
         repo.setStatus(job.id, 'failed', r.outcome.message);
@@ -285,13 +308,14 @@ export function approveApplication(db: DB, appId: number): { runId: number; dryR
       const cur = apps.get(appId);
       if (cur?.status === 'approved') {
         if (e instanceof ApplyError && e.code === 'already_applied') {
-          apps.update(appId, { status: 'skipped', error: err });
-          repo.setStatus(job.id, 'skipped', err);
-        } else {
-          apps.update(appId, { status: 'failed', error: err });
-          repo.setStatus(job.id, 'failed', err);
+          apps.update(appId, { status: 'skipped', error: `already_applied: ${err}` });
+          repo.setStatus(job.id, 'skipped', `already_applied: ${err}`);
+          return; // not a failure of the run
         }
+        apps.update(appId, { status: 'failed', error: err });
+        repo.setStatus(job.id, 'failed', err);
       }
+      if (e instanceof ApplyError && e.code === 'already_applied') return;
       throw e;
     } finally {
       await unguard();

@@ -40,7 +40,12 @@ export function parseSendCvResponse(body: unknown, jobCode: number): SendCvOutco
   return { kind: 'submitted' };
 }
 
-/** `appliedJobIds` from the seeker profile (gw) lets us skip jobs before opening the panel. */
-export function alreadyAppliedFromProfile(appliedJobIds: Array<string | number> | null | undefined, jobCode: string | number): boolean {
-  return (appliedJobIds ?? []).map(String).includes(String(jobCode));
+/**
+ * Jobs this account already applied to, from GET …/api/webapi/api/seeker/userdata/ — the site's own appliedJobIds is
+ * Object.keys(UserProfile.JobHistory) (observed in its frontend code and response, 2026-10-31). job code → sent date.
+ */
+export function appliedJobsFromUserdata(body: unknown): Map<string, string | null> {
+  const hist = (body as { UserProfile?: { JobHistory?: Record<string, { SentDate?: string | null } | null> } } | null)?.UserProfile?.JobHistory;
+  if (!hist || typeof hist !== 'object') return new Map();
+  return new Map(Object.entries(hist).map(([code, v]) => [String(code), v?.SentDate ?? null]));
 }

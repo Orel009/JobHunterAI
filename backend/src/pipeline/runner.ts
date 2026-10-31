@@ -168,6 +168,18 @@ async function discover(repo: Repo, run: ActiveRun, L: typeof log): Promise<void
     }
   }
 
+  // jobs this account already applied to never reach scoring or the review queue (refreshed on every run)
+  if (adapter.appliedJobs) {
+    run.stage = 'checking applied jobs';
+    try {
+      const applied = await adapter.appliedJobs(ctx);
+      run.stats.alreadyApplied = repo.markAlreadyApplied(run.site, applied);
+      L.info({ appliedOnSite: applied.size, skipped: run.stats.alreadyApplied }, 'already-applied jobs skipped');
+    } catch (e) {
+      L.warn({ err: e instanceof Error ? e.message : String(e) }, 'could not read the already-applied list; the apply step still checks each job');
+    }
+  }
+
   run.stage = 'prefilter';
   applyPrefilter(repo, run, prefs);
 

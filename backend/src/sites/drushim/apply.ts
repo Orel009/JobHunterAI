@@ -4,6 +4,10 @@
  *     CV list (radio per stored CV) · screening statements (checkboxes, all must be ticked) · optional consent ·
  *     optional cover letter (toggle) · submit → POST …/api/cv/sendsinglecv → success modal.
  * Safety: in dry-run the submit button is never clicked AND any sendsinglecv request is aborted by a route guard.
+ * Verified against the live site on 2026-10-31 (one real submission + captured panels, see test/fixtures):
+ *   CV radios (value = the CV code), screening-question checkboxes, the cover-letter toggle, the submit button
+ *   (disabled until every statement is ticked), the sendsinglecv response and the success modal. An already-applied
+ *   job has no apply button at all, only a "הגשת" chip. The consent checkbox has NOT been seen on a live panel yet.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,12 +17,13 @@ import { assertNotBlocked, pace } from '../../browser/session.js';
 import { log } from '../../log.js';
 import type { ApplyPlan, FormField } from '../../apply/types.js';
 import { yesNo } from '../../apply/bank.js';
-import { parseSendCvResponse, type SendCvOutcome } from './apply-parse.js';
+import { appliedJobsFromUserdata, parseSendCvResponse, type SendCvOutcome } from './apply-parse.js';
+import { watchSessionProbe } from './session-probe.js';
 import cfg from './selectors.json' with { type: 'json' };
 
 const S = cfg.apply;
 const SEND_CV = new RegExp(S.sendCvPattern);
-const PROBE = new RegExp(cfg.sessionProbePattern);
+const APPLIED_CHIP = new RegExp(S.appliedChipText);
 
 export class ApplyError extends Error {
   constructor(
@@ -36,23 +41,50 @@ export interface PanelState {
   hasCoverLetter: boolean;
 }
 
-const clean = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
+/** whitespace collapsed; zero-width and bidi marks (the success text ends in a run of them) removed */
+export const clean = (s: string | null | undefined) =>
+  (s ?? '')
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\u00ad\ufeff]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** The "הגשת" chip in the job-details card: this account already applied (the page then has no apply button). */
+async function appliedChip(page: Page): Promise<string | null> {
+  const texts = await page
+    .locator(`${S.jobDetailsCard} span`)
+    .allInnerTexts()
+    .catch(() => [] as string[]);
+  return texts.map((t) => clean(t)).find((t) => APPLIED_CHIP.test(t)) ?? null;
+}
 
 /** Opens the job page and the apply panel; reads CVs and fields. Throws ApplyError on login/panel problems. */
 export async function openPanel(page: Page, jobUrl: string): Promise<PanelState> {
-  const probe = page.waitForResponse((r) => PROBE.test(r.url()), { timeout: 20_000 }).catch(() => null);
+  const probe = watchSessionProbe(page);
   const res = await page.goto(jobUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await assertNotBlocked(page, res?.status());
-  const p = await probe;
-  if (p && p.status() === 401) throw new ApplyError('not_logged_in', 'Drushim session is not logged in — run: npm run login -- drushim');
+  // the first probe is often a 401 that the site's token refresh fixes a moment later: wait for the settled answer
+  if ((await probe.settle()) === 'logged_out') throw new ApplyError('not_logged_in', 'Drushim session is not logged in — log in again (dashboard button or npm run login -- drushim)');
 
+  // the button is rendered after the page loads your profile; an applied job never gets one (only the "הגשת" chip)
   const applyBtn = page.locator(S.applyButton).first();
-  if (!(await applyBtn.isVisible().catch(() => false))) throw new ApplyError('no_apply_button', 'apply button not found on the job page');
+  const visible = await applyBtn.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false);
+  if (!visible) {
+    const chip = await appliedChip(page);
+    if (chip) throw new ApplyError('already_applied', `job page shows "${chip}" (no apply button)`);
+    throw new ApplyError('no_apply_button', 'apply button not found on the job page');
+  }
   const btnText = clean(await applyBtn.innerText().catch(() => ''));
   if (new RegExp(S.alreadyAppliedButtonText).test(btnText)) throw new ApplyError('already_applied', `job page says already applied ("${btnText}")`);
 
   await pace(1500, 3500);
-  await applyBtn.click();
+  try {
+    await applyBtn.click({ timeout: 10_000 });
+  } catch (e) {
+    // the button can disappear when the page learns this job was already applied to
+    const chip = await appliedChip(page);
+    if (chip) throw new ApplyError('already_applied', `job page shows "${chip}" (the apply button went away)`);
+    throw new ApplyError('panel_not_found', `could not click the apply button: ${(e as Error).message.split('\n')[0]}`);
+  }
   const modal = page.locator(S.modal).first();
   const appeared = await modal.waitFor({ state: 'visible', timeout: 15_000 }).then(() => true).catch(() => false);
   if (!appeared) {
@@ -132,6 +164,22 @@ export async function screenshot(page: Page, name: string): Promise<string> {
   return file;
 }
 
+/**
+ * Evidence of the filled panel: the panel itself (a full-page capture of the live site showed only the dimmed
+ * backdrop, not the panel). Falls back to the visible viewport.
+ */
+export async function screenshotPanel(page: Page, name: string): Promise<string> {
+  const file = `${name}-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+  const target = path.join(config.paths.screenshots, file);
+  const modal = page.locator(S.modal).first();
+  const ok = await modal
+    .screenshot({ path: target, timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!ok) await page.screenshot({ path: target, fullPage: false });
+  return file;
+}
+
 /** Dry-run guard: abort any send-cv request for the lifetime of the page (defense in depth). */
 export async function installDryRunGuard(page: Page): Promise<() => Promise<void>> {
   const handler = (route: Route) => {
@@ -140,6 +188,13 @@ export async function installDryRunGuard(page: Page): Promise<() => Promise<void
   };
   await page.route(SEND_CV, handler);
   return () => page.unroute(SEND_CV, handler);
+}
+
+/** Job codes this account already applied to (with the sent date), as the site itself knows them. */
+export async function fetchAppliedJobs(page: Page): Promise<Map<string, string | null>> {
+  const r = await page.request.get(cfg.userDataUrl, { timeout: 20_000 });
+  if (!r.ok()) throw new Error(`applied-jobs list unavailable (userdata ${r.status()})`);
+  return appliedJobsFromUserdata(await r.json());
 }
 
 export interface SubmitResult {
@@ -169,7 +224,7 @@ export async function submitPanel(page: Page, jobCode: number, shotName: string)
   } else {
     confirmationText = clean(await page.locator(S.error).first().innerText().catch(() => '')) || null;
   }
-  const screenshotAfter = await screenshot(page, `${shotName}-after`);
+  const screenshotAfter = await screenshotPanel(page, `${shotName}-after`).catch(() => screenshot(page, `${shotName}-after`));
   fs.writeFileSync(path.join(config.paths.screenshots, `${shotName}-response.json`), JSON.stringify({ status: resp.status(), body }, null, 2));
   return { outcome, confirmationText, screenshotAfter };
 }

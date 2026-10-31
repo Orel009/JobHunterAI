@@ -34,10 +34,14 @@ interface Rec {
 const recs: Rec[] = [];
 let n = 0;
 
+/** the site's own access-token refresh (keeps you logged in; sends nothing about you or any job) */
+const SESSION_REFRESH = /^\/drushim-homepage\/api\/session\/refresh\/?$/;
+
 function shouldBlock(req: Request): boolean {
   const u = new URL(req.url());
   if (!GUARDED_HOST.test(u.hostname)) return false;
   if (BEACON.test(u.pathname)) return false;
+  if (req.method() === 'POST' && SESSION_REFRESH.test(u.pathname)) return false;
   if (req.method() !== 'GET') return true;
   return APPLY_LIKE.test(u.pathname + u.search) && req.resourceType() !== 'script' && req.resourceType() !== 'stylesheet';
 }
