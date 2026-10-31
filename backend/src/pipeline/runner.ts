@@ -13,7 +13,8 @@ import { experienceInput, extractRequiredYears } from '../core/experience.js';
 import { candidateContext, scoreJob } from '../llm/score.js';
 import { loadProfile, skillAliasGroups } from '../profile/facts.js';
 
-export type RunKind = 'discover' | 'score' | 'full';
+/** enrich = fetch missing details for prefilter-passing jobs, then score (no searching) */
+export type RunKind = 'discover' | 'score' | 'full' | 'enrich';
 
 export interface RunStats {
   queries: number;
@@ -56,7 +57,8 @@ export function stopRun(): boolean {
 export function startRun(db: DB, site: string, kind: RunKind): number {
   getAdapter(site); // validates site
   return startTask(db, site, kind, async (run, repo, L) => {
-    if (kind !== 'score') await discover(repo, run, L);
+    if (kind === 'discover' || kind === 'full') await discover(repo, run, L);
+    if (kind === 'enrich') await details(repo, run, L, loadPrefs());
     if (kind !== 'discover') await score(repo, run, L);
   });
 }
@@ -147,16 +149,37 @@ async function discover(repo: Repo, run: ActiveRun, L: typeof log): Promise<void
   run.stage = 'prefilter';
   applyPrefilter(repo, run, prefs);
 
+  await details(repo, run, L, prefs, ctx);
+}
+
+/**
+ * Full job pages for prefilter-passing jobs. One failing page is logged and skipped (the job keeps its card text and
+ * is retried next run); a challenge page stops the run; 3 page errors in a row stop it as possible rate limiting.
+ */
+async function details(repo: Repo, run: ActiveRun, L: typeof log, prefs: ReturnType<typeof loadPrefs>, ctxIn?: SiteContext): Promise<void> {
+  const adapter = getAdapter(run.site);
+  const ctx = ctxIn ?? { page: await getPage(), maxPages: 1, signal: run.controller.signal };
   run.stage = 'details';
+  run.stats.detailsErrors = 0;
+  let streak = 0;
   for (const j of repo.jobsNeedingDetails(run.site)) {
     if (run.controller.signal.aborted) return;
-    const detailed = await adapter.getDetails(j, ctx);
-    if (!detailed) {
-      repo.setStatus(j.id, 'skipped', 'job no longer available');
-      continue;
+    try {
+      const detailed = await adapter.getDetails(j, ctx);
+      streak = 0;
+      if (!detailed) {
+        repo.setStatus(j.id, 'skipped', 'job no longer available');
+        continue;
+      }
+      repo.upsertJob(toJob(detailed));
+      run.stats.detailsFetched++;
+    } catch (e) {
+      if (e instanceof BlockedError) throw e;
+      run.stats.detailsErrors++;
+      streak++;
+      L.warn({ job: j.title, url: j.url, err: e instanceof Error ? e.message.split('\n')[0] : String(e) }, 'details failed — skipping this job page');
+      if (streak >= 3) throw new BlockedError('3 job pages failed in a row — possible rate limiting; stopping');
     }
-    repo.upsertJob(toJob(detailed));
-    run.stats.detailsFetched++;
   }
   // Details can change title/location → re-run the prefilter for those.
   applyPrefilter(repo, run, prefs);

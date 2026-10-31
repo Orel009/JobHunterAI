@@ -509,7 +509,7 @@ JobHunterAI/
 | `npm run build` | בונה את ה-dashboard |
 | `npm test` | בדיקות |
 | `npm run typecheck` | בדיקת טיפוסים |
-| `npm run discover -- drushim [discover\|score\|full]` | ריצה מהטרמינל |
+| `npm run discover -- drushim [discover\|score\|full\|enrich]` | ריצה מהטרמינל. `enrich` = פרטים מלאים ודירוג למשרות שכבר נמצאו, בלי חיפוש חדש |
 | `npm run model:bench` | השוואת מודלים ובדיקת המצאות בטיוטות, לפני ואחרי |
 | `npm run bench:drafts` | רק בדיקת המצאות בטיוטות |
 | `npm run db:migrate` | החלת מיגרציות |
