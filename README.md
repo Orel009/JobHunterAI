@@ -1,5 +1,8 @@
 # JobHunter
 
+> **Setting this up for yourself? Start here: [docs/FRIEND-SETUP.md](docs/FRIEND-SETUP.md)** (Hebrew, step by step, from a fresh Windows PC).
+> Stuck? Paste [docs/AI-HELP-PROMPT.md](docs/AI-HELP-PROMPT.md) into any AI assistant together with the two guides.
+
 A local-first personal job-application agent for the Israeli job market. It finds jobs, filters and scores them
 with a language model, prepares each application with a field-by-field plan, and submits only after you approve it.
 It runs on your Windows PC, and your data stays in `./data`. The default model is local and free (Ollama); paid API
@@ -87,6 +90,10 @@ The **Profile**, **Preferences** and **Settings** screens edit everything in for
 - **No bypassing**: CAPTCHA, bot protection and rate limits are never circumvented, and login is never automated. A challenge stops the run with status `blocked`.
 - **No invented facts**: every value sent traces back to your profile or the answers bank, and its provenance is stored per field.
   LLM drafts must cite profile facts, are checked by a second pass, and are always shown to you before anything is sent.
+
+## Sharing a copy without GitHub access
+
+`npm run package` writes `dist/JobHunter-<version>.zip` with **only the git-tracked files** of the last commit (`git archive`). It then reads the zip back and fails, deleting it, if anything under `data/`, a `.env`, a PDF, a database or `preferences.yaml` is inside. Uncommitted changes are not included. The recipient extracts it and follows [docs/FRIEND-SETUP.md](docs/FRIEND-SETUP.md) (route B).
 
 ## Development
 

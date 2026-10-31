@@ -1,5 +1,6 @@
 {
   "name": "jobhunter",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -21,6 +22,7 @@
     "investigate:apply": "npm run investigate:apply -w backend --",
     "db:migrate": "npm run migrate -w backend",
     "test": "npm test -w backend",
+    "package": "node scripts/package.mjs",
     "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend"
   },
   "engines": {

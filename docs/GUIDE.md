@@ -2,6 +2,8 @@
 
 המדריך הזה מיועד לשימוש יום־יומי במערכת. פקודות, שמות קבצים וקוד מופיעים באנגלית בתוך בלוקי קוד.
 
+**התקנה בפעם הראשונה, בלי רקע בפיתוח?** יש להתחיל ב-[FRIEND-SETUP.md](FRIEND-SETUP.md).
+
 **תוכן העניינים:**
 [מה המערכת עושה](#מה-המערכת-עושה-ומה-לא) ·
 [איך זה עובד](#איך-זה-עובד) ·
@@ -585,6 +587,7 @@ JobHunterAI/
 | `npm run model:bench` | השוואת מודלים ובדיקת המצאות בטיוטות, לפני ואחרי |
 | `npm run bench:drafts` | רק בדיקת המצאות בטיוטות |
 | `npm run db:migrate` | החלת מיגרציות |
+| `npm run package` | יוצר `dist/JobHunter-<version>.zip` עם הקבצים שב-git בלבד, ובודק שאין בו `data/`, `.env`, PDF או מסד נתונים. לשיתוף בלי גישה ל-GitHub |
 | `npm run session:check -- drushim` | האם הדפדפן מחובר |
 | `npm run investigate -- <site> <url> [--click "טקסט"] [--wait 30]` | הקלטת רשת באתר |
 | `npm run investigate:apply -- find <מילות חיפוש...>` / `apply <jobUrl...>` | בדיקת תהליך הגשה, עם חסימת כל שליחה |
