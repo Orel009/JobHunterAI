@@ -101,7 +101,7 @@ describe('LinkedIn job alerts are optional (off by default)', () => {
     expect(status.statusCode).toBe(200);
     expect(status.json().linkedin).toEqual({ enabled: false });
 
-    const h = await runHunt(db);
+    const h = await runHunt(db, { checkSession: async () => ({ state: 'logged_in', checkedAt: null, detail: 'stub' }), notify: () => undefined });
     expect(h.runs).toEqual([{ site: 'drushim', status: 'done', reason: null, inserted: 1, scored: 1 }]);
     expect(h.note).toMatch(/no new jobs/);
     expect(repo.listRuns(10).map((r) => (r as unknown as { site: string }).site)).toEqual(['drushim']);

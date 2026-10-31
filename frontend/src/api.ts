@@ -122,6 +122,9 @@ export interface Status {
   /** optional LinkedIn job alerts (email): the LinkedIn screen and filter exist only while enabled */
   linkedin: { enabled: boolean };
   autoSubmit: { sites: Record<string, boolean>; minRank: number | null; minRankEffective: number; paused: boolean; pausedAt: string | null };
+  lastHunt: import('./Schedule').HuntSummary | null;
+  huntRunning: boolean;
+  schedule: { enabled: boolean; next: string | null };
   sessions: Record<string, { state: 'logged_in' | 'logged_out' | 'unknown'; checkedAt: string | null; detail: string }>;
   pendingQuestions: number;
   /** passed the prefilter, no current score (e.g. discovered before the profile was approved) */

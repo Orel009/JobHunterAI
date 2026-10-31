@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, linkedin, type RunRow, type Status } from './api';
+import { HuntSummaryLine } from './Schedule';
 
 export function Controls({ status, onChange, profileReady = true }: { status: Status; onChange: () => void; profileReady?: boolean }) {
   const [busy, setBusy] = useState(false);
@@ -64,6 +65,15 @@ export function Controls({ status, onChange, profileReady = true }: { status: St
           </span>
         ))}
         {!profileReady && <span className="note">no approved profile: Discover finds jobs, scoring waits for the profile</span>}
+        <button
+          className="secondary"
+          disabled={!!run || busy || status.huntRunning}
+          title="one full hunt: discover → score → prepare plans (sends only if auto-submit is on and its gate passes)"
+          onClick={() => act(() => fetch('/api/hunt', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(async (r) => (r.ok ? r.json() : Promise.reject(new Error(((await r.json()) as { error?: string }).error)))))}
+        >
+          {status.huntRunning ? 'Hunt running…' : 'Run hunt now'}
+        </button>
+        {status.schedule.enabled && status.schedule.next && <span className="muted">next scheduled hunt {new Date(status.schedule.next).toLocaleString('he-IL', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span>}
         {status.linkedin.enabled && (
           <button disabled={!!run || busy} onClick={() => act(linkedin.fetch)} title="read new LinkedIn job-alert emails → prefilter → score (LinkedIn itself is never opened)">
             Fetch LinkedIn alerts
@@ -89,6 +99,9 @@ export function Controls({ status, onChange, profileReady = true }: { status: St
         )}
       </div>
       {msg && <div className="banner error">{msg}</div>}
+      {status.lastHunt && (
+        <HuntSummaryLine h={status.lastHunt} onLogin={() => void fetch('/api/session/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })} />
+      )}
     </section>
   );
 }

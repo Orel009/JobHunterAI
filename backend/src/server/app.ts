@@ -19,6 +19,8 @@ import { registerOnboardingRoutes } from './onboarding-routes.js';
 import { registerLinkedInRoutes } from './linkedin-routes.js';
 import { registerHistoryRoutes } from './history-routes.js';
 import { autoSubmitSettings, effectiveMinRank, pauseAutoSubmit, saveAutoSubmitSettings } from '../apply/auto-submit.js';
+import { huntRunning, recentHunts, runHunt } from '../pipeline/hunt.js';
+import { inQuietHours, isHhmm, nextRun, runnableTimes, saveScheduleSettings, scheduleSettings } from '../pipeline/schedule.js';
 import { linkedInEnabled } from '../linkedin/settings.js';
 import { prepareJobs, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
@@ -72,6 +74,10 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
       linkedin: { enabled: linkedInEnabled() },
       /** auto-submit (off by default): per-site toggles, the kill switch and the effective minimum rank */
       autoSubmit: { ...autoSubmitSettings(), minRankEffective: effectiveMinRank() },
+      /** the latest hunt's summary, and the next in-app scheduled hunt (null = off) */
+      lastHunt: recentHunts(db, 1)[0] ?? null,
+      huntRunning: huntRunning(),
+      schedule: { enabled: scheduleSettings().enabled, next: scheduleSettings().enabled ? (nextRun(new Date(), scheduleSettings())?.toISOString() ?? null) : null },
       sessions: allSessions(),
       roleTypes: loadPrefs().roleTypes.map((r) => ({ id: r.id, label: r.label ?? r.id, tier: r.tier, enabled: r.enabled })),
       maxRequiredYears: loadPrefs().maxRequiredYears,
@@ -155,6 +161,37 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   registerOnboardingRoutes(app, db);
   registerLinkedInRoutes(app, db);
   registerHistoryRoutes(app, db);
+
+  // ---------- hunts and schedule ----------
+  /** one full hunt in the background (the dashboard button, or a scheduled run handed to this running app) */
+  app.post('/api/hunt', async (req, reply) => {
+    const { trigger } = z.object({ trigger: z.enum(['manual', 'task']).default('manual') }).parse(req.body ?? {});
+    if (huntRunning() || getActiveRun()) return reply.status(409).send({ error: 'a run is already active' });
+    void runHunt(db, { trigger }).catch((e: unknown) => log.error({ err: e instanceof Error ? e.message : String(e) }, 'hunt failed'));
+    return { started: true };
+  });
+  app.get('/api/hunts', async () => recentHunts(db, 20));
+
+  const scheduleView = () => {
+    const s = scheduleSettings();
+    return { ...s, runnable: runnableTimes(s), inQuiet: s.times.filter((t) => inQuietHours(t, s.quietHours)), next: nextRun(new Date(), s)?.toISOString() ?? null };
+  };
+  app.get('/api/schedule', async () => scheduleView());
+  app.put('/api/schedule', async (req) => {
+    const hhmm = z.string().refine(isHhmm, 'HH:MM');
+    const b = z
+      .object({
+        enabled: z.boolean().optional(),
+        times: z.array(hhmm).max(12).optional(),
+        days: z.array(z.number().int().min(0).max(6)).optional(),
+        quietHours: z.object({ from: hhmm, to: hhmm }).optional(),
+        toast: z.boolean().optional(),
+      })
+      .parse(req.body ?? {});
+    saveScheduleSettings(b);
+    log.info(scheduleView(), 'schedule settings changed');
+    return scheduleView();
+  });
 
   // ---------- auto-submit (off by default) ----------
   app.get('/api/auto-submit', async () => ({ ...autoSubmitSettings(), minRankEffective: effectiveMinRank(), dryRun: config.DRY_RUN, minRankEnv: config.AUTO_SUBMIT_MIN_RANK }));

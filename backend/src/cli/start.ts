@@ -3,6 +3,8 @@
  *   --doctor   checks 1–6 only, report, change nothing
  *   --hunt     after startup: discover → score → prepare plans for jobs ≥ threshold (never submits)
  *   --no-open  don't open the browser
+ *   --no-browser  for Windows Task Scheduler: no dashboard tab, the site browser headless, exit after the hunt;
+ *                 if JobHunter is already running, ask it to run the hunt instead and exit
  */
 import { execSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -13,7 +15,9 @@ import { fileURLToPath } from 'node:url';
 const args = process.argv.slice(2);
 const DOCTOR = args.includes('--doctor');
 const HUNT = args.includes('--hunt');
-const NO_OPEN = args.includes('--no-open');
+const NO_BROWSER = args.includes('--no-browser');
+const NO_OPEN = args.includes('--no-open') || NO_BROWSER;
+if (NO_BROWSER) process.env.HEADLESS = 'true'; // before .env is read (it never overrides a set variable)
 if (DOCTOR) process.env.JOBHUNTER_READONLY = '1';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -41,6 +45,7 @@ function fail(he: string, en: string, fixHe: string, fixEn: string): void {
 }
 
 async function ask(question: string): Promise<boolean> {
+  if (NO_BROWSER) return false; // scheduled run: nobody is there to answer
   if (!process.stdin.isTTY) {
     console.log(`${question} (non-interactive → no)`);
     return false;
@@ -87,6 +92,17 @@ try {
   process.exit(1);
 }
 ok('.env valid');
+
+// ---------- scheduled hunt while JobHunter is already running: let the running app do it ----------
+if (HUNT && NO_BROWSER) {
+  const base = `http://127.0.0.1:${config.PORT}`;
+  const up = await fetch(`${base}/api/status`, { signal: AbortSignal.timeout(3000) }).then((r) => r.ok).catch(() => false);
+  if (up) {
+    const r = await fetch(`${base}/api/hunt`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ trigger: 'task' }) }).catch(() => null);
+    console.log(r?.ok ? 'JobHunter is already running: it runs this hunt now (summary in the dashboard).' : `JobHunter is running but did not start the hunt: ${r ? await r.text() : 'no answer'}`);
+    process.exit(0);
+  }
+}
 
 // ---------- profile state decides onboarding mode ----------
 const { loadProfile, profilePath } = await import('../profile/facts.js');
@@ -409,6 +425,12 @@ console.log(`  dashboard      ${url}`);
 console.log(`${line}\nCtrl+C to stop / לעצירה Ctrl+C\n`);
 log.info({ url, dryRun: config.DRY_RUN }, 'JobHunter started');
 
+// in-app schedule (off unless turned on in Settings); not for a one-off scheduled run
+if (!NO_BROWSER) {
+  const { startScheduler } = await import('../pipeline/scheduler.js');
+  startScheduler(db!);
+}
+
 if (!NO_OPEN) {
   const opener = process.platform === 'win32' ? `start "" "${url}"` : process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
   try {
@@ -422,8 +444,10 @@ if (!NO_OPEN) {
 if (HUNT) {
   const { runHunt } = await import('../pipeline/hunt.js');
   const { Applications } = await import('../apply/plan.js');
-  console.log(c.bold('\n--hunt: discover → score → prepare plans (nothing is submitted)'));
-  const h = await runHunt(db!);
+  console.log(c.bold('\n--hunt: discover → score → prepare plans (sends only if auto-submit is on and its gate passes)'));
+  const h = await runHunt(db!, { trigger: NO_BROWSER ? 'task' : 'cli' });
+  if (h.loginNeeded) console.log(c.red('  Drushim login expired — log in again (dashboard button or npm run login -- drushim). This hunt was discovery-only.'));
+  console.log(`  found ${h.found} · skipped ${Object.entries(h.skipped).map(([k, v]) => `${k} ${v}`).join(', ') || '0'} · ready for review ${h.readyForReview} · auto-submitted ${h.autoSubmitted} · failed ${h.failed}`);
   for (const r of h.runs) console.log(`  ${r.site} run: ${r.status}${r.reason ? ` (${r.reason})` : ''} · new ${r.inserted} · scored ${r.scored}`);
   if (h.note) console.log(c.yellow(`  ${h.note}`));
   else console.log(`  prepared ${h.prepared} plan(s)`);
@@ -433,4 +457,5 @@ if (HUNT) {
     .join(' · ');
   const pendingNow = (db!.prepare("SELECT COUNT(*) AS n FROM answers WHERE status = 'pending'").get() as { n: number }).n;
   console.log(`\n${c.bold('hunt summary')}: ${diff}\n  pending answers: ${pendingNow} · review queue: ${new Applications(db!).list(['needs_review']).length}\n  Approve in the dashboard → Review queue (${url})\n`);
+  if (NO_BROWSER) await shutdown(0); // a scheduled run ends here
 }

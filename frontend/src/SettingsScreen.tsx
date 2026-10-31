@@ -3,6 +3,7 @@ import { llm, type LlmSettings, type TaskCfg, type UsageReport } from './api';
 import { Field, Num } from './forms';
 import { LinkedInSettingsCard } from './LinkedInScreen';
 import { AutoSubmitCard } from './AutoSubmit';
+import { ScheduleCard } from './Schedule';
 import type { Status } from './api';
 
 const TASKS = [
@@ -301,6 +302,7 @@ export function SettingsScreen({ onSaved, sites = [] }: { onSaved?: () => void; 
         </fieldset>
       )}
       <AutoSubmitCard sites={sites} onSaved={onSaved} />
+      <ScheduleCard onSaved={onSaved} />
       <LinkedInSettingsCard onSaved={onSaved} />
     </div>
   );
