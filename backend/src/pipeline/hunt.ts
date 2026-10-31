@@ -13,7 +13,8 @@ import { Repo } from '../db/repo.js';
 import { log } from '../log.js';
 import { Applications } from '../apply/plan.js';
 import { prepareJobs } from '../apply/service.js';
-import { checkDrushimSession, getSession, type SessionInfo } from '../browser/site-session.js';
+import { checkDrushimSession, checkSiteSession, getSession, type SessionInfo } from '../browser/site-session.js';
+import { hasApplyFlow } from '../apply/drivers.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
 import { rankStoredJob } from '../core/rank.js';
 import { emailAlertsEnabled, enabledSources } from '../linkedin/settings.js';
@@ -101,8 +102,10 @@ export function sendingMode(site = 'drushim'): string {
 
 export interface HuntOptions {
   trigger?: HuntTrigger;
-  /** test seam: the session check (default: the real one, a headless browser) */
+  /** test seam: the Drushim session check (default: the real one, a headless browser) */
   checkSession?: () => Promise<SessionInfo>;
+  /** test seam: the session check of the other sites */
+  checkSiteSession?: (site: string) => Promise<SessionInfo>;
   /** test seam: the toast */
   notify?: (title: string, body: string) => void;
 }
@@ -129,16 +132,24 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       return { site: r?.site ?? '?', status: r?.status, reason: r?.reason ?? null, inserted: r?.stats?.inserted ?? 0, scored: r?.stats?.scored ?? 0 };
     };
 
-    // is the Drushim login still valid? (an expired one keeps this hunt discovery-only)
+    // the sites this hunt can apply on (an adapter and an apply flow), each with its own login
+    const applySites = SITES.filter((x) => x.enabled && adapters[x.id] && hasApplyFlow(x.id));
+    const sessions = new Map<string, SessionInfo>();
     let end = step('checking the Drushim login');
-    const session = await (opts.checkSession ?? checkDrushimSession)().catch((e: unknown): SessionInfo => ({ state: 'unknown', checkedAt: nowIso(), detail: String(e) }));
-    const loginNeeded = session.state === 'logged_out';
-    if (session.state === 'logged_in') {
-      const n = repo.requeueLoginFailures('drushim');
-      if (n) L.info({ jobs: n }, 'login valid again — jobs that failed on "not logged in" are back in the queue');
+    for (const site of applySites) {
+      if (site.id !== 'drushim') end = step(`checking the ${site.displayName} login`);
+      const check = site.id === 'drushim' ? (opts.checkSession ?? checkDrushimSession) : () => (opts.checkSiteSession ?? checkSiteSession)(site.id);
+      const session = await check().catch((e: unknown): SessionInfo => ({ state: 'unknown', checkedAt: nowIso(), detail: String(e) }));
+      sessions.set(site.id, session);
+      if (session.state === 'logged_in') {
+        const n = repo.requeueLoginFailures(site.id);
+        if (n) L.info({ site: site.id, jobs: n }, 'login valid again — jobs that failed on "not logged in" are back in the queue');
+      }
+      end(session.state === 'logged_out' ? 'failed' : 'done', session.state === 'logged_in' ? 'logged in' : session.state === 'logged_out' ? 'NOT logged in — discovery only' : `unknown (${session.detail})`);
     }
-    end(session.state === 'logged_out' ? 'failed' : 'done', session.state === 'logged_in' ? 'logged in' : session.state === 'logged_out' ? 'NOT logged in — discovery only' : `unknown (${session.detail})`);
-    L.info({ session: session.state }, 'hunt started');
+    if (!applySites.length) end('skipped', 'no site with an apply flow is enabled');
+    const loginNeeded = sessions.get('drushim')?.state === 'logged_out';
+    L.info({ sessions: Object.fromEntries([...sessions].map(([k, v]) => [k, v.state])) }, 'hunt started');
 
     const runs: HuntSummary['runs'] = [];
     // job-alert emails first (optional): Drushim jobs found through Indeed links are then read by the Drushim run
@@ -151,7 +162,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       p.counts.scored += r.scored;
       end(r.status === 'done' ? 'done' : 'failed', `${r.status === 'done' ? '' : `${r.status}${r.reason ? ` (${r.reason})` : ''} · `}new ${r.inserted} · scored ${r.scored}`);
     }
-    // discovery on every enabled site that has an adapter (today: Drushim)
+    // discovery on every enabled site that has an adapter (Drushim, JobMaster)
     for (const site of SITES.filter((x) => x.enabled && adapters[x.id])) {
       end = step(`discovering on ${site.displayName} → scoring`);
       await runToCompletion(db, site.id, 'full');
@@ -165,27 +176,40 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     const prefs = loadPrefs();
     const limits = effectiveLimits(prefs);
     const apps = new Applications(db);
-    const room = Math.max(0, limits.dailyApplyLimit - repo.submittedToday('drushim'));
-    // highest rank first: the daily limit is spent on the best jobs. Only sites with an automated apply flow.
     const open = (j: { id: string }) => ['needs_review', 'ready', 'approved'].includes(apps.latestForJob(j.id)?.status ?? '');
-    const candidates = [
+    const pool = [
       ...repo.listJobs({ status: 'scored', minScore: limits.autoSubmitMinScore, limit: 2000 }).items.filter((j) => !apps.latestForJob(j.id)),
       // queued earlier (e.g. back in the queue after a login failure) and not in review
       ...repo.listJobs({ status: 'queued', limit: 2000 }).items.filter((j) => !open(j)),
-    ]
-      .filter((j) => j.site === 'drushim')
-      .map((j) => ({ ...j, r: rankStoredJob(j, j.score, prefs).rank ?? -Infinity }))
-      .sort((a, b) => b.r - a.r)
-      .slice(0, room);
+    ];
+    // per site: logged in (or unknown), highest rank first, within that site's daily limit
+    const loggedOut: string[] = [];
+    const waiting: string[] = [];
+    const candidates: Array<(typeof pool)[number]> = [];
+    for (const site of applySites) {
+      const mine = pool
+        .filter((j) => j.site === site.id)
+        .map((j) => ({ ...j, r: rankStoredJob(j, j.score, prefs).rank ?? -Infinity }))
+        .sort((x, y) => y.r - x.r)
+        .slice(0, Math.max(0, limits.dailyApplyLimit - repo.submittedToday(site.id)));
+      if (sessions.get(site.id)?.state === 'logged_out' || getSession(site.id).state === 'logged_out') {
+        loggedOut.push(site.displayName);
+        if (mine.length) waiting.push(`${mine.length} on ${site.displayName}`);
+        continue;
+      }
+      candidates.push(...mine);
+    }
 
     let note: string | null = null;
     let prepared = 0;
-    const sending = sendingMode('drushim');
+    const modes = applySites.map((x) => [x.id, sendingMode(x.id)] as const);
+    const sending = modes.length === 1 ? modes[0]![1] : modes.every(([, m]) => m === 'on') ? 'on' : modes.map(([k, m]) => `${k}: ${m}`).join(' · ');
     p.counts.candidates = candidates.length;
-    end = step(sending === 'on' ? 'preparing → sending what passes the gate' : 'preparing plans (not sending)');
-    if (loginNeeded || getSession('drushim').state === 'logged_out') {
-      note = `Drushim login expired — log in again (dashboard button or npm run login -- drushim). Discovery only: ${candidates.length} job(s) ≥ ${limits.autoSubmitMinScore} wait for you.`;
-    } else if (candidates.length === 0) note = `no new jobs with score ≥ ${limits.autoSubmitMinScore}`;
+    end = step(modes.some(([, m]) => m === 'on') ? 'preparing → sending what passes the gate' : 'preparing plans (not sending)');
+    if (loggedOut.length) {
+      note = `${loggedOut.join(', ')} login expired — log in again (dashboard button or npm run login -- <site>). Discovery only there${waiting.length ? `: ${waiting.join(', ')} job(s) ≥ ${limits.autoSubmitMinScore} wait for you` : ''}.`;
+    }
+    if (candidates.length === 0) note ??= `no new jobs with score ≥ ${limits.autoSubmitMinScore}`;
     else if (!getActiveRun()) {
       prepareJobs(db, candidates.map((j) => j.id));
       await waitIdle();
@@ -213,7 +237,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       sent: count("SELECT COUNT(*) AS n FROM applications WHERE status = 'submitted' AND submitted_at >= ?"),
       waitingForReview: (db.prepare("SELECT COUNT(*) AS n FROM applications WHERE status = 'needs_review'").get() as { n: number }).n,
       sending,
-      loginNeeded: loginNeeded || getSession('drushim').state === 'logged_out',
+      loginNeeded: loginNeeded || (applySites.some((x) => x.id === 'drushim') && getSession('drushim').state === 'logged_out'),
       note,
     };
     Object.assign(p.counts, { sent: summary.sent, review: summary.waitingForReview, failed: summary.failed });

@@ -1,4 +1,5 @@
 import type { DB } from '../db/index.js';
+import { cvNamesFor } from './cv-names.js';
 import { nowIso } from '../db/index.js';
 import { config } from '../config.js';
 import type { Prefs } from '../core/prefs.js';
@@ -13,8 +14,11 @@ import { salarySettings, type PostedSalary } from '../core/salary.js';
 import { scoringRole } from '../core/prefilter.js';
 import type { ApplyPlan, CvChoice, FormField, ResolvedField } from './types.js';
 
-/** Statement-style screening questions ("I confirm…") must be true for the candidate to tick them. */
-export const isConfirmation = (f: FormField) => f.type === 'yes_no' || f.type === 'consent';
+/**
+ * Statement-style screening questions ("I confirm…") must be true for the candidate to tick them. A site's own
+ * question with a yes/no answer (JobMaster suitability.*) is a question: "no" is a valid, honest answer.
+ */
+export const isConfirmation = (f: FormField) => f.type === 'consent' || (f.type === 'yes_no' && !f.key.startsWith('suitability.'));
 
 export function readiness(fields: ResolvedField[]): ApplyPlan['readiness'] {
   if (fields.some((r) => r.field.required && isConfirmation(r.field) && r.status === 'resolved' && yesNo(r.value) === 'no')) return 'blocked_no';
@@ -69,8 +73,9 @@ export async function buildPlan(job: StoredJob, fields: FormField[], ctx: PlanCo
   const notes: string[] = [];
   let cv: CvChoice | null = cvOverride ?? null;
   if (!cv) {
-    if (!ctx.prefs.cv.he || !ctx.prefs.cv.en) notes.push('cv.he / cv.en are not set in preferences.yaml');
-    else cv = chooseCv(job, ctx.prefs.cv, ctx.prefs.cv.englishMaxHebrewRatio ?? config.ENGLISH_CV_MAX_HEBREW_RATIO);
+    const names = cvNamesFor(job.site, ctx.prefs);
+    if (!names.he || !names.en) notes.push(`${names.where} is not set (both names are needed for the language rule)`);
+    else cv = chooseCv(job, names, ctx.prefs.cv.englishMaxHebrewRatio ?? config.ENGLISH_CV_MAX_HEBREW_RATIO);
   }
   return { jobId: job.id, site: job.site, createdAt: nowIso(), cv, fields: resolved, readiness: readiness(resolved), notes };
 }

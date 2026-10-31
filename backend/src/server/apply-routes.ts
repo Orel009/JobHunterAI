@@ -68,7 +68,7 @@ export function registerApplyRoutes(app: FastifyInstance, db: DB) {
   // batch approval: sequential sends with normal pacing; stops on a CAPTCHA, a daily cap or a session problem
   app.post('/api/applications/approve-batch', async (req) => {
     const body = z.object({ ids: z.array(z.number().int()).min(1).max(200) }).parse(req.body);
-    assertCanApply('drushim');
+    for (const site of new Set(body.ids.map((id) => apps.get(id)?.site).filter((s): s is string => !!s))) assertCanApply(site);
     return approveBatch(db, body.ids);
   });
   app.get('/api/applications/batch', async () => batchProgress());
@@ -83,7 +83,7 @@ export function registerApplyRoutes(app: FastifyInstance, db: DB) {
     const body = z.object({ jobIds: z.array(z.string()).optional() }).parse(req.body ?? {});
     const ids = body.jobIds?.length ? body.jobIds : repo.listJobs({ status: 'queued', limit: 500 }).items.map((j) => j.id);
     if (ids.length === 0) return { ok: true, note: 'nothing queued' };
-    assertCanApply('drushim');
+    for (const site of new Set(ids.map((id) => repo.getJob(id)?.site as string | undefined).filter((s): s is string => !!s))) assertCanApply(site);
     return { ok: true, runId: prepareJobs(db, ids), count: ids.length };
   });
 

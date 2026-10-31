@@ -27,7 +27,7 @@ import { registerApplyRoutes } from './apply-routes.js';
 import { registerCvRoutes, registerEditorRoutes } from './editor-routes.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import { allSessions, checkDrushimSession, getSession, onSessionValid } from '../browser/site-session.js';
+import { allSessions, checkDrushimSession, checkSiteSession, getSession, onSessionValid } from '../browser/site-session.js';
 
 const OFF_FIELD = /^(seniority|excluded title|no include keyword|role type disabled|excluded company)/;
 
@@ -238,9 +238,10 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   });
 
   /** Re-check the site login (e.g. after `npm run login -- drushim` in another terminal). Uses the browser, so it is a run. */
-  app.post('/api/session/check', async (_req, reply) => {
+  app.post('/api/session/check', async (req, reply) => {
+    const { site } = z.object({ site: z.enum(['drushim', 'jobmaster', 'alljobs']).default('drushim') }).parse(req.body ?? {});
     try {
-      return { runId: startTask(db, 'drushim', 'session_check', async () => void (await checkDrushimSession())) };
+      return { runId: startTask(db, site, 'session_check', async () => void (site === 'drushim' ? await checkDrushimSession() : await checkSiteSession(site))) };
     } catch (e) {
       return reply.status(409).send({ error: (e as Error).message });
     }

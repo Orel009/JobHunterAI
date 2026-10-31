@@ -20,20 +20,13 @@ import { yesNo } from '../../apply/bank.js';
 import { appliedJobsFromUserdata, parseSendCvResponse, type SendCvOutcome } from './apply-parse.js';
 import { watchSessionProbe } from './session-probe.js';
 import cfg from './selectors.json' with { type: 'json' };
+import { ApplyError, clean } from '../apply-error.js';
 
 const S = cfg.apply;
 const SEND_CV = new RegExp(S.sendCvPattern);
 const APPLIED_CHIP = new RegExp(S.appliedChipText);
 
-export class ApplyError extends Error {
-  constructor(
-    public code: 'not_logged_in' | 'panel_not_found' | 'cv_not_found' | 'already_applied' | 'unexpected_form' | 'site_error' | 'daily_limit' | 'no_apply_button',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'ApplyError';
-  }
-}
+export { ApplyError } from '../apply-error.js';
 
 export interface PanelState {
   fields: FormField[];
@@ -41,12 +34,7 @@ export interface PanelState {
   hasCoverLetter: boolean;
 }
 
-/** whitespace collapsed; zero-width and bidi marks (the success text ends in a run of them) removed */
-export const clean = (s: string | null | undefined) =>
-  (s ?? '')
-    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\u00ad\ufeff]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+export { clean } from '../apply-error.js';
 
 /** The "הגשת" chip in the job-details card: this account already applied (the page then has no apply button). */
 async function appliedChip(page: Page): Promise<string | null> {

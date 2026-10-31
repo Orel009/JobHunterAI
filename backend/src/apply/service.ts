@@ -1,5 +1,5 @@
 /**
- * Apply orchestration (Drushim, Phase 2):
+ * Apply orchestration, for every site with an automated apply flow (Drushim, JobMaster — see drivers.ts):
  *   prepare(jobs) → open panel, read fields, build plan, tick only confirmed items, screenshot, stop → needs_review
  *   approve(app)  → DRY_RUN: fill everything, screenshot, stop → dry_run_ok
  *                   DRY_RUN=false: fill, screenshot, submit, capture confirmation → submitted / skipped / failed
@@ -17,10 +17,12 @@ import { BlockedError, getPage, pace } from '../browser/session.js';
 import type { Page } from 'playwright';
 import type { log } from '../log.js';
 import { startTask } from '../pipeline/runner.js';
-import { ApplyError, fillPanel, installDryRunGuard, openPanel, screenshot, submitPanel, type PanelState, fetchAppliedJobs, screenshotPanel, type SubmitResult } from '../sites/drushim/apply.js';
+import { ApplyError, type PanelState } from '../sites/apply-error.js';
+import { driverFor, type ApplyDriver, type SubmitResult } from './drivers.js';
+import { cvNamesFor } from './cv-names.js';
 import { AnswersBank, bankTypeFor, yesNo } from './bank.js';
 import { hebrewRatio } from './cv.js';
-import { Applications, buildPlan, readiness, type ApplicationRow } from './plan.js';
+import { Applications, buildPlan, isConfirmation, readiness, type ApplicationRow } from './plan.js';
 import { autoSubmitOn, evaluateAutoSubmit } from './auto-submit.js';
 import { getSession, setSession } from '../browser/site-session.js';
 import { excludedCompanyMatch } from '../core/prefilter.js';
@@ -41,21 +43,24 @@ function savePlanFile(appId: number, plan: ApplyPlan): string {
   return file;
 }
 
-/** Tick confirmations that are resolved "yes" and select the CV — used for the prepare screenshot (never submits). */
-async function partialFill(page: Parameters<typeof fillPanel>[0], state: PanelState, plan: ApplyPlan) {
-  const confirmable: ApplyPlan = {
-    ...plan,
-    fields: plan.fields,
-  };
+/**
+ * Fills what is already answered and selects the CV — for the prepare screenshot (never submits): confirmations only
+ * when they are "yes", other questions only when resolved.
+ */
+async function partialFill(driver: ApplyDriver, page: Page, state: PanelState, plan: ApplyPlan) {
   const subset: PanelState = {
     ...state,
     fields: state.fields.filter((f) => {
       const p = plan.fields.find((x) => x.field.key === f.key);
-      return (f.type !== 'yes_no' && f.type !== 'consent') || (p?.status === 'resolved' && yesNo(p.value) === 'yes');
+      if (isConfirmation(f)) return p?.status === 'resolved' && yesNo(p.value) === 'yes';
+      return f.key.startsWith('suitability.') ? p?.status === 'resolved' : true;
     }),
   };
-  await fillPanel(page, subset, confirmable);
+  await driver.fillPanel(page, subset, plan);
 }
+
+/** One task label for a set of jobs: their site, or "apply" when they span sites. */
+const taskSite = (sites: string[]) => (new Set(sites).size === 1 ? sites[0]! : 'apply');
 
 // ---------- prepare ----------
 /** An application done by hand (a company / ATS link, an email address): to the review queue with the link. */
@@ -99,33 +104,37 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
   }
   for (const j of jobs) repo.setStatus(j.id, 'queued', 'preparing application');
 
-  return startTask(db, 'drushim', 'prepare', async (run, _repo, L) => {
+  return startTask(db, taskSite(jobs.map((j) => j.site)), 'prepare', async (run, _repo, L) => {
     const prefs = loadPrefs();
     new AnswersBank(db).seed(prefs, candidateGender());
     run.stats.prepared = 0;
-    // the site's own list of jobs this account applied to, read once per run
-    let applied: Map<string, string | null> | null = null;
-    if (jobs.some((j) => j.site === 'drushim' && j.applyType !== 'external' && j.applyType !== 'email')) {
-      applied = await fetchAppliedJobs(await getPage()).catch((e: unknown) => {
-        L.warn({ err: e instanceof Error ? e.message : String(e) }, 'could not read the already-applied list; each job page is still checked');
-        return null;
-      });
-      if (applied) run.stats.alreadyApplied = repo.markAlreadyApplied('drushim', applied);
+    // each site's own list of jobs this account applied to, read once per run
+    const applied = new Map<string, Map<string, string | null> | null>();
+    for (const site of new Set(jobs.filter((j) => j.applyType !== 'external' && j.applyType !== 'email' && driverFor(j.site)).map((j) => j.site))) {
+      const list = await driverFor(site)!
+        .fetchAppliedJobs(await getPage())
+        .catch((e: unknown) => {
+          L.warn({ site, err: e instanceof Error ? e.message : String(e) }, 'could not read the already-applied list; each job page is still checked');
+          return null;
+        });
+      applied.set(site, list);
+      if (list) run.stats.alreadyApplied = (run.stats.alreadyApplied ?? 0) + repo.markAlreadyApplied(site, list);
     }
     for (const job of jobs) {
       if (run.controller.signal.aborted) return;
-      if (applied?.has(job.externalId)) continue; // skipped already_applied above
+      if (applied.get(job.site)?.has(job.externalId)) continue; // skipped already_applied above
       run.stage = `preparing ${job.title}`;
       if (job.applyType === 'external' || job.applyType === 'email') {
         queueManualApplication(apps, repo, job);
         continue;
       }
-      if (job.site !== 'drushim') {
+      const driver = driverFor(job.site);
+      if (!driver) {
         repo.setStatus(job.id, 'failed', `no apply flow for ${job.site} yet`);
         continue;
       }
       const page = await getPage();
-      const unguardOnce = await installDryRunGuard(page); // prepare never submits (auto-submit lifts it only after its gate)
+      const unguardOnce = await driver.installDryRunGuard(page); // prepare never submits (auto-submit lifts it only after its gate)
       let guarded = true;
       const unguard = async () => {
         if (guarded) {
@@ -134,24 +143,31 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
         }
       };
       try {
-        const state = await openPanel(page, job.url);
-        markLoggedIn();
+        const state = await driver.openPanel(page, job);
+        markLoggedIn(job.site);
         const plan = await buildPlan(job, state.fields, { db, repo, prefs });
         plan.notes.push(`panel CVs: ${state.cvs.map((c) => `"${c.name}"`).join(', ') || 'none'}`);
         const app = apps.savePlan(job, plan, 'needs_review');
+        if (!plan.cv && job.site !== 'drushim') {
+          // no fallback to another CV: the name must be set for this site
+          const why = plan.notes.find((n) => /not set/.test(n)) ?? 'no CV name set for this site';
+          apps.update(app.id, { status: 'failed', error: why });
+          repo.setStatus(job.id, 'failed', why);
+          continue;
+        }
         if (plan.cv && !state.cvs.some((c) => c.name.trim() === plan.cv!.cvName.trim())) {
           apps.update(app.id, { status: 'failed', error: `CV "${plan.cv.cvName}" not found in the panel` });
           repo.setStatus(job.id, 'failed', `CV "${plan.cv.cvName}" not found`);
           continue;
         }
         if (plan.readiness === 'blocked_no') {
-          const no = plan.fields.find((f) => f.status === 'resolved' && yesNo(f.value) === 'no');
+          const no = plan.fields.find((f) => isConfirmation(f.field) && f.status === 'resolved' && yesNo(f.value) === 'no');
           apps.update(app.id, { status: 'skipped', error: `statement is false for you: "${no?.field.label}"` });
           repo.setStatus(job.id, 'skipped_screening', `screening statement answered no: ${no?.field.label}`);
           continue;
         }
-        await partialFill(page, state, plan);
-        const shot = await screenshotPanel(page, `app${app.id}-prepare`);
+        await partialFill(driver, page, state, plan);
+        const shot = await driver.screenshotPanel(page, `app${app.id}-prepare`);
         const gate = evaluateAutoSubmit(db, repo, job, plan, prefs);
         apps.update(app.id, { screenshotBefore: shot, gate });
         savePlanFile(app.id, plan);
@@ -160,7 +176,7 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
         L.info({ job: job.title, readiness: plan.readiness, fields: plan.fields.length, autoSubmit: gate.auto }, 'prepared');
         if (gate.auto) {
           await unguard(); // DRY_RUN=false is one of the gate conditions
-          const sent = await autoSubmitPrepared({ page, state, plan, job, appId: app.id, apps, repo, L });
+          const sent = await autoSubmitPrepared({ driver, page, state, plan, job, appId: app.id, apps, repo, L });
           if (sent) run.stats.autoSubmitted = (run.stats.autoSubmitted ?? 0) + 1;
         }
       } catch (e) {
@@ -190,7 +206,7 @@ function recompute(app: ApplicationRow, apps: Applications, repo: Repo, fields: 
   apps.update(app.id, { plan });
   const job = repo.getJob(app.jobId);
   if (job && plan.readiness === 'blocked_no') {
-    const no = fields.find((f) => f.status === 'resolved' && yesNo(f.value) === 'no');
+    const no = fields.find((f) => isConfirmation(f.field) && f.status === 'resolved' && yesNo(f.value) === 'no');
     apps.update(app.id, { status: 'skipped', error: `statement is false for you: "${no?.field.label}"` });
     repo.setStatus(job.id, 'skipped_screening', `screening statement answered no: ${no?.field.label}`);
   }
@@ -231,9 +247,11 @@ export function setCv(db: DB, appId: number, lang: 'he' | 'en'): ApplicationRow 
   if (!app) throw new ServiceError(404, 'application not found');
   const prefs = loadPrefs();
   const job = new Repo(db).getJob(app.jobId)!;
+  const names = cvNamesFor(job.site, prefs);
+  if (!names[lang]) throw new ServiceError(400, `no ${lang === 'he' ? 'Hebrew' : 'English'} CV name set: ${names.where}`);
   const cv = {
     lang,
-    cvName: prefs.cv[lang],
+    cvName: names[lang],
     hebrewRatio: Math.round(hebrewRatio(`${job.title}\n${job.descriptionText}\n${job.requirementsText}`) * 1000) / 1000,
     threshold: prefs.cv.englishMaxHebrewRatio ?? config.ENGLISH_CV_MAX_HEBREW_RATIO,
     overridden: true,
@@ -310,8 +328,8 @@ function recordSubmitResult(apps: Applications, repo: Repo, appId: number, job: 
  * again right before the final click; if any changed, the application goes to the review queue instead.
  */
 /** The job page opened past the session check: the login is valid (requeues jobs that failed on "not logged in"). */
-function markLoggedIn(): void {
-  if (getSession('drushim').state !== 'logged_in') setSession('drushim', { state: 'logged_in', checkedAt: new Date().toISOString(), detail: 'job page opened' });
+function markLoggedIn(site: string): void {
+  if (getSession(site).state !== 'logged_in') setSession(site, { state: 'logged_in', checkedAt: new Date().toISOString(), detail: 'job page opened' });
 }
 
 /** Last check right before the final click: an excluded company never gets an application, even if approved earlier. */
@@ -321,6 +339,7 @@ function excludedNow(job: StoredJob): string | null {
 }
 
 async function autoSubmitPrepared(o: {
+  driver: ApplyDriver;
   page: Page;
   state: PanelState;
   plan: ApplyPlan;
@@ -330,10 +349,10 @@ async function autoSubmitPrepared(o: {
   repo: Repo;
   L: typeof log;
 }): Promise<boolean> {
-  const { page, state, plan, job, appId, apps, repo, L } = o;
+  const { driver, page, state, plan, job, appId, apps, repo, L } = o;
   apps.update(appId, { status: 'approved', dryRun: false });
-  await fillPanel(page, state, plan);
-  const before = await screenshotPanel(page, `app${appId}-before-submit`);
+  await driver.fillPanel(page, state, plan);
+  const before = await driver.screenshotPanel(page, `app${appId}-before-submit`);
   await pace(1500, 3000);
   if (config.DRY_RUN || !autoSubmitOn(job.site)) {
     apps.update(appId, { status: 'needs_review', screenshotBefore: before, error: 'auto-submit was paused before sending — review it' });
@@ -348,7 +367,7 @@ async function autoSubmitPrepared(o: {
     return false;
   }
   L.info({ job: job.title }, 'AUTO-SUBMIT: every gate condition passed');
-  const r = await submitPanel(page, Number(job.externalId), `app${appId}`);
+  const r = await driver.submitPanel(page, job, `app${appId}`);
   const res = recordSubmitResult(apps, repo, appId, job, before, r, L);
   if (res.stop) throw new Error(res.detail); // daily cap / session: stop the run
   return res.status === 'submitted';
@@ -363,9 +382,10 @@ function approvable(db: DB, appId: number): { app: ApplicationRow; job: StoredJo
   if (!(OPEN as readonly string[]).includes(app.status)) throw new ServiceError(409, `application is ${app.status}`);
   if (app.plan.fields.some((f) => f.status === 'pending')) throw new ServiceError(409, 'answer all pending questions first');
   if (app.plan.readiness === 'blocked_no') throw new ServiceError(409, 'a required statement is false for you');
-  if (!app.plan.cv) throw new ServiceError(409, 'no CV chosen (set cv.he / cv.en in preferences.yaml)');
   const job = new Repo(db).getJob(app.jobId);
   if (!job) throw new ServiceError(404, 'job not found');
+  if (!app.plan.cv) throw new ServiceError(409, `no CV chosen (set ${cvNamesFor(job.site, loadPrefs()).where})`);
+  if (!driverFor(job.site)) throw new ServiceError(400, `no automated apply flow for ${job.site}`);
   return { app, job };
 }
 
@@ -388,14 +408,15 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
   // applied on the site in the meantime (by hand, or another device)? → skipped, never failed
   if (applied?.has(job.externalId)) {
     const when = applied.get(job.externalId);
-    const reason = `already_applied: on drushim${when ? ` (sent ${when.slice(0, 10)})` : ''}`;
+    const reason = `already_applied: on ${job.site}${when ? ` (sent ${when.slice(0, 10)})` : ''}`;
     apps.update(appId, { status: 'skipped', error: reason });
     repo.setStatus(job.id, 'skipped', reason);
     L.info({ job: job.title }, reason);
     return done('skipped', reason);
   }
+  const driver = driverFor(job.site)!;
   const page = await getPage();
-  const unguard = dryRun ? await installDryRunGuard(page) : async () => undefined;
+  const unguard = dryRun ? await driver.installDryRunGuard(page) : async () => undefined;
   try {
     const early = excludedNow(job);
     if (early) {
@@ -403,8 +424,8 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
       L.warn({ job: job.title }, `not sent: ${early}`);
       return done('skipped', early);
     }
-    const state = await openPanel(page, job.url);
-    markLoggedIn();
+    const state = await driver.openPanel(page, job);
+    markLoggedIn(job.site);
     // the live form must match what was reviewed
     const planned = new Set(app.plan.fields.map((f) => `${f.field.key}|${f.field.label}`));
     const live = state.fields.filter((f) => f.type !== 'textarea').map((f) => `${f.key}|${f.label}`);
@@ -416,8 +437,8 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
       L.warn({ changed }, 'form changed since review — back to the review queue');
       return done('needs_review', 'the form changed since review — back to the review queue');
     }
-    await fillPanel(page, state, app.plan);
-    const before = await screenshotPanel(page, `app${appId}-${dryRun ? 'dryrun' : 'before-submit'}`);
+    await driver.fillPanel(page, state, app.plan);
+    const before = await driver.screenshotPanel(page, `app${appId}-${dryRun ? 'dryrun' : 'before-submit'}`);
     savePlanFile(appId, app.plan);
     if (dryRun) {
       apps.update(appId, { status: 'dry_run_ok', screenshotBefore: before, error: null });
@@ -432,7 +453,7 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
       L.warn({ job: job.title }, `not sent: ${excluded}`);
       return done('skipped', excluded);
     }
-    const r = await submitPanel(page, Number(job.externalId), `app${appId}`);
+    const r = await driver.submitPanel(page, job, `app${appId}`);
     const res = recordSubmitResult(apps, repo, appId, job, before, r, L);
     return done(res.status, res.detail, res.stop);
   } catch (e) {
@@ -461,9 +482,9 @@ export function approveApplication(db: DB, appId: number): { runId: number; dryR
   const dryRun = config.DRY_RUN;
   if (!dryRun && dailyLimitReached(repo, job.site)) throw new ServiceError(429, `daily apply limit reached (${effectiveLimits(loadPrefs()).dailyApplyLimit})`);
   new Applications(db).update(appId, { status: 'approved', reviewed: true, dryRun });
-  const runId = startTask(db, 'drushim', dryRun ? 'dry_run' : 'submit', async (run, _repo, L) => {
+  const runId = startTask(db, job.site, dryRun ? 'dry_run' : 'submit', async (run, _repo, L) => {
     run.stage = `${dryRun ? 'dry run' : 'SUBMIT'}: ${job.title}`;
-    const applied = await fetchAppliedJobs(await getPage()).catch(() => null);
+    const applied = await driverFor(job.site)!.fetchAppliedJobs(await getPage()).catch(() => null);
     const r = await sendApproved(db, appId, job, dryRun, L, applied);
     if (r.stop) throw new Error(r.detail); // bot protection / daily cap / session: the run failed
   });
@@ -515,15 +536,20 @@ export function approveBatch(db: DB, appIds: number[]): { runId: number; dryRun:
     const app = apps.get(id);
     const block = app ? batchBlock(app) : 'not found';
     const job = app ? repo.getJob(app.jobId) : null;
-    if (block || !app || !job) refused.push({ appId: id, reason: block ?? 'job not found' });
+    if (block || !app || !job || !driverFor(job.site)) refused.push({ appId: id, reason: block ?? (job ? `no automated apply flow for ${job.site}` : 'job not found') });
     else accepted.push({ app, job, rank: rankStoredJob(job, repo.getScore(job.id), prefs).rank ?? -Infinity });
   }
   if (!accepted.length) throw new ServiceError(409, `nothing to approve: ${refused.map((r) => `#${r.appId} ${r.reason}`).join('; ')}`);
   accepted.sort((a, b) => b.rank - a.rank); // the best first, in case a cap stops the batch
   const dryRun = config.DRY_RUN;
-  const runId = startTask(db, 'drushim', dryRun ? 'dry_run_batch' : 'submit_batch', async (run, _repo, L) => {
+  const runId = startTask(db, taskSite(accepted.map((a) => a.job.site)), dryRun ? 'dry_run_batch' : 'submit_batch', async (run, _repo, L) => {
     const page = await getPage();
-    const applied = await fetchAppliedJobs(page).catch(() => null);
+    // each site's applied list, read once when the batch reaches that site
+    const appliedBySite = new Map<string, Map<string, string | null> | null>();
+    const appliedFor = async (site: string) => {
+      if (!appliedBySite.has(site)) appliedBySite.set(site, await driverFor(site)!.fetchAppliedJobs(page).catch(() => null));
+      return appliedBySite.get(site)!;
+    };
     for (const [i, { app, job }] of accepted.entries()) {
       if (run.controller.signal.aborted) {
         batch!.stoppedReason = 'stopped by you';
@@ -533,7 +559,7 @@ export function approveBatch(db: DB, appIds: number[]): { runId: number; dryRun:
       run.stage = `${dryRun ? 'dry run' : 'SUBMIT'} ${batch!.current}`;
       const fresh = apps.get(app.id);
       const still = fresh ? batchBlock(fresh) : 'gone';
-      const r: SendResult = still ? { appId: app.id, title: job.title, company: job.company, status: 'not_sent', detail: `changed since you selected it: ${still}` } : await sendApproved(db, app.id, job, dryRun, L, applied);
+      const r: SendResult = still ? { appId: app.id, title: job.title, company: job.company, status: 'not_sent', detail: `changed since you selected it: ${still}` } : await sendApproved(db, app.id, job, dryRun, L, await appliedFor(job.site));
       batch!.results.push(r);
       batch!.done++;
       run.stats.sent = (run.stats.sent ?? 0) + (r.status === 'submitted' ? 1 : 0);

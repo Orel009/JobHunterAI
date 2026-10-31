@@ -106,6 +106,15 @@ cv:
   he: ""
   en: ""
 
+# JobMaster: the CV file names exactly as in your JobMaster account (same language rule; a missing name = that
+# application fails, no fallback). shareContactDetails answers JobMaster's one-time question "expose your contact
+# details to recruiters in the profile database?" (default no).
+jobmaster:
+  cv:
+    he: ""
+    en: ""
+  shareContactDetails: false
+
 thresholds:
   autoSubmitMinScore: 80
   matchConfidence: 0.85

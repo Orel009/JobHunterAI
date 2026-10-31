@@ -1,13 +1,14 @@
 import type { SiteAdapter, SiteId } from './types.js';
 import { drushim } from './drushim/adapter.js';
+import { jobmaster } from './jobmaster/adapter.js';
 
-export const adapters: Partial<Record<SiteId, SiteAdapter>> = { drushim };
+export const adapters: Partial<Record<SiteId, SiteAdapter>> = { drushim, jobmaster };
 
 /** Known sites in priority order; not-yet-built ones are listed so the UI can show them disabled. */
 export const SITES: Array<{ id: SiteId; displayName: string; loginUrl: string; enabled: boolean }> = [
   { id: 'drushim', displayName: 'Drushim', loginUrl: 'https://www.drushim.co.il/', enabled: true },
   { id: 'alljobs', displayName: 'AllJobs', loginUrl: 'https://www.alljobs.co.il/', enabled: false },
-  { id: 'jobmaster', displayName: 'JobMaster', loginUrl: 'https://www.jobmaster.co.il/', enabled: false },
+  { id: 'jobmaster', displayName: 'JobMaster', loginUrl: 'https://www.jobmaster.co.il/', enabled: true },
 ];
 
 export function getAdapter(id: string): SiteAdapter {

@@ -6,6 +6,7 @@ import type { BrowserContext } from 'playwright';
 import { closeContext, detectBlock, getContext, getPage } from './session.js';
 import cfg from '../sites/drushim/selectors.json' with { type: 'json' };
 import { watchSessionProbe } from '../sites/drushim/session-probe.js';
+import { JM_BASE, loginState as jmLoginState } from '../sites/jobmaster/parse.js';
 
 export type LoginState = 'logged_in' | 'logged_out' | 'unknown';
 
@@ -101,9 +102,38 @@ export async function checkAllJobsSession(onContext?: (ctx: BrowserContext) => P
   return info;
 }
 
+/**
+ * JobMaster: a logged-in page links to logoff.asp, a logged-out one shows the "התחבר" link (sites/jobmaster/parse.ts).
+ * One page load with the browser's cookies; nothing is sent. A bot-protection page answers "unknown".
+ */
+export async function checkJobMasterSession(onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
+  let info: SessionInfo;
+  try {
+    const ctx = await getContext({ headless: true });
+    await onContext?.(ctx);
+    const page = await getPage();
+    const res = await page.goto(`${JM_BASE}/`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => undefined);
+    const now = new Date().toISOString();
+    const blocked = await detectBlock(page, res?.status());
+    if (blocked) info = { state: 'unknown', checkedAt: now, detail: `jobmaster: ${blocked} — not bypassed; try again later` };
+    else {
+      const state = jmLoginState(await page.content());
+      info = { state, checkedAt: now, detail: state === 'logged_in' ? 'jobmaster: logoff link shown' : state === 'logged_out' ? 'jobmaster: login link shown' : 'jobmaster: neither login nor logoff link found' };
+    }
+  } catch (e) {
+    info = { state: 'unknown', checkedAt: new Date().toISOString(), detail: e instanceof Error ? e.message.split('\n')[0]! : String(e) };
+  } finally {
+    await closeContext();
+  }
+  setSession('jobmaster', info);
+  return info;
+}
+
 /** The session check of a site (sites without one answer "unknown"). */
 export function checkSiteSession(site: string, onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
   if (site === 'drushim') return checkDrushimSession(onContext);
   if (site === 'alljobs') return checkAllJobsSession(onContext);
+  if (site === 'jobmaster') return checkJobMasterSession(onContext);
   return Promise.resolve({ state: 'unknown', checkedAt: null, detail: `no session check for ${site} yet` });
 }

@@ -1,0 +1,32 @@
+{
+  "status": "OK",
+  "skills": [
+    {
+      "skillID": 1655153,
+      "qtype": "Q",
+      "questiontext": "חי/ה את עולם ה-AI ומתנסה באופן יומיומי בכלים חדשים"
+    }
+  ],
+  "korothaimFiles": [
+    {
+      "fileID": 5550001,
+      "fileName": "קורות חיים - נועה טסט.pdf"
+    },
+    {
+      "fileID": 5550002,
+      "fileName": "Noa Test - Resume.pdf"
+    }
+  ],
+  "firstName": "Noa",
+  "lastName": "Test",
+  "email": "noa.test@example.com",
+  "phoneCell": "0500000000",
+  "cityName": "חיפה",
+  "isEmpty": true,
+  "usernum": 1000001,
+  "title": "software engineer",
+  "defaultVersion": 5550002,
+  "multiSend": [],
+  "korotTitleRelevancy": false,
+  "contactDetailsStatus": "2"
+}

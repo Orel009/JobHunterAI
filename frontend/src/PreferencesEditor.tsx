@@ -31,6 +31,7 @@ export interface Prefs {
   thresholds: { autoSubmitMinScore?: number; matchConfidence?: number };
   limits: { maxPagesPerRun?: number; dailyApplyLimit?: number; companyCooldownDays?: number };
   cv: { he: string; en: string; englishMaxHebrewRatio?: number };
+  jobmaster: { cv: { he: string; en: string }; shareContactDetails: boolean };
   [k: string]: unknown;
 }
 
@@ -294,6 +295,30 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
             </Field>
             <Field label="English CV when Hebrew letters are below" hint={`share of the post's letters (default ${envRatio})`}>
               <Num value={p.cv.englishMaxHebrewRatio ?? envRatio} min={0} max={1} step={0.05} onChange={(v) => up((d) => void (d.cv.englishMaxHebrewRatio = v))} />
+            </Field>
+          </div>
+        </fieldset>
+      )}
+
+      {show('cv') && (
+        <fieldset>
+          <legend>JobMaster</legend>
+          <p className="muted">
+            CV file names exactly as they appear in your JobMaster account. The same language rule as Drushim chooses between them. A missing name means that application
+            fails: there is no fallback to another CV.
+          </p>
+          <div className="grid3">
+            <Field label="Hebrew CV file (JobMaster)">
+              <input dir="auto" value={p.jobmaster.cv.he} onChange={(e) => up((d) => void (d.jobmaster.cv.he = e.target.value))} />
+            </Field>
+            <Field label="English CV file (JobMaster)">
+              <input dir="auto" value={p.jobmaster.cv.en} onChange={(e) => up((d) => void (d.jobmaster.cv.en = e.target.value))} />
+            </Field>
+            <Field label="Share contact details with recruiters" hint='JobMaster asks once: "expose your contact details to recruiters in the profile database?"'>
+              <select value={p.jobmaster.shareContactDetails ? 'yes' : 'no'} onChange={(e) => up((d) => void (d.jobmaster.shareContactDetails = e.target.value === 'yes'))}>
+                <option value="no">No (default)</option>
+                <option value="yes">Yes</option>
+              </select>
             </Field>
           </div>
         </fieldset>

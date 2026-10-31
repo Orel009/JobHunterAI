@@ -119,6 +119,15 @@ export const PrefsSchema = z.object({
       englishMaxHebrewRatio: z.number().min(0).max(1).optional(),
     })
     .prefault({}),
+  /** JobMaster: the CV files in your JobMaster account (exact file names), and the account's contact-details question */
+  jobmaster: z
+    .object({
+      /** chosen by the same language rule as cv.he / cv.en; a missing name means the application fails (no fallback) */
+      cv: z.object({ he: z.string().default(''), en: z.string().default('') }).prefault({}),
+      /** "expose your contact details to recruiters in the profile database?" — answered with this, default no */
+      shareContactDetails: z.boolean().default(false),
+    })
+    .prefault({}),
   standardAnswers: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
 });
 

@@ -5,6 +5,7 @@
  * checked again right before the final click.
  */
 import { config } from '../config.js';
+import { hasApplyFlow } from './drivers.js';
 import type { DB } from '../db/index.js';
 import { nowIso } from '../db/index.js';
 import type { Repo, StoredJob } from '../db/repo.js';
@@ -139,7 +140,7 @@ export function evaluateAutoSubmit(db: DB, repo: Repo, job: StoredJob, plan: App
     site: job.site,
     siteEnabled: s.sites[job.site] === true,
     paused: s.paused,
-    automatedFlow: job.site === 'drushim' && job.applyType !== 'external' && job.applyType !== 'email',
+    automatedFlow: hasApplyFlow(job.site) && job.applyType !== 'external' && job.applyType !== 'email',
     rank: rankStoredJob(job, repo.getScore(job.id), prefs).rank,
     minRank: effectiveMinRank(s),
     plan,

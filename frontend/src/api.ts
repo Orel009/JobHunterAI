@@ -185,6 +185,7 @@ export const api = {
   startRun: (site: string, kind: 'discover' | 'score' | 'full') => req<{ id: number }>('POST', '/api/runs', { site, kind }),
   stopRun: () => req('POST', '/api/runs/stop'),
   runs: () => req<RunRow[]>('GET', '/api/runs'),
+  checkSiteSession: (site: string) => req<{ runId: number }>('POST', '/api/session/check', { site }),
   checkSession: () => req<{ runId: number }>('POST', '/api/session/check'),
 };
 
