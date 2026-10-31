@@ -67,7 +67,8 @@ export async function sessionReport(profileDir: string, site: string): Promise<S
 
 export function formatSessionReport(r: SessionReport): string {
   const auth = (list: CookieInfo[]) => list.filter((c) => AUTH_COOKIE.test(c.name));
-  const line = (c: CookieInfo) => `  ${c.domain.padEnd(24)} ${c.name.padEnd(34)} ${c.expires ?? 'SESSION ONLY (dropped when the browser restarts)'}`;
+  const line = (c: CookieInfo) =>
+    `  ${c.domain.padEnd(24)} ${c.name.padEnd(34)} ${c.expires === null ? 'SESSION ONLY (dropped when the browser restarts)' : `${c.expires}${Date.parse(c.expires) < Date.now() ? ' (expired)' : ''}`}`;
   const out: string[] = [];
   out.push(`cookies saved by Chrome for this site: ${r.saved.length} (${auth(r.saved).length} login-related)`);
   for (const c of auth(r.saved)) out.push(line(c));
