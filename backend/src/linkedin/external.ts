@@ -8,7 +8,7 @@ import type { DB } from '../db/index.js';
 import { Repo, type StoredJob } from '../db/repo.js';
 import { toJob } from '../core/job.js';
 import type { SiteId } from '../sites/types.js';
-import { isLinkedInHost } from './parse.js';
+import { isAssistedOnlyHost } from '../alerts/assisted.js';
 import { safeHttpUrl } from './open.js';
 
 /** Job URL patterns of the sites with an automated apply flow. */
@@ -33,7 +33,7 @@ export type ExternalRoute = { kind: 'site'; site: SiteId; jobId: string; created
 
 export function routeExternalApply(db: DB, job: StoredJob, url: string): ExternalRoute {
   const href = safeHttpUrl(url);
-  if (isLinkedInHost(href)) throw new Error('that is a LinkedIn link — paste the company website link from the job page');
+  if (isAssistedOnlyHost(href)) throw new Error('that is a LinkedIn / Indeed link — paste the company website link from the job page');
   const repo = new Repo(db);
   const target = supportedSiteJob(href);
   if (target) {
@@ -52,7 +52,7 @@ export function routeExternalApply(db: DB, job: StoredJob, url: string): Externa
       applyTarget: '',
       language: job.language,
       detailsFetched: false,
-      raw: { from: `linkedin:${job.externalId}` },
+      raw: { from: `${job.site}:${job.externalId}` },
     });
     const existing = repo.getJob(j.id);
     if (!existing) {

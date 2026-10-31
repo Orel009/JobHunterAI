@@ -4,18 +4,20 @@ import { RankBadge } from './RankBadge';
 
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('he-IL') : '');
 
+const ASSISTED = ['linkedin', 'indeed'];
+
 export function JobsScreen({
   refreshKey,
   sites,
   roleTypes = [],
   applyDisabled = false,
-  linkedinEnabled = false,
+  alertSources = [],
 }: {
   refreshKey: number;
   sites: Status['sites'];
   roleTypes?: Status['roleTypes'];
   applyDisabled?: boolean;
-  linkedinEnabled?: boolean;
+  alertSources?: string[];
 }) {
   const [filters, setFilters] = useState({ site: '', status: '', minScore: '', q: '', roleType: '' });
   const [showSkipped, setShowSkipped] = useState(false);
@@ -54,7 +56,8 @@ export function JobsScreen({
               {s.displayName}
             </option>
           ))}
-          {linkedinEnabled && <option value="linkedin">LinkedIn (alerts)</option>}
+          {alertSources.includes('linkedin') && <option value="linkedin">LinkedIn (alerts)</option>}
+          {alertSources.includes('indeed') && <option value="indeed">Indeed (alerts)</option>}
         </select>
         <select value={filters.status} onChange={set('status')}>
           <option value="">All statuses</option>
@@ -108,7 +111,7 @@ export function JobsScreen({
                 </td>
                 <td dir="auto" className="title">
                   {j.title}
-                  {j.site === 'linkedin' && !j.descriptionText && <span className="badge warn" title="from a LinkedIn alert email: title, company and location only"> incomplete info</span>}
+                  {ASSISTED.includes(j.site) && !j.descriptionText && <span className="badge warn" title="from an alert email: title, company and location only"> incomplete info</span>}
                 </td>
                 <td className="muted" title={j.roleTypes.join(', ')}>
                   {j.rank.roleType ?? '—'}
@@ -136,8 +139,10 @@ export function JobsScreen({
                     </button>
                   ) : (
                     <>
-                      {j.site === 'linkedin' ? (
-                        <span className="muted" title="LinkedIn is assisted-only: apply yourself from the LinkedIn screen">by hand</span>
+                      {ASSISTED.includes(j.site) ? (
+                        <span className="muted" title={j.applyTarget ? `company link: ${j.applyTarget} (review queue)` : 'LinkedIn / Indeed are assisted-only: apply yourself from the Email alerts screen'}>
+                          by hand
+                        </span>
                       ) : (
                         <button className="link" disabled={applyDisabled || ['queued', 'needs_review', 'dry_run_ok', 'submitted'].includes(j.status)} title='prepare an application plan (opens the apply panel, never submits)' onClick={() => act(() => api.apply(j.id))}>
                           apply

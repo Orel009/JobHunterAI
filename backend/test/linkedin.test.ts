@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { simpleParser } from 'mailparser';
+import { isAssistedOnlyHost } from '../src/alerts/assisted.js';
 import { hebrewPlaces, isLinkedInHost, linkedInJobId, parseAlertEmail, parseAlertHtml, parseAlertText } from '../src/linkedin/parse.js';
 import { importAlertEmails, ProcessedEmails } from '../src/linkedin/importer.js';
 import { routeExternalApply, supportedSiteJob } from '../src/linkedin/external.js';
@@ -155,9 +156,10 @@ describe('LinkedIn is never automated', () => {
     expect(bad).toEqual([]);
   });
 
-  it('every automated browser context aborts requests to LinkedIn', () => {
+  it('every automated browser context aborts requests to LinkedIn (and Indeed)', () => {
     const session = fs.readFileSync(path.join(here, '..', 'src', 'browser', 'session.ts'), 'utf8');
-    expect(session).toMatch(/ctx\.route\(\(u\) => isLinkedInHost\(u\.href\), \(route\) => route\.abort/);
+    expect(session).toMatch(/ctx\.route\(\(u\) => isAssistedOnlyHost\(u\.href\), \(route\) => route\.abort/);
+    for (const u of ['https://www.linkedin.com/jobs/view/1/', 'https://lnkd.in/abc']) expect(isAssistedOnlyHost(u)).toBe(true);
     for (const u of ['https://www.linkedin.com/jobs/view/1/', 'https://il.linkedin.com/feed', 'https://linkedin.com', 'https://lnkd.in/abc']) expect(isLinkedInHost(u)).toBe(true);
     for (const u of ['https://www.drushim.co.il/', 'https://linkedin.com.evil.example/', 'not a url']) expect(isLinkedInHost(u)).toBe(false);
   });
@@ -200,6 +202,6 @@ describe('"Apply on company website" links', () => {
     const { db, repo, job } = setup();
     expect(routeExternalApply(db, job, 'https://careers.acme.example/jobs/77')).toEqual({ kind: 'manual', url: 'https://careers.acme.example/jobs/77' });
     expect(repo.getJob(job.id)).toMatchObject({ applyType: 'external', applyTarget: 'https://careers.acme.example/jobs/77' });
-    expect(() => routeExternalApply(db, job, 'https://www.linkedin.com/jobs/view/1/')).toThrow(/LinkedIn link/);
+    expect(() => routeExternalApply(db, job, 'https://www.linkedin.com/jobs/view/1/')).toThrow(/LinkedIn \/ Indeed link/);
   });
 });

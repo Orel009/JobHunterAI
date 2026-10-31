@@ -79,24 +79,32 @@ interface Line {
   text: string;
   /** job id when the line is inside a job link */
   jobId: string | null;
+  /** that link's href (decoded) */
+  href: string | null;
 }
 
-/** HTML → text lines (block elements and <br> break lines; a link change also breaks the line). */
-export function htmlLines(html: string): Line[] {
+/**
+ * HTML → text lines (block elements and <br> break lines; a link change also breaks the line).
+ * idOf turns a link into a job id: LinkedIn job links by default; other alert sources pass their own.
+ */
+export function htmlLines(html: string, idOf: (href: string) => string | null = linkedInJobId): Line[] {
   const body = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<(head|style|script|title)\b[\s\S]*?<\/\1>/gi, '');
   const lines: Line[] = [];
   let cur = '';
   let curJob: string | null = null;
+  let curHref: string | null = null;
   let linkJob: string | null = null;
+  let linkHref: string | null = null;
   const flush = () => {
     const t = clean(cur);
-    if (t) lines.push({ text: t, jobId: curJob });
+    if (t) lines.push({ text: t, jobId: curJob, href: curJob ? curHref : null });
     cur = '';
   };
   const re = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>|([^<]+)/g;
   for (let m = re.exec(body); m; m = re.exec(body)) {
     if (m[4] !== undefined) {
       curJob = linkJob; // lines are flushed at every link boundary, so all of cur shares one link
+      curHref = linkHref;
       cur += m[4];
       continue;
     }
@@ -104,10 +112,11 @@ export function htmlLines(html: string): Line[] {
     const tag = m[2]!.toLowerCase();
     if (tag === 'a') {
       flush();
-      if (closing) linkJob = null;
+      if (closing) linkJob = linkHref = null;
       else {
         const href = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(m[3] ?? '');
-        linkJob = linkedInJobId(decodeEntities(href?.[1] ?? href?.[2] ?? href?.[3] ?? ''));
+        linkHref = decodeEntities(href?.[1] ?? href?.[2] ?? href?.[3] ?? '');
+        linkJob = idOf(linkHref);
       }
     } else if (BLOCK.has(tag)) flush();
   }

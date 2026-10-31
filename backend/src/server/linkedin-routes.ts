@@ -1,7 +1,7 @@
 /**
- * LinkedIn job alerts (optional, off by default) and the assisted-apply screen.
+ * Email job alerts — LinkedIn, Indeed (optional, off by default) — and the assisted-apply screen.
  * Settings work while off (to turn it on); everything else answers 409 while off, so nothing touches IMAP.
- * LinkedIn itself is only ever opened in the user's own default browser.
+ * LinkedIn and Indeed are only ever opened in the user's own default browser.
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -12,7 +12,8 @@ import { log } from '../log.js';
 import { ServiceError, prepareJobs } from '../apply/service.js';
 import { getActiveRun, startRun, syncSalaries } from '../pipeline/runner.js';
 import { startLinkedInRun } from '../pipeline/linkedin-run.js';
-import { linkedInEnabled, publicLinkedInSettings, saveLinkedInSettings, setImapConfig } from '../linkedin/settings.js';
+import { emailAlertsEnabled, publicLinkedInSettings, saveEmailAlertSettings, setImapConfig } from '../linkedin/settings.js';
+import { isAssistedSite, SITE_LABEL } from '../alerts/assisted.js';
 import { LinkedInDisabledError, testImap } from '../linkedin/imap.js';
 import { applyHelper, localCvFile } from '../linkedin/helper.js';
 import { openInDefaultBrowser, revealFile } from '../linkedin/open.js';
@@ -23,6 +24,7 @@ const SettingsBody = z.object({
   enabled: z.boolean().optional(),
   windowDays: z.number().int().min(1).max(90).optional(),
   mailbox: z.string().min(1).max(200).optional(),
+  sources: z.object({ linkedin: z.boolean().optional(), indeed: z.boolean().optional() }).optional(),
   host: z.string().min(1).max(200).optional(),
   port: z.number().int().min(1).max(65535).optional(),
   user: z.string().max(200).optional(),
@@ -33,12 +35,12 @@ const SettingsBody = z.object({
 export function registerLinkedInRoutes(app: FastifyInstance, db: DB): void {
   const repo = new Repo(db);
   const requireOn = () => {
-    if (!linkedInEnabled()) throw new ServiceError(409, new LinkedInDisabledError().message);
+    if (!emailAlertsEnabled()) throw new ServiceError(409, new LinkedInDisabledError().message);
   };
   const linkedInJob = (id: string) => {
     requireOn();
     const job = repo.getJob(id);
-    if (!job || job.site !== 'linkedin') throw new ServiceError(404, 'no such LinkedIn job');
+    if (!job || !isAssistedSite(job.site)) throw new ServiceError(404, 'no such LinkedIn / Indeed job');
     return job;
   };
 
@@ -46,10 +48,10 @@ export function registerLinkedInRoutes(app: FastifyInstance, db: DB): void {
 
   app.put('/api/linkedin/settings', async (req) => {
     const b = SettingsBody.parse(req.body ?? {});
-    const { enabled, windowDays, mailbox, ...imap } = b;
+    const { enabled, windowDays, mailbox, sources, ...imap } = b;
     if (Object.keys(imap).length) setImapConfig(imap);
-    saveLinkedInSettings({ ...(enabled !== undefined ? { enabled } : {}), ...(windowDays ? { windowDays } : {}), ...(mailbox ? { mailbox } : {}) });
-    if (enabled !== undefined) log.info({ enabled }, 'LinkedIn job alerts turned ' + (enabled ? 'on' : 'off'));
+    saveEmailAlertSettings({ ...(enabled !== undefined ? { enabled } : {}), ...(windowDays ? { windowDays } : {}), ...(mailbox ? { mailbox } : {}), ...(sources ? { sources } : {}) });
+    if (enabled !== undefined || sources) log.info({ enabled, sources }, 'email job alerts settings changed');
     return publicLinkedInSettings();
   });
 
@@ -73,7 +75,8 @@ export function registerLinkedInRoutes(app: FastifyInstance, db: DB): void {
 
   app.get<{ Params: { id: string } }>('/api/linkedin/jobs/:id/helper', async (req) => {
     const job = linkedInJob(req.params.id);
-    return applyHelper(db, job, repo.getScore(job.id)?.matchedSkills ?? []);
+    // every link of this job: its own and those of the same job from other sources (LinkedIn, Indeed, Drushim…)
+    return { ...applyHelper(db, job, repo.getScore(job.id)?.matchedSkills ?? []), site: job.site, siteLabel: SITE_LABEL[job.site as 'linkedin'], links: repo.sourceLinks(job.id) };
   });
 
   /** Opens the job in the user's DEFAULT browser (never the automated one). */
@@ -98,7 +101,7 @@ export function registerLinkedInRoutes(app: FastifyInstance, db: DB): void {
     const job = linkedInJob(req.params.id);
     const at = nowIso();
     db.prepare("UPDATE jobs SET status = 'submitted_manual', status_reason = ?, applied_manually_at = ?, updated_at = ? WHERE id = ?").run(
-      `applied by hand on LinkedIn at ${at}`,
+      `applied by hand on ${SITE_LABEL[job.site as 'linkedin']} at ${at}`,
       at,
       at,
       job.id,

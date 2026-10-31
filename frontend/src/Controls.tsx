@@ -66,9 +66,9 @@ export function Controls({ status, onChange, profileReady = true }: { status: St
         ))}
         {!profileReady && <span className="note">no approved profile: Discover finds jobs, scoring waits for the profile</span>}
         {status.schedule.enabled && status.schedule.next && <span className="muted">next scheduled hunt {new Date(status.schedule.next).toLocaleString('he-IL', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span>}
-        {status.linkedin.enabled && (
-          <button disabled={!!run || busy} onClick={() => act(linkedin.fetch)} title="read new LinkedIn job-alert emails → prefilter → score (LinkedIn itself is never opened)">
-            Fetch LinkedIn alerts
+        {status.emailAlerts.enabled && (
+          <button disabled={!!run || busy} onClick={() => act(linkedin.fetch)} title={`read new job-alert emails (${status.emailAlerts.sources.join(', ')}) → prefilter → score (LinkedIn / Indeed themselves are never opened)`}>
+            Fetch job-alert emails
           </button>
         )}
         {run && (

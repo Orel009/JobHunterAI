@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 
 /** linkedin: jobs from LinkedIn job-alert emails only (never opened by the automated browser; applying is manual) */
-export type SiteId = 'drushim' | 'alljobs' | 'jobmaster' | 'linkedin';
+export type SiteId = 'drushim' | 'alljobs' | 'jobmaster' | 'linkedin' | 'indeed';
 export type ApplyType = 'site_one_click' | 'site_questionnaire' | 'external' | 'email';
 
 export const JOB_STATUSES = [

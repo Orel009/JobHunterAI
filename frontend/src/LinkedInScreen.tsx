@@ -3,7 +3,7 @@ import { api, linkedin, type ApplyHelper, type HelperItem, type JobItem, type Li
 import { Field, Num } from './forms';
 import { RankBadge } from './RankBadge';
 
-/** Settings card: the optional LinkedIn job-alert feature (off by default) and its IMAP connection. */
+/** Settings card: the optional email job alerts (LinkedIn, Indeed; off by default), each source, and the IMAP connection. */
 export function LinkedInSettingsCard({ onSaved }: { onSaved?: () => void }) {
   const [s, setS] = useState<LinkedInSettings | null>(null);
   const [form, setForm] = useState({ user: '', host: '', port: 993, mailbox: '', windowDays: 14 });
@@ -34,7 +34,7 @@ export function LinkedInSettingsCard({ onSaved }: { onSaved?: () => void }) {
     setTest('connecting…');
     try {
       const r = await linkedin.test();
-      setTest(`✓ connected — ${r.alerts} LinkedIn alert email(s) in ${r.mailbox} from the last ${r.windowDays} days`);
+      setTest(`✓ connected — ${Object.entries(r.bySource ?? {}).map(([k, v]) => `${v} ${SOURCE_LABEL[k] ?? k}`).join(', ') || r.alerts} alert email(s) in ${r.mailbox} from the last ${r.windowDays} days`);
     } catch (e) {
       setTest(`✗ ${(e as Error).message}`);
     }
@@ -42,19 +42,30 @@ export function LinkedInSettingsCard({ onSaved }: { onSaved?: () => void }) {
 
   return (
     <fieldset className="card">
-      <legend>LinkedIn job alerts (optional)</legend>
+      <legend>Email job alerts (optional)</legend>
       <label>
-        <input type="checkbox" checked={s.enabled} onChange={(e) => void save({ enabled: e.target.checked }, e.target.checked ? 'turned on' : 'turned off — imported LinkedIn jobs are kept')} />{' '}
-        <b>Enable LinkedIn job alerts (email)</b>
+        <input type="checkbox" checked={s.enabled} onChange={(e) => void save({ enabled: e.target.checked }, e.target.checked ? 'turned on' : 'turned off — imported jobs are kept')} />{' '}
+        <b>Enable email job alerts</b>
       </label>
       <p className="muted">
-        Reads the job-alert emails LinkedIn sends you (from your mailbox, read-only) and adds those jobs to the list. JobHunter never logs in to LinkedIn, never opens it in its
-        automated browser and never clicks anything there: you apply yourself, in your own browser, with a helper panel. Off = no mail connection at all.
+        Reads the job-alert emails LinkedIn and Indeed send you (from your mailbox, read-only) and adds those jobs to the list. JobHunter never logs in to LinkedIn or Indeed,
+        never opens them in its automated browser and never clicks anything there: you apply yourself, in your own browser, with a helper panel. Off = no mail connection at all.
       </p>
       {s.enabled && (
         <>
+          <div className="row">
+            <b>Sources:</b>
+            {(['linkedin', 'indeed'] as const).map((k) => (
+              <label key={k}>
+                <input type="checkbox" checked={s.sources[k]} onChange={(e) => void save({ sources: { [k]: e.target.checked } }, `${SOURCE_LABEL[k]} alerts ${e.target.checked ? 'on' : 'off'}`)} /> {SOURCE_LABEL[k]}
+              </label>
+            ))}
+            <span className="muted">
+              Indeed: a link to a Drushim job joins the normal Drushim flow; a company / ATS link goes to the review queue; Indeed Apply is applied to by hand here.
+            </span>
+          </div>
           <div className="grid2">
-            <Field label="Email address" hint="the mailbox that receives the LinkedIn alerts (Gmail)">
+            <Field label="Email address" hint="the mailbox that receives the job alerts (Gmail)">
               <input value={form.user} autoComplete="off" onChange={(e) => setForm({ ...form, user: e.target.value })} />
             </Field>
             <Field label="App password" hint={s.imap.password ? `current: ${s.imap.password} — stored only in .env` : 'Gmail: Google Account → Security → App passwords. Stored only in .env'}>
@@ -143,9 +154,10 @@ function HelperTable({ title, items }: { title: string; items: HelperItem[] }) {
 }
 
 const TODO = ['discovered', 'scored', 'queued', 'needs_review'];
+const SOURCE_LABEL: Record<string, string> = { linkedin: 'LinkedIn', indeed: 'Indeed', drushim: 'Drushim' };
 
-/** Assisted apply for LinkedIn jobs: open in your own browser, apply yourself with the helper, then mark it. */
-export function LinkedInScreen({ busy, onChanged }: { busy: boolean; onChanged: () => void }) {
+/** Assisted apply for jobs from alert emails (LinkedIn, Indeed): open in your own browser, apply yourself with the helper, then mark it. */
+export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'] }: { busy: boolean; onChanged: () => void; sources?: string[] }) {
   const [view, setView] = useState<'todo' | 'applied' | 'all'>('todo');
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [sel, setSel] = useState<JobItem | null>(null);
@@ -155,10 +167,11 @@ export function LinkedInScreen({ busy, onChanged }: { busy: boolean; onChanged: 
   const [note, setNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const r = await api.jobs({ site: 'linkedin', limit: 500 });
-    setJobs(r.items);
-    setSel((cur) => (cur ? (r.items.find((j) => j.id === cur.id) ?? null) : null));
-  }, []);
+    const lists = await Promise.all(sources.map((site) => api.jobs({ site, limit: 500 })));
+    const items = lists.flatMap((r) => r.items).sort((a, b) => (b.rank.rank ?? -1) - (a.rank.rank ?? -1));
+    setJobs(items);
+    setSel((cur) => (cur ? (items.find((j) => j.id === cur.id) ?? null) : null));
+  }, [sources.join(',')]);
   useEffect(() => {
     void load();
   }, [load, busy]);
@@ -188,12 +201,12 @@ export function LinkedInScreen({ busy, onChanged }: { busy: boolean; onChanged: 
     <section className="linkedin">
       <div className="banner info">
         <div dir="rtl">
-          LinkedIn בעזרה בלבד: המערכת לא מתחברת ל-LinkedIn ולא לוחצת שם על שום דבר, כדי לא לסכן את החשבון. פותחים את המשרה בדפדפן הרגיל, מגישים ידנית בעזרת הנתונים
+          LinkedIn ו-Indeed בעזרה בלבד: המערכת לא מתחברת אליהם ולא לוחצת שם על שום דבר, כדי לא לסכן את החשבון. פותחים את המשרה בדפדפן הרגיל, מגישים ידנית בעזרת הנתונים
           שכאן, ומסמנים "I applied". אין לסמן או להצהיר על שום דבר שאינו נכון.
         </div>
         <div>
-          LinkedIn is assisted-only: JobHunter never logs in to LinkedIn or clicks anything there (to keep your account safe). Open the job in your own browser, apply yourself with
-          the details below, then click “I applied”. Never tick or state anything that isn't true.
+          LinkedIn and Indeed are assisted-only: JobHunter never logs in to them or clicks anything there (to keep your accounts safe). Open the job in your own browser, apply
+          yourself with the details below, then click “I applied”. Never tick or state anything that isn't true.
         </div>
       </div>
       <div className="filters">
@@ -217,10 +230,13 @@ export function LinkedInScreen({ busy, onChanged }: { busy: boolean; onChanged: 
                   <RankBadge rank={j.rank} />
                 </td>
                 <td dir="auto">
-                  <div className="title">{j.title}</div>
+                  <div className="title">
+                    {j.title} <span className="badge">{SOURCE_LABEL[j.site] ?? j.site}</span>
+                  </div>
                   <div className="muted">
                     {j.company} · {j.location}
                   </div>
+                  {j.applyTarget && <span className="badge ok" title={j.applyTarget}>company link → review queue</span>}
                   {!j.descriptionText && <span className="badge warn">incomplete info</span>}
                 </td>
                 <td>
@@ -232,7 +248,7 @@ export function LinkedInScreen({ busy, onChanged }: { busy: boolean; onChanged: 
             ))}
             {!shown.length && (
               <tr>
-                <td className="muted">No LinkedIn jobs here yet. Alerts are read when you click “Fetch alerts now” (and on every --hunt).</td>
+                <td className="muted">No jobs from alert emails here yet. Alerts are read when you click “Fetch alerts now” (and on every Run & send).</td>
               </tr>
             )}
           </tbody>
@@ -244,8 +260,20 @@ export function LinkedInScreen({ busy, onChanged }: { busy: boolean; onChanged: 
               {sel.title} <span className="muted">— {sel.company}</span>
             </h3>
             <p className="muted" dir="auto">
-              {sel.location} · <span className={`pill status-${sel.status}`}>{sel.status}</span>
+              {SOURCE_LABEL[sel.site] ?? sel.site} · {sel.location} · <span className={`pill status-${sel.status}`}>{sel.status}</span>
             </p>
+            {helper?.links && helper.links.length > 1 && (
+              <p className="muted">
+                Also on:{' '}
+                {helper.links
+                  .filter((l) => l.jobId !== sel.id)
+                  .map((l) => (
+                    <a key={l.jobId} href={l.url} target="_blank" rel="noreferrer" style={{ marginInlineEnd: 8 }}>
+                      {SOURCE_LABEL[l.site] ?? l.site}
+                    </a>
+                  ))}
+              </p>
+            )}
             {sel.score && (
               <p dir="rtl" className="reasoning">
                 {sel.score.reasoningHe}
@@ -265,8 +293,8 @@ export function LinkedInScreen({ busy, onChanged }: { busy: boolean; onChanged: 
 
             {(!sel.descriptionText || desc) && (
               <div className="card">
-                <b>Incomplete info:</b> the alert email has only the title, company and location, so the score is a rough guess. Paste the job description from LinkedIn to score
-                it properly.
+                <b>Incomplete info:</b> the alert email has only the title, company and location, so the score is a rough guess. Paste the job description from the job page
+                to score it properly.
                 <textarea dir="auto" rows={5} value={desc} placeholder="paste the full job description here" onChange={(e) => setDesc(e.target.value)} />
                 <button disabled={desc.trim().length < 20 || busy} onClick={() => void act(() => linkedin.description(sel.id, desc), () => setDesc(''))}>
                   Save and re-score

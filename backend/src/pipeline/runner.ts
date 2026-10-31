@@ -6,7 +6,6 @@ import { getAdapter } from '../sites/registry.js';
 import type { SiteContext } from '../sites/types.js';
 import { BlockedError, closeContext, getPage } from '../browser/session.js';
 import { toJob } from '../core/job.js';
-import { findCrossSiteDuplicate } from '../core/dedupe.js';
 import { excludedCompanyMatch, prefilter, scoringRole } from '../core/prefilter.js';
 import { jobSalary } from '../core/salary.js';
 import { effectiveLimits, loadPrefs, searchPlan } from '../core/prefs.js';
@@ -72,7 +71,10 @@ export function startRun(db: DB, site: string, kind: RunKind): number {
   getAdapter(site); // validates site
   return startTask(db, site, kind, async (run, repo, L) => {
     if (kind === 'discover' || kind === 'full') await discover(repo, run, L);
-    if (kind === 'enrich') await details(repo, run, L, loadPrefs());
+    if (kind === 'enrich') {
+      applyPrefilter(repo, run, loadPrefs()); // jobs added from alert-email links have not been through it yet
+      await details(repo, run, L, loadPrefs());
+    }
     if (kind !== 'discover') await score(repo, run, L);
   });
 }
@@ -159,11 +161,9 @@ async function discover(repo: Repo, run: ActiveRun, L: typeof log): Promise<void
       repo.addRoleTypes(stored.id, roleIds);
       if (outcome === 'inserted') {
         run.stats.inserted++;
-        const dup = findCrossSiteDuplicate(job, new Date(), repo.dedupeCandidates(job.companyNorm, job.titleNorm, job.site), config.DEDUPE_WINDOW_DAYS);
-        if (dup) {
-          repo.markDuplicate(stored.id, dup.id);
-          run.stats.duplicates++;
-        }
+        // same job from another source (e.g. a LinkedIn / Indeed alert): one job, every link kept; this site's copy
+        // wins over an untouched assisted-only copy, since it can be applied to by the automated flow
+        if (repo.dedupeNewJob(stored, config.DEDUPE_WINDOW_DAYS).duplicateOf) run.stats.duplicates++;
       } else if (outcome === 'updated') run.stats.updated++;
     }
   }

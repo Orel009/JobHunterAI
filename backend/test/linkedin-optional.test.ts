@@ -125,7 +125,7 @@ describe('LinkedIn job alerts are optional (off by default)', () => {
     expect((await app.inject({ method: 'GET', url: '/api/status' })).json().linkedin).toEqual({ enabled: true });
     expect((await app.inject({ method: 'POST', url: '/api/linkedin/fetch' })).statusCode).toBe(200);
     await waitIdle();
-    expect(repo.listRuns(1)[0]).toMatchObject({ site: 'linkedin', status: 'failed', reason: expect.stringMatching(/IMAP is not set up/) });
+    expect(repo.listRuns(1)[0]).toMatchObject({ site: 'email-alerts', status: 'failed', reason: expect.stringMatching(/IMAP is not set up/) });
     expect(env.imapConstructed).toBe(0);
   });
 

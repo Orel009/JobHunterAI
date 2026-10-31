@@ -1,6 +1,6 @@
 /**
  * One full hunt — "Run & send" in the dashboard, npm start -- --hunt [--send], the in-app schedule or Windows Task
- * Scheduler: discover on every enabled site → score; LinkedIn alert emails (only when that optional feature is on);
+ * Scheduler: job-alert emails (LinkedIn / Indeed, only when that optional feature is on); discover on every enabled site → score;
  * then prepare plans for the best new Drushim jobs within today's limit and send the ones that pass the auto-submit
  * gate (only with DRY_RUN off and auto-submit on for the site; otherwise it stops after prepare).
  * Live progress (step, counts, current job) is kept for the dashboard while it runs.
@@ -16,9 +16,9 @@ import { prepareJobs } from '../apply/service.js';
 import { checkDrushimSession, getSession, type SessionInfo } from '../browser/site-session.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
 import { rankStoredJob } from '../core/rank.js';
-import { linkedInEnabled } from '../linkedin/settings.js';
+import { emailAlertsEnabled, enabledSources } from '../linkedin/settings.js';
 import { showToast } from '../notify/toast.js';
-import { runLinkedInToCompletion } from './linkedin-run.js';
+import { runEmailAlertsToCompletion } from './linkedin-run.js';
 import { getActiveRun, runToCompletion, waitIdle } from './runner.js';
 import { scheduleSettings } from './schedule.js';
 import { config } from '../config.js';
@@ -140,8 +140,18 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     end(session.state === 'logged_out' ? 'failed' : 'done', session.state === 'logged_in' ? 'logged in' : session.state === 'logged_out' ? 'NOT logged in — discovery only' : `unknown (${session.detail})`);
     L.info({ session: session.state }, 'hunt started');
 
-    // discovery on every enabled site that has an adapter (today: Drushim)
     const runs: HuntSummary['runs'] = [];
+    // job-alert emails first (optional): Drushim jobs found through Indeed links are then read by the Drushim run
+    if (emailAlertsEnabled()) {
+      end = step(`reading job-alert emails (${enabledSources().join(', ')})`);
+      await runEmailAlertsToCompletion(db, { followUp: false });
+      const r = lastRun();
+      runs.push(r);
+      p.counts.found += r.inserted;
+      p.counts.scored += r.scored;
+      end(r.status === 'done' ? 'done' : 'failed', `${r.status === 'done' ? '' : `${r.status}${r.reason ? ` (${r.reason})` : ''} · `}new ${r.inserted} · scored ${r.scored}`);
+    }
+    // discovery on every enabled site that has an adapter (today: Drushim)
     for (const site of SITES.filter((x) => x.enabled && adapters[x.id])) {
       end = step(`discovering on ${site.displayName} → scoring`);
       await runToCompletion(db, site.id, 'full');
@@ -150,15 +160,6 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       p.counts.found += r.inserted;
       p.counts.scored += r.scored;
       end(r.status === 'done' ? 'done' : 'failed', `${r.status}${r.reason ? ` (${r.reason})` : ''} · new ${r.inserted} · scored ${r.scored}`);
-    }
-    if (linkedInEnabled()) {
-      end = step('reading LinkedIn alert emails');
-      await runLinkedInToCompletion(db);
-      const r = lastRun();
-      runs.push(r);
-      p.counts.found += r.inserted;
-      p.counts.scored += r.scored;
-      end(r.status === 'done' ? 'done' : 'failed', `new ${r.inserted} · scored ${r.scored}`);
     }
 
     const prefs = loadPrefs();

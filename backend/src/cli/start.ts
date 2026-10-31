@@ -275,13 +275,13 @@ if (fs.existsSync(profileFile)) {
   warn('אין פרופיל — אשף ההגדרה ייפתח ב-dashboard', 'No profile yet — the setup wizard opens in the dashboard', 'יש להשלים את אשף ההגדרה', 'Complete the setup wizard');
 }
 
-// ---------- optional: LinkedIn job alerts (email) — checked only when turned on ----------
-const { linkedInEnabled, imapConfig, imapConfigured } = await import('../linkedin/settings.js');
-if (linkedInEnabled()) {
+// ---------- optional: email job alerts (LinkedIn, Indeed) — checked only when turned on ----------
+const { emailAlertsEnabled, enabledSources, imapConfig, imapConfigured } = await import('../linkedin/settings.js');
+if (emailAlertsEnabled()) {
   if (!imapConfigured()) {
     warn(
-      'התראות המשרות מ-LinkedIn מופעלות, אבל פרטי המייל (IMAP) חסרים',
-      'LinkedIn job alerts are on, but the email (IMAP) settings are missing',
+      'התראות המשרות במייל מופעלות, אבל פרטי המייל (IMAP) חסרים',
+      'Email job alerts are on, but the email (IMAP) settings are missing',
       'יש להזין כתובת מייל וסיסמת אפליקציה במסך Settings, או לכבות את האפשרות',
       'Enter the email address and app password on the Settings screen, or turn the option off',
     );
@@ -289,9 +289,9 @@ if (linkedInEnabled()) {
     const { testImap } = await import('../linkedin/imap.js');
     try {
       const t = await testImap();
-      ok(`LinkedIn alerts: ${imapConfig().user} — ${t.alerts} alert email(s) in the last ${t.windowDays} days`);
+      ok(`Job alerts (${enabledSources().join(', ')}): ${imapConfig().user} — ${Object.entries(t.bySource).map(([k, v]) => `${v} ${k}`).join(', ')} alert email(s) in the last ${t.windowDays} days`);
     } catch (e) {
-      warn('אין חיבור לתיבת המייל של התראות LinkedIn', `LinkedIn alerts: ${(e as Error).message}`, 'יש לבדוק את סיסמת האפליקציה במסך Settings (Test connection)', 'Check the app password on the Settings screen (Test connection)');
+      warn('אין חיבור לתיבת המייל של התראות המשרות', `Job alerts: ${(e as Error).message}`, 'יש לבדוק את סיסמת האפליקציה במסך Settings (Test connection)', 'Check the app password on the Settings screen (Test connection)');
     }
   }
 }

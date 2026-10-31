@@ -2,7 +2,8 @@ import type { DB } from './index.js';
 import { nowIso, tx } from './index.js';
 import type { Job, JobStatus } from '../sites/types.js';
 import { mergeJob } from '../core/job.js';
-import type { DedupeCandidate } from '../core/dedupe.js';
+import { findCrossSiteDuplicate, type DedupeCandidate } from '../core/dedupe.js';
+import { isAssistedSite } from '../alerts/assisted.js';
 
 interface JobRow {
   id: string;
@@ -186,6 +187,37 @@ export class Repo {
     this.db
       .prepare(`UPDATE jobs SET duplicate_of=?, status='skipped', status_reason=?, updated_at=? WHERE id=?`)
       .run(of, `duplicate of ${of}`, nowIso(), id);
+  }
+
+  /**
+   * Cross-source dedupe for a job just inserted: the same company + normalized title within the window is one job,
+   * and every copy keeps its link (the copies point to the one job with duplicate_of).
+   * The copy on a site with an automated apply flow is preferred: when the earlier copy is assisted-only (LinkedIn,
+   * Indeed) and nothing was done with it yet, the new copy becomes the one job and the earlier copies point to it.
+   */
+  dedupeNewJob(job: Pick<Job, 'id' | 'site' | 'companyNorm' | 'titleNorm'>, windowDays: number, now = new Date()): { duplicateOf: string | null; absorbed: string | null } {
+    const dup = findCrossSiteDuplicate(job, now, this.dedupeCandidates(job.companyNorm, job.titleNorm, job.site), windowDays);
+    if (!dup) return { duplicateOf: null, absorbed: null };
+    const untouched = (id: string) => {
+      const j = this.getJob(id);
+      return !!j && ['discovered', 'scored'].includes(j.status) && !this.db.prepare('SELECT 1 FROM applications WHERE job_id = ?').get(id);
+    };
+    if (!isAssistedSite(job.site) && isAssistedSite(dup.site) && untouched(dup.id)) {
+      this.db.prepare(`UPDATE jobs SET duplicate_of=?, updated_at=? WHERE duplicate_of=?`).run(job.id, nowIso(), dup.id);
+      this.markDuplicate(dup.id, job.id);
+      return { duplicateOf: null, absorbed: dup.id };
+    }
+    this.markDuplicate(job.id, dup.id);
+    return { duplicateOf: dup.id, absorbed: null };
+  }
+
+  /** Every source link of a job: its own, then those of its copies on other sites / alert emails. */
+  sourceLinks(id: string): Array<{ site: string; url: string; applyTarget: string | null; jobId: string }> {
+    return (
+      this.db
+        .prepare(`SELECT id AS jobId, site, url, apply_target AS applyTarget FROM jobs WHERE id = ? OR duplicate_of = ? ORDER BY (id = ?) DESC, first_seen_at`)
+        .all(id, id, id) as unknown as Array<{ site: string; url: string; applyTarget: string | null; jobId: string }>
+    ).map((r) => ({ ...r, applyTarget: r.applyTarget || null }));
   }
 
   setStatus(id: string, status: JobStatus, reason: string | null = null): void {

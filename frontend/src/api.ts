@@ -119,8 +119,10 @@ export interface Status {
     tokenLimit: number;
   };
   sites: Array<{ id: string; displayName: string; enabled: boolean }>;
-  /** optional LinkedIn job alerts (email): the LinkedIn screen and filter exist only while enabled */
+  /** the LinkedIn source of the email job alerts is on */
   linkedin: { enabled: boolean };
+  /** optional email job alerts (LinkedIn, Indeed): the Email alerts screen and the fetch button exist only while on */
+  emailAlerts: { enabled: boolean; sources: string[] };
   autoSubmit: { sites: Record<string, boolean>; minRank: number | null; minRankEffective: number; paused: boolean; pausedAt: string | null };
   lastHunt: import('./Schedule').HuntSummary | null;
   huntRunning: boolean;
@@ -323,9 +325,11 @@ export const llm = {
   usage: () => req<UsageReport>('GET', '/api/llm/usage'),
 };
 
-// ---------- LinkedIn job alerts (optional) + assisted apply ----------
+// ---------- email job alerts: LinkedIn, Indeed (optional) + assisted apply ----------
 export interface LinkedInSettings {
   enabled: boolean;
+  /** each alert source separately (Email job alerts) */
+  sources: { linkedin: boolean; indeed: boolean };
   windowDays: number;
   mailbox: string;
   imap: { host: string; port: number; user: string; password: string | null };
@@ -344,12 +348,16 @@ export interface ApplyHelper {
   skillYears: HelperItem[];
   salary: HelperItem[];
   incompleteInfo: boolean;
+  site?: string;
+  siteLabel?: string;
+  /** every link of this job: its own and the same job from other sources */
+  links?: Array<{ site: string; url: string; applyTarget: string | null; jobId: string }>;
 }
 export const linkedin = {
   settings: () => req<LinkedInSettings>('GET', '/api/linkedin/settings'),
-  save: (b: Partial<{ enabled: boolean; windowDays: number; mailbox: string; host: string; port: number; user: string; password: string | null }>) =>
+  save: (b: Partial<{ enabled: boolean; sources: Partial<{ linkedin: boolean; indeed: boolean }>; windowDays: number; mailbox: string; host: string; port: number; user: string; password: string | null }>) =>
     req<LinkedInSettings>('PUT', '/api/linkedin/settings', b),
-  test: () => req<{ ok: boolean; mailbox: string; alerts: number; windowDays: number }>('POST', '/api/linkedin/test', {}),
+  test: () => req<{ ok: boolean; mailbox: string; alerts: number; bySource: Record<string, number>; windowDays: number }>('POST', '/api/linkedin/test', {}),
   fetch: () => req<{ runId: number }>('POST', '/api/linkedin/fetch', {}),
   helper: (id: string) => req<ApplyHelper>('GET', `/api/linkedin/jobs/${id}/helper`),
   open: (id: string) => req('POST', `/api/linkedin/jobs/${id}/open`, {}),

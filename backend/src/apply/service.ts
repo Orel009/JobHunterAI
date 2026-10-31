@@ -25,6 +25,7 @@ import { autoSubmitOn, evaluateAutoSubmit } from './auto-submit.js';
 import { getSession, setSession } from '../browser/site-session.js';
 import { excludedCompanyMatch } from '../core/prefilter.js';
 import type { ApplyPlan, ResolvedField } from './types.js';
+import { isAssistedSite } from '../alerts/assisted.js';
 
 export class ServiceError extends Error {
   constructor(public status: number, message: string) {
@@ -57,6 +58,29 @@ async function partialFill(page: Parameters<typeof fillPanel>[0], state: PanelSt
 }
 
 // ---------- prepare ----------
+/** An application done by hand (a company / ATS link, an email address): to the review queue with the link. */
+function queueManualApplication(apps: Applications, repo: Repo, job: StoredJob): void {
+  const plan: ApplyPlan = { jobId: job.id, site: job.site, createdAt: new Date().toISOString(), cv: null, fields: [], readiness: 'needs_answers', notes: [`${job.applyType} apply → ${job.applyTarget} (handled manually in this phase)`] };
+  apps.savePlan(job, plan, 'needs_review');
+  repo.setStatus(job.id, 'needs_review', `${job.applyType} apply`);
+}
+
+/**
+ * Scored jobs from alert emails whose link leads to a company / ATS page (score ≥ the threshold, nothing done with
+ * them yet) → the review queue with that link. No browser: nothing is opened or filled.
+ */
+export function queueExternalForReview(db: DB, site: string, minScore: number): number {
+  const repo = new Repo(db);
+  const apps = new Applications(db);
+  let n = 0;
+  for (const j of repo.listJobs({ site, status: 'scored', minScore, limit: 2000 }).items) {
+    if (j.applyType !== 'external' || !j.applyTarget || apps.latestForJob(j.id)) continue;
+    queueManualApplication(apps, repo, repo.getJob(j.id)!);
+    n++;
+  }
+  return n;
+}
+
 export function prepareJobs(db: DB, jobIds: string[]): number {
   const repo = new Repo(db);
   const apps = new Applications(db);
@@ -69,9 +93,9 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
     .sort((a, b) => b.r - a.r)
     .map((x) => x.j);
   if (jobs.length === 0) throw new ServiceError(404, 'no such jobs');
-  // LinkedIn is assisted-only: a LinkedIn job reaches the review queue only as an external link the user pasted
-  if (jobs.some((j) => j.site === 'linkedin' && !(j.applyType === 'external' && j.applyTarget))) {
-    throw new ServiceError(400, 'LinkedIn jobs are applied to by hand: use the LinkedIn screen (Open in my browser)');
+  // LinkedIn / Indeed are assisted-only: their jobs reach the review queue only with a company / ATS link
+  if (jobs.some((j) => isAssistedSite(j.site) && !(j.applyType === 'external' && j.applyTarget))) {
+    throw new ServiceError(400, 'LinkedIn / Indeed jobs are applied to by hand: use the Email alerts screen (Open in my browser)');
   }
   for (const j of jobs) repo.setStatus(j.id, 'queued', 'preparing application');
 
@@ -93,9 +117,7 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
       if (applied?.has(job.externalId)) continue; // skipped already_applied above
       run.stage = `preparing ${job.title}`;
       if (job.applyType === 'external' || job.applyType === 'email') {
-        const plan: ApplyPlan = { jobId: job.id, site: job.site, createdAt: new Date().toISOString(), cv: null, fields: [], readiness: 'needs_answers', notes: [`${job.applyType} apply → ${job.applyTarget} (handled manually in this phase)`] };
-        apps.savePlan(job, plan, 'needs_review');
-        repo.setStatus(job.id, 'needs_review', `${job.applyType} apply`);
+        queueManualApplication(apps, repo, job);
         continue;
       }
       if (job.site !== 'drushim') {

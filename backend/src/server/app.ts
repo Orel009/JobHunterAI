@@ -21,7 +21,7 @@ import { registerHistoryRoutes } from './history-routes.js';
 import { autoSubmitSettings, effectiveMinRank, pauseAutoSubmit, saveAutoSubmitSettings } from '../apply/auto-submit.js';
 import { huntProgress, huntRunning, recentHunts, runHunt, sendingMode } from '../pipeline/hunt.js';
 import { inQuietHours, isHhmm, nextRun, runnableTimes, saveScheduleSettings, scheduleSettings } from '../pipeline/schedule.js';
-import { linkedInEnabled } from '../linkedin/settings.js';
+import { emailAlertsEnabled, enabledSources, linkedInEnabled } from '../linkedin/settings.js';
 import { batchProgress, prepareJobs, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
 import { registerCvRoutes, registerEditorRoutes } from './editor-routes.js';
@@ -77,8 +77,10 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
         tokenLimit: usage?.limit ?? 0,
       },
       sites: SITES,
-      /** optional LinkedIn job alerts (email); the LinkedIn screen and filter exist only while this is on */
+      /** the LinkedIn source of the email job alerts is on */
       linkedin: { enabled: linkedInEnabled() },
+      /** optional email job alerts (LinkedIn, Indeed): the assisted screen and the fetch button exist only while on */
+      emailAlerts: { enabled: emailAlertsEnabled(), sources: enabledSources() },
       /** auto-submit (off by default): per-site toggles, the kill switch and the effective minimum rank */
       autoSubmit: { ...autoSubmitSettings(), minRankEffective: effectiveMinRank() },
       /** the latest hunt's summary, and the next in-app scheduled hunt (null = off) */

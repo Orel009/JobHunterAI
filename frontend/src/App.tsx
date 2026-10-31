@@ -22,7 +22,7 @@ const TABS = [
   { id: 'profile', label: 'Profile', enabled: true },
   { id: 'prefs', label: 'Preferences', enabled: true },
   { id: 'market', label: 'Market', enabled: true },
-  { id: 'linkedin', label: 'LinkedIn', enabled: true },
+  { id: 'linkedin', label: 'Email alerts', enabled: true },
   { id: 'settings', label: 'Settings', enabled: true },
   { id: 'history', label: 'History', enabled: true },
 ] as const;
@@ -73,7 +73,7 @@ export function App() {
       <header>
         <h1>JobHunter</h1>
         <nav>
-          {TABS.filter((t) => t.id !== 'linkedin' || status?.linkedin.enabled).map((t) => (
+          {TABS.filter((t) => t.id !== 'linkedin' || status?.emailAlerts.enabled).map((t) => (
             <button key={t.id} className={tab === t.id ? 'tab active' : 'tab'} disabled={!t.enabled || !!onboarding} onClick={() => setTab(t.id)}>
               {t.label}
             </button>
@@ -143,12 +143,12 @@ export function App() {
         />
       )}
       {onboarding === false && status && <Controls status={status} onChange={refresh} profileReady={profile?.valid ?? true} />}
-      {onboarding === false && tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} linkedinEnabled={!!status?.linkedin.enabled} roleTypes={status?.roleTypes ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
+      {onboarding === false && tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} alertSources={status?.emailAlerts.enabled ? status.emailAlerts.sources : []} roleTypes={status?.roleTypes ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
       {onboarding === false && tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} onChanged={refresh} />}
       {onboarding === false && tab === 'answers' && <AnswersBank onChanged={refresh} />}
       {onboarding === false && tab === 'profile' && <ProfileScreen onChanged={refresh} />}
       {onboarding === false && tab === 'prefs' && <PreferencesEditor onSaved={refresh} />}
-      {onboarding === false && tab === 'linkedin' && status?.linkedin.enabled && <LinkedInScreen busy={!!status.activeRun} onChanged={refresh} />}
+      {onboarding === false && tab === 'linkedin' && status?.emailAlerts.enabled && <LinkedInScreen sources={status.emailAlerts.sources} busy={!!status.activeRun} onChanged={refresh} />}
       {onboarding === false && tab === 'history' && <HistoryScreen />}
       {onboarding === false && tab === 'market' && <MarketScreen onSaved={refresh} />}
       {onboarding === false && tab === 'settings' && <SettingsScreen onSaved={refresh} sites={status?.sites ?? []} />}
