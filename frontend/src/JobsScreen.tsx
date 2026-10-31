@@ -4,7 +4,7 @@ import { api, STATUSES, type JobItem, type Status } from './api';
 const scoreClass = (s: number | undefined) => (s === undefined ? 'score none' : s >= 80 ? 'score high' : s >= 60 ? 'score mid' : 'score low');
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('he-IL') : '');
 
-export function JobsScreen({ refreshKey, sites }: { refreshKey: number; sites: Status['sites'] }) {
+export function JobsScreen({ refreshKey, sites, applyDisabled = false }: { refreshKey: number; sites: Status['sites']; applyDisabled?: boolean }) {
   const [filters, setFilters] = useState({ site: '', status: '', minScore: '', q: '' });
   const [data, setData] = useState<{ total: number; items: JobItem[] }>({ total: 0, items: [] });
   const [open, setOpen] = useState<string | null>(null);
@@ -100,7 +100,7 @@ export function JobsScreen({ refreshKey, sites }: { refreshKey: number; sites: S
                     </button>
                   ) : (
                     <>
-                      <button className="link" disabled={['queued', 'needs_review', 'dry_run_ok', 'submitted'].includes(j.status)} title='prepare an application plan (opens the apply panel, never submits)' onClick={() => act(() => api.apply(j.id))}>
+                      <button className="link" disabled={applyDisabled || ['queued', 'needs_review', 'dry_run_ok', 'submitted'].includes(j.status)} title='prepare an application plan (opens the apply panel, never submits)' onClick={() => act(() => api.apply(j.id))}>
                         apply
                       </button>
                       <button className="link" onClick={() => act(() => api.skip(j.id))}>

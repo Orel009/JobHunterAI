@@ -54,7 +54,15 @@ export function App() {
         </nav>
       </header>
       {status?.dryRun === false && <div className="banner live-banner">DRY_RUN is OFF — approving in the review queue submits real applications.</div>}
-      {error && <div className="banner error">{error} — is `npm run dev` running?</div>}
+      {error && <div className="banner error">{error} — is JobHunter running (npm start)?</div>}
+      {status?.sessions.drushim?.state === 'logged_out' && (
+        <div className="banner error">
+          <div dir="rtl">לא מחובר לדרושים — ההגשה מושבתת. הרץ בטרמינל את הפקודה למטה, התחבר, סגור את החלון ולחץ “re-check login”.</div>
+          <div dir="ltr">
+            Not logged in to Drushim — applying is disabled. Run <code>npm run login -- drushim</code>, log in, close the window, then click “re-check login”.
+          </div>
+        </div>
+      )}
       {profile && !profile.valid && (
         <div className="banner warn">
           {profile.exists
@@ -65,8 +73,8 @@ export function App() {
         </div>
       )}
       {status && <Controls status={status} onChange={refresh} />}
-      {tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} />}
-      {tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} onChanged={refresh} />}
+      {tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
+      {tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} onChanged={refresh} />}
       {tab === 'answers' && <AnswersBank onChanged={refresh} />}
       <LogPanel />
     </div>

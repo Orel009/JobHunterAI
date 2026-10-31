@@ -103,7 +103,14 @@ profile.meta = { generatedAt: new Date().toISOString(), sources: { he: 'cv-he.pd
 const check = ProfileSchema.safeParse(JSON.parse(JSON.stringify(profile).replace(/"CONFLICT [^"]*"/g, 'null')));
 if (!check.success) console.warn('draft does not fit the schema yet:', check.error.issues.slice(0, 5));
 
-fs.writeFileSync(path.join(dir, 'profile.draft.json'), JSON.stringify(profile, null, 2));
+// never lose edits: keep the previous draft
+const draftPath = path.join(dir, 'profile.draft.json');
+if (fs.existsSync(draftPath)) {
+  const bak = path.join(dir, `profile.draft.bak-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+  fs.renameSync(draftPath, bak);
+  console.log(`previous draft kept as ${path.basename(bak)}`);
+}
+fs.writeFileSync(draftPath, JSON.stringify(profile, null, 2));
 const missed = [
   ...uncoveredDateLines(he.text, vHe.clean).map((line) => ({ lang: 'he' as const, line })),
   ...uncoveredDateLines(en.text, vEn.clean).map((line) => ({ lang: 'en' as const, line })),

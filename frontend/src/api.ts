@@ -63,6 +63,8 @@ export interface Status {
   models: { analyze: string; write: string };
   ollama: { ok: boolean; models: string[]; analyzeAvailable: boolean };
   sites: Array<{ id: string; displayName: string; enabled: boolean }>;
+  sessions: Record<string, { state: 'logged_in' | 'logged_out' | 'unknown'; checkedAt: string | null; detail: string }>;
+  pendingQuestions: number;
 }
 
 export interface RunRow {
@@ -100,6 +102,7 @@ export const api = {
   startRun: (site: string, kind: 'discover' | 'score' | 'full') => req<{ id: number }>('POST', '/api/runs', { site, kind }),
   stopRun: () => req('POST', '/api/runs/stop'),
   runs: () => req<RunRow[]>('GET', '/api/runs'),
+  checkSession: () => req<{ runId: number }>('POST', '/api/session/check'),
 };
 
 // ---------- Phase 2 ----------

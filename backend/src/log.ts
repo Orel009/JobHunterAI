@@ -2,7 +2,7 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { Writable } from 'node:stream';
 import pino from 'pino';
-import { config } from './config.js';
+import { config, READONLY } from './config.js';
 
 export interface LogLine {
   time: number;
@@ -37,14 +37,14 @@ const ringStream = new Writable({
   },
 });
 
-const fileDest = pino.destination({ dest: path.join(config.paths.logs, 'jobhunter.log'), mkdir: true, sync: false });
+const fileDest = READONLY ? null : pino.destination({ dest: path.join(config.paths.logs, 'jobhunter.log'), mkdir: true, sync: false });
 const pretty = pino.transport({ target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss' } });
 
 export const log = pino(
   { level: config.LOG_LEVEL },
   pino.multistream([
     { stream: pretty, level: config.LOG_LEVEL },
-    { stream: fileDest, level: config.LOG_LEVEL },
+    ...(fileDest ? [{ stream: fileDest, level: config.LOG_LEVEL }] : []),
     { stream: ringStream, level: config.LOG_LEVEL },
   ]),
 );

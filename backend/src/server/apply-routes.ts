@@ -10,6 +10,7 @@ import { AnswersBank } from '../apply/bank.js';
 import { Applications, type AppStatus } from '../apply/plan.js';
 import { approveApplication, editField, prepareJobs, refreshFromBank, rejectApplication, setCv } from '../apply/service.js';
 import { listFacts, loadProfile, profilePath } from '../profile/facts.js';
+import { assertCanApply } from './app.js';
 
 const APP_STATUSES = ['needs_review', 'ready', 'approved', 'dry_run_ok', 'submitted', 'skipped', 'failed', 'blocked', 'rejected'] as const;
 const BankBody = z.object({
@@ -52,7 +53,11 @@ export function registerApplyRoutes(app: FastifyInstance, db: DB) {
     return withJob(setCv(db, Number(req.params.id), body.lang));
   });
 
-  app.post<{ Params: { id: string } }>('/api/applications/:id/approve', async (req) => approveApplication(db, Number(req.params.id)));
+  app.post<{ Params: { id: string } }>('/api/applications/:id/approve', async (req) => {
+    const a = apps.get(Number(req.params.id));
+    if (a) assertCanApply(a.site || 'drushim');
+    return approveApplication(db, Number(req.params.id));
+  });
 
   app.post<{ Params: { id: string } }>('/api/applications/:id/reject', async (req) => {
     const body = z.object({ reason: z.string().optional() }).parse(req.body ?? {});
@@ -64,6 +69,7 @@ export function registerApplyRoutes(app: FastifyInstance, db: DB) {
     const body = z.object({ jobIds: z.array(z.string()).optional() }).parse(req.body ?? {});
     const ids = body.jobIds?.length ? body.jobIds : repo.listJobs({ status: 'queued', limit: 50 }).items.map((j) => j.id);
     if (ids.length === 0) return { ok: true, note: 'nothing queued' };
+    assertCanApply('drushim');
     return { ok: true, runId: prepareJobs(db, ids), count: ids.length };
   });
 

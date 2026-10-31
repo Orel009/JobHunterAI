@@ -17,7 +17,7 @@ const READINESS: Record<string, string> = {
 };
 const OPEN = 'needs_review,approved,dry_run_ok,failed';
 
-export function ReviewQueue({ dryRun, busy, onChanged }: { dryRun: boolean; busy: boolean; onChanged: () => void }) {
+export function ReviewQueue({ dryRun, busy, applyDisabled = false, onChanged }: { dryRun: boolean; busy: boolean; applyDisabled?: boolean; onChanged: () => void }) {
   const [items, setItems] = useState<Application[]>([]);
   const [filter, setFilter] = useState(OPEN);
   const [msg, setMsg] = useState<string | null>(null);
@@ -52,7 +52,7 @@ export function ReviewQueue({ dryRun, busy, onChanged }: { dryRun: boolean; busy
           <option value="skipped,rejected">Skipped / rejected</option>
           <option value="">All</option>
         </select>
-        <button className="secondary" disabled={busy} onClick={() => act(apply.prepareQueued, 'preparing queued jobs…')}>
+        <button className="secondary" disabled={busy || applyDisabled} onClick={() => act(apply.prepareQueued, 'preparing queued jobs…')}>
           Prepare queued
         </button>
         <span className="muted">{items.length} applications</span>
@@ -60,16 +60,16 @@ export function ReviewQueue({ dryRun, busy, onChanged }: { dryRun: boolean; busy
       </div>
       {items.length === 0 && <p className="muted">Nothing here. Use “apply” on the Jobs screen to prepare a plan.</p>}
       {items.map((a) => (
-        <AppCard key={a.id} app={a} dryRun={dryRun} busy={busy} act={act} />
+        <AppCard key={a.id} app={a} dryRun={dryRun} busy={busy} applyDisabled={applyDisabled} act={act} />
       ))}
     </section>
   );
 }
 
-function AppCard({ app, dryRun, busy, act }: { app: Application; dryRun: boolean; busy: boolean; act: (fn: () => Promise<unknown>, ok?: string) => Promise<void> }) {
+function AppCard({ app, dryRun, busy, applyDisabled, act }: { app: Application; dryRun: boolean; busy: boolean; applyDisabled: boolean; act: (fn: () => Promise<unknown>, ok?: string) => Promise<void> }) {
   const { plan, job } = app;
   const pending = plan.fields.filter((f) => f.status === 'pending').length;
-  const canApprove = !busy && pending === 0 && plan.readiness !== 'blocked_no' && !!plan.cv && ['needs_review', 'dry_run_ok', 'failed'].includes(app.status);
+  const canApprove = !busy && !applyDisabled && pending === 0 && plan.readiness !== 'blocked_no' && !!plan.cv && ['needs_review', 'dry_run_ok', 'failed'].includes(app.status);
   return (
     <div className={`app-card status-${app.status}`}>
       <div className="app-head">

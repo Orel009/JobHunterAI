@@ -6,13 +6,15 @@ import type { DB } from '../db/index.js';
 import { Repo } from '../db/repo.js';
 import { SITES } from '../sites/registry.js';
 import { JOB_STATUSES } from '../sites/types.js';
-import { getActiveRun, startRun, stopRun } from '../pipeline/runner.js';
+import { getActiveRun, startRun, startTask, stopRun } from '../pipeline/runner.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
 import { listLocalModels } from '../llm/ollama.js';
 import { prepareJobs, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
+import fastifyStatic from '@fastify/static';
+import { allSessions, checkDrushimSession, getSession } from '../browser/site-session.js';
 
-export function buildApp(db: DB) {
+export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   // No per-request logging (the dashboard polls); errors are logged below.
   const app = Fastify({ logger: false });
   const repo = new Repo(db);
@@ -43,6 +45,8 @@ export function buildApp(db: DB) {
         analyzeAvailable: ollama.models.some((m) => m === config.OLLAMA_MODEL_ANALYZE || m === `${config.OLLAMA_MODEL_ANALYZE}:latest`),
       },
       sites: SITES,
+      sessions: allSessions(),
+      pendingQuestions: (db.prepare("SELECT COUNT(*) AS n FROM answers WHERE status = 'pending'").get() as { n: number }).n,
     };
   });
 
@@ -79,6 +83,7 @@ export function buildApp(db: DB) {
   app.post<{ Params: { id: string } }>('/api/jobs/:id/apply', async (req, reply) => {
     const job = repo.getJob(req.params.id);
     if (!job) return reply.status(404).send({ error: 'not found' });
+    assertCanApply(job.site);
     if (getActiveRun()) {
       repo.setStatus(job.id, 'queued', 'waiting for the current run to finish');
       return { ok: true, note: 'queued — click "Prepare queued" when the current run finishes' };
@@ -87,6 +92,15 @@ export function buildApp(db: DB) {
   });
 
   registerApplyRoutes(app, db);
+
+  /** Re-check the site login (e.g. after `npm run login -- drushim` in another terminal). Uses the browser, so it is a run. */
+  app.post('/api/session/check', async (_req, reply) => {
+    try {
+      return { runId: startTask(db, 'drushim', 'session_check', async () => void (await checkDrushimSession())) };
+    } catch (e) {
+      return reply.status(409).send({ error: (e as Error).message });
+    }
+  });
 
   const RunBody = z.object({ site: z.string(), kind: z.enum(['discover', 'score', 'full']).default('full') });
   app.post('/api/runs', async (req, reply) => {
@@ -116,5 +130,21 @@ export function buildApp(db: DB) {
     });
   });
 
+  if (opts.staticDir) {
+    // production (npm start): the built dashboard on the same port; SPA fallback for non-API paths
+    void app.register(fastifyStatic, { root: opts.staticDir, wildcard: false });
+    app.setNotFoundHandler((req, reply) => {
+      if (req.url.startsWith('/api/')) return reply.status(404).send({ error: 'not found' });
+      return reply.sendFile('index.html');
+    });
+  }
+
   return app;
+}
+
+/** Applying is disabled while the site is known to be logged out (unknown = let the adapter find out). */
+export function assertCanApply(site: string): void {
+  if (getSession(site).state === 'logged_out') {
+    throw new ServiceError(409, `לא מחובר ל-${site} — הרץ npm run login -- ${site} ואז "בדוק שוב" / Not logged in to ${site}: run npm run login -- ${site}, then "Re-check"`);
+  }
 }

@@ -67,10 +67,14 @@ function load(): Config {
     reports: path.join(dataDir, 'reports'),
     preferences: path.resolve(ROOT_DIR, env.PREFERENCES_FILE),
   };
-  for (const p of [dataDir, paths.logs, paths.screenshots, paths.browserProfile, paths.profileDir, paths.investigations, paths.reports]) {
-    fs.mkdirSync(p, { recursive: true });
+  // `npm run doctor` sets JOBHUNTER_READONLY=1: report only, create nothing
+  if (process.env.JOBHUNTER_READONLY !== '1') {
+    for (const p of [dataDir, paths.logs, paths.screenshots, paths.browserProfile, paths.profileDir, paths.investigations, paths.reports]) {
+      fs.mkdirSync(p, { recursive: true });
+    }
   }
   return { ...env, dataDir, paths };
 }
 
 export const config = load();
+export const READONLY = process.env.JOBHUNTER_READONLY === '1';

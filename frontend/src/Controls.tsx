@@ -31,6 +31,13 @@ export function Controls({ status, onChange }: { status: Status; onChange: () =>
         <span className="badge">
           Today: {status.today.submitted}/{status.limits.dailyApplyLimit} submitted
         </span>
+        <span className={status.sessions.drushim?.state === 'logged_in' ? 'badge ok' : status.sessions.drushim?.state === 'logged_out' ? 'badge warn' : 'badge'} title={status.sessions.drushim?.detail}>
+          Drushim: {status.sessions.drushim?.state === 'logged_in' ? 'logged in' : status.sessions.drushim?.state === 'logged_out' ? 'NOT logged in' : 'login unknown'}
+        </span>
+        <button className="link" disabled={!!run || busy} onClick={() => act(api.checkSession)}>
+          re-check login
+        </button>
+        <span className={status.pendingQuestions ? 'badge warn' : 'badge'}>pending answers: {status.pendingQuestions}</span>
         <span className={status.ollama.ok && status.ollama.analyzeAvailable ? 'badge ok' : 'badge warn'}>
           Ollama: {status.ollama.ok ? (status.ollama.analyzeAvailable ? status.models.analyze : `${status.models.analyze} not pulled`) : 'offline'}
         </span>

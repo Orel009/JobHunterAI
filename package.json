@@ -7,18 +7,21 @@
     "frontend"
   ],
   "scripts": {
+    "start": "node scripts/start.mjs",
+    "doctor": "node scripts/start.mjs --doctor",
     "dev": "concurrently -k -n api,web -c blue,green \"npm run dev -w backend\" \"npm run dev -w frontend\"",
-    "server": "npm run start -w backend",
-    "web": "npm run dev -w frontend",
+    "build": "npm run build -w frontend",
     "login": "npm run login -w backend --",
+    "session:check": "npm run session:check -w backend --",
     "discover": "npm run discover -w backend --",
-    "investigate": "npm run investigate -w backend --",
+    "profile:init": "npm run profile:init -w backend",
     "model:bench": "npm run bench -w backend --",
+    "bench:drafts": "npm run bench:drafts -w backend",
+    "investigate": "npm run investigate -w backend --",
+    "investigate:apply": "npm run investigate:apply -w backend --",
     "db:migrate": "npm run migrate -w backend",
     "test": "npm test -w backend",
-    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
-    "session:check": "npm run session:check -w backend --",
-    "profile:init": "npm run profile:init -w backend"
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend"
   },
   "engines": {
     "node": ">=22.13"
