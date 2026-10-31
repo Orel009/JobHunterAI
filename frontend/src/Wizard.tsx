@@ -230,7 +230,8 @@ export function Wizard({ status, onDone }: { status: Status | null; onDone: () =
             <fieldset>
               <legend>Drushim login</legend>
               <p>
-                Opens a browser window on Drushim. <b>You</b> log in there (JobHunter never types your password), then close the window. Status:{' '}
+                Opens Drushim in a normal Google Chrome window with JobHunter's own profile (“Sign in with Google” works there). <b>You</b> log in (JobHunter never types
+                your password), then close that Chrome window. Status:{' '}
                 <span className={login === 'logged_in' ? 'badge ok' : 'badge warn'}>{login === 'logged_in' ? 'logged in' : login === 'logged_out' ? 'not logged in' : 'unknown'}</span>
               </p>
               <button

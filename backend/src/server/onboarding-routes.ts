@@ -13,7 +13,8 @@ import type { DB } from '../db/index.js';
 import { loadPrefs } from '../core/prefs.js';
 import { AnswersBank, SEED_QUESTIONS } from '../apply/bank.js';
 import { closeContext } from '../browser/session.js';
-import { checkDrushimSession } from '../browser/site-session.js';
+import { checkDrushimSession, setSession, type SessionInfo } from '../browser/site-session.js';
+import { profileInUse, PROFILE_IN_USE } from '../browser/chrome.js';
 import { getActiveRun, startTask } from '../pipeline/runner.js';
 import { candidateGender, profilePath } from '../profile/facts.js';
 import { draftPath, readProfileRaw, validateProfile, writeProfileFile } from '../profile/store.js';
@@ -122,24 +123,38 @@ export function registerOnboardingRoutes(app: FastifyInstance, db: DB) {
   app.get('/api/session/login', async () => ({ running: !!loginChild }));
 
   /**
-   * Opens the site in the app's browser profile so YOU can log in by hand (we never type credentials or automate
-   * login). When you close the window, the session is re-checked.
+   * Opens the site in the user's installed Chrome on the app's profile so YOU can log in by hand (we never type
+   * credentials or automate login). When you close Chrome, the login command checks the session and reports it.
    */
   app.post('/api/session/login', async (req, reply) => {
     const site = z.object({ site: z.string().default('drushim') }).parse(req.body ?? {}).site;
     if (loginChild) return reply.status(409).send({ error: 'the login window is already open' });
     if (getActiveRun()) return reply.status(409).send({ error: 'a run is active — wait for it or stop it first' });
     await closeContext(); // the browser profile can only be open once
+    if (profileInUse(config.paths.browserProfile)) return reply.status(409).send({ error: PROFILE_IN_USE });
     const child = spawn(process.execPath, ['--import', 'tsx', path.join('src', 'cli', 'login.ts'), site], {
       cwd: path.join(ROOT_DIR, 'backend'),
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
     });
     loginChild = child;
-    child.stdout?.on('data', (d: Buffer) => log.info({ login: d.toString().trim() }, 'login window'));
+    let result: SessionInfo | null = null;
+    child.stdout?.on('data', (d: Buffer) => {
+      for (const line of d.toString().split(/\r?\n/)) {
+        const m = /^SESSION_RESULT (.+)$/.exec(line.trim());
+        if (m) {
+          const r = JSON.parse(m[1]!) as SessionInfo & { site: string };
+          result = { state: r.state, checkedAt: r.checkedAt, detail: r.detail };
+        } else if (line.trim()) log.info({ login: line.trim() }, 'login window');
+      }
+    });
     child.stderr?.on('data', (d: Buffer) => log.warn({ login: d.toString().trim() }, 'login window'));
     child.on('exit', () => {
       loginChild = null;
+      if (result) {
+        setSession(site, result);
+        return;
+      }
       try {
         startTask(db, site, 'session_check', async () => void (await checkDrushimSession()));
       } catch (e) {

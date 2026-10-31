@@ -32,7 +32,7 @@ _Screenshot: coming soon._
 
 ## Quick start (Windows 11)
 
-1. Install [Node.js LTS](https://nodejs.org) (22.13+).
+1. Install [Node.js LTS](https://nodejs.org) (22.13+) and [Google Chrome](https://www.google.com/chrome/).
    Optionally, install [Ollama](https://ollama.com/download) for a free local model. It needs a GPU with enough memory, about 8 GB for `gemma4:12b`.
 2. Get the code:
    ```powershell
@@ -51,7 +51,7 @@ _Screenshot: coming soon._
    5. skill levels and links;
    6. declared experience;
    7. role types, locations and max years;
-   8. your Drushim CV names, plus a login window where you log in yourself;
+   8. your Drushim CV names, plus a login window (a normal Chrome window, so Google sign-in works) where you log in yourself;
    9. standard answers.
 
 After that, `npm start` is all you need. Add `--hunt` for one full pass: `npm start -- --hunt`.
@@ -89,7 +89,7 @@ The **Profile**, **Preferences** and **Settings** screens edit everything in for
 - **`DRY_RUN=true` by default**: the agent goes up to the final submit click, takes a screenshot, and stops. Real submission needs
   `DRY_RUN=false` **and** your explicit approval in the review queue. There is no auto-submit.
 - **LinkedIn is never automated**: any request to linkedin.com from the automated browser is blocked, and LinkedIn jobs cannot enter the automated apply flow.
-- **No bypassing**: CAPTCHA, bot protection and rate limits are never circumvented, and login is never automated. A challenge stops the run with status `blocked`.
+- **No bypassing**: CAPTCHA, bot protection and rate limits are never circumvented, and login is never automated: the login window is your installed Chrome, started as a normal process with no automation, and you close it when done. Automation then uses the same installed Chrome and profile. A challenge stops the run with status `blocked`.
 - **No invented facts**: every value sent traces back to your profile or the answers bank, and its provenance is stored per field.
   LLM drafts must cite profile facts, are checked by a second pass, and are always shown to you before anything is sent.
 

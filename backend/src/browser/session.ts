@@ -1,18 +1,39 @@
-import { chromium, type BrowserContext, type Page } from 'playwright';
+import path from 'node:path';
+import { chromium, type BrowserContext, type LaunchOptions, type Page } from 'playwright';
 import { config } from '../config.js';
 import { log } from '../log.js';
 import { isLinkedInHost } from '../linkedin/parse.js';
+import { findChrome, profileInUse, PROFILE_IN_USE } from './chrome.js';
 
 let ctxPromise: Promise<BrowserContext> | null = null;
 
 /**
- * One persistent Chromium context for the whole process (data/browser-profile).
- * Sessions/cookies from `npm run login` are reused. Only one process may hold the profile at a time.
+ * Which browser runs the site sessions: the user's installed Google Chrome (channel 'chrome', or its path when it
+ * is installed somewhere Playwright doesn't look), on the same profile folder the login window uses, so both see
+ * the same cookies. The bundled Chromium is only a fallback when Chrome is not installed (Google sign-in won't work
+ * there; the site's other login options do). Tests and fixtures launch the bundled Chromium directly, not this.
+ */
+export function siteBrowser(): { label: string; launch: Pick<LaunchOptions, 'channel' | 'executablePath'> } {
+  const chrome = findChrome();
+  if (!chrome) return { label: 'bundled Chromium (Google Chrome not found)', launch: {} };
+  const standard = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA]
+    .filter(Boolean)
+    .some((root) => path.resolve(chrome.path).toLowerCase() === path.resolve(root!, 'Google', 'Chrome', 'Application', 'chrome.exe').toLowerCase());
+  return { label: `Google Chrome ${chrome.version ?? ''}`.trim(), launch: standard || process.platform !== 'win32' ? { channel: 'chrome' } : { executablePath: chrome.path } };
+}
+
+/**
+ * One persistent context for the whole process (data/browser-profile), reusing the session from the login window.
+ * Only one browser may hold the profile at a time: while the login window is open, this refuses to start.
  */
 export function getContext(opts: { headless?: boolean } = {}): Promise<BrowserContext> {
   if (!ctxPromise) {
+    if (profileInUse(config.paths.browserProfile)) return Promise.reject(new Error(PROFILE_IN_USE));
+    const browser = siteBrowser();
+    log.debug({ browser: browser.label }, 'launching the site browser');
     ctxPromise = chromium
       .launchPersistentContext(config.paths.browserProfile, {
+        ...browser.launch,
         headless: opts.headless ?? config.HEADLESS,
         locale: 'he-IL',
         timezoneId: 'Asia/Jerusalem',
@@ -29,8 +50,9 @@ export function getContext(opts: { headless?: boolean } = {}): Promise<BrowserCo
       .catch((err: unknown) => {
         ctxPromise = null;
         const msg = err instanceof Error ? err.message : String(err);
-        if (/ProcessSingleton|already in use|lock/i.test(msg)) {
-          throw new Error('Browser profile is in use by another JobHunter process (close the login window / other run first).');
+        if (/ProcessSingleton|already in use|lock/i.test(msg)) throw new Error(PROFILE_IN_USE);
+        if (/distribution 'chrome' is not found|Failed to launch/i.test(msg) && browser.launch.channel) {
+          throw new Error(`Could not start Google Chrome for the site session: ${msg.split('\n')[0]}`);
         }
         throw err;
       });

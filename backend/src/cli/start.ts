@@ -285,30 +285,44 @@ if (DOCTOR) {
   }
 }
 
-// ---------- check: browser (Playwright's Chromium, downloaded once) ----------
-const { chromium } = await import('playwright');
-const browserInstalled = () => {
-  try {
-    return fs.existsSync(chromium.executablePath());
-  } catch {
-    return false;
+// ---------- check: Google Chrome (site sessions and the login window use the installed Chrome) ----------
+const { findChrome, profileInUse, PROFILE_IN_USE } = await import('../browser/chrome.js');
+const chrome = findChrome();
+if (chrome) ok(`Google Chrome ${chrome.version ?? '(version unknown)'} — ${chrome.path}`);
+else {
+  warn(
+    'Google Chrome לא נמצא — התחברות עם Google לא תעבוד',
+    'Google Chrome not found — "Sign in with Google" will not work',
+    'יש להתקין את Chrome מ-https://www.google.com/chrome/ (או להגדיר CHROME_PATH ב-.env). בלי Chrome אפשר להתחבר לאתר בקוד ב-SMS / במייל או בסיסמה',
+    "Install Chrome from https://www.google.com/chrome/ (or set CHROME_PATH in .env). Without it, use the site's SMS / email code or password login",
+  );
+  // fallback for site sessions without Chrome: Playwright's bundled Chromium, downloaded once
+  const { chromium } = await import('playwright');
+  const bundled = () => {
+    try {
+      return fs.existsSync(chromium.executablePath());
+    } catch {
+      return false;
+    }
+  };
+  if (!bundled() && !DOCTOR) {
+    console.log('… no Chrome → installing the bundled browser instead: npx playwright install chromium (one time, ~150 MB)');
+    try {
+      execSync('npx playwright install chromium', { cwd: BACKEND, stdio: 'inherit' });
+    } catch {
+      /* reported below */
+    }
   }
-};
-if (!browserInstalled() && !DOCTOR) {
-  console.log('… browser not installed → npx playwright install chromium (one time, ~150 MB)');
-  try {
-    execSync('npx playwright install chromium', { cwd: BACKEND, stdio: 'inherit' });
-  } catch {
-    /* reported below */
-  }
+  if (bundled()) ok('fallback browser (bundled Chromium) installed');
+  else fail('אין דפדפן: Chrome לא נמצא ו-Chromium לא מותקן', 'No browser: Chrome not found and the bundled Chromium is not installed', 'יש להתקין את Google Chrome', 'Install Google Chrome');
 }
-if (browserInstalled()) ok('browser (Chromium) installed');
-else fail('הדפדפן (Chromium) לא מותקן', 'The browser (Chromium) is not installed', 'יש להריץ: npx playwright install chromium', 'Run: npx playwright install chromium');
 
 // ---------- check 6: Drushim session ----------
 const { checkDrushimSession, getSession } = await import('../browser/site-session.js');
 console.log('… checking the Drushim session (headless browser)');
-let session = await checkDrushimSession();
+let session = profileInUse(config.paths.browserProfile)
+  ? { state: 'unknown' as const, checkedAt: null, detail: PROFILE_IN_USE }
+  : await checkDrushimSession();
 if (session.state === 'logged_in') ok('Drushim: logged in');
 else if (session.state === 'logged_out') {
   warn('אין חיבור לדרושים — ההגשה תהיה מושבתת', 'Not logged in to Drushim — applying will be disabled', 'יש ללחוץ "Open the login window" ב-dashboard, או להריץ: npm run login -- drushim', 'Click "Open the login window" in the dashboard, or run: npm run login -- drushim');

@@ -1,16 +1,23 @@
-/** npm run session:check -- drushim : is the persistent browser profile logged in? (prints cookie names/expiry, never values) */
-import { getContext, closeContext } from '../browser/session.js';
-import { checkDrushimSession } from '../browser/site-session.js';
+/**
+ * npm run session:check -- drushim : is the browser profile logged in, and which login cookies survive a browser
+ * restart? (cookie names and expiry only, never values)
+ */
+import { config } from '../config.js';
+import { profileInUse, PROFILE_IN_USE } from '../browser/chrome.js';
+import { siteBrowser } from '../browser/session.js';
+import { formatSessionReport, sessionReport } from '../browser/session-report.js';
 
 const site = process.argv[2] ?? 'drushim';
 if (site !== 'drushim') {
   console.error('only drushim has a session probe so far');
   process.exit(1);
 }
-const ctx = await getContext({ headless: true });
-const cookies = (await ctx.cookies()).filter((c) => c.domain.includes(site) && /token|auth|session|refresh|login/i.test(c.name));
-for (const c of cookies) console.log(`${c.domain.padEnd(24)} ${c.name.padEnd(36)} ${c.expires === -1 ? 'SESSION ONLY (lost on restart)' : new Date(c.expires * 1000).toISOString()}`);
-await closeContext();
-const s = await checkDrushimSession();
-console.log(`\nsession probe: ${s.detail} → ${s.state === 'logged_in' ? 'LOGGED IN' : s.state === 'logged_out' ? 'NOT logged in (run: npm run login -- drushim)' : `UNKNOWN (${s.detail})`}`);
+if (profileInUse(config.paths.browserProfile)) {
+  console.error(PROFILE_IN_USE);
+  process.exit(1);
+}
+console.log(`browser: ${siteBrowser().label} · profile: ${config.paths.browserProfile}`);
+const r = await sessionReport(config.paths.browserProfile, site);
+console.log(formatSessionReport(r));
+if (r.session.state === 'logged_out') console.log('\nLog in with: npm run login -- drushim (or the dashboard button)');
 process.exit(0);

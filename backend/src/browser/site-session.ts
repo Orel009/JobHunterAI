@@ -2,6 +2,7 @@
  * Site login state, checked by the session probe the site's own frontend calls (never by logging in).
  * The server keeps the last result: when a site is known to be logged out, applying is disabled.
  */
+import type { BrowserContext } from 'playwright';
 import { closeContext, getContext, getPage } from './session.js';
 import cfg from '../sites/drushim/selectors.json' with { type: 'json' };
 
@@ -28,11 +29,13 @@ const PROBE = new RegExp(cfg.sessionProbePattern);
 /**
  * Opens the persistent profile headless, loads the Drushim homepage and reads the seeker-details probe:
  * 200 = logged in, 401 = logged out. Closes the browser afterwards. Records the result.
+ * onContext runs on the fresh context first (e.g. to read which cookies survived the restart).
  */
-export async function checkDrushimSession(): Promise<SessionInfo> {
+export async function checkDrushimSession(onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
   let info: SessionInfo;
   try {
-    await getContext({ headless: true });
+    const ctx = await getContext({ headless: true });
+    await onContext?.(ctx);
     const page = await getPage({ headless: true });
     const probe = page.waitForResponse((r) => PROBE.test(r.url()), { timeout: 30_000 }).catch(() => null);
     await page.goto(cfg.baseUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });

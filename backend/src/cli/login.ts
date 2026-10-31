@@ -1,16 +1,16 @@
 /**
  * npm run login -- <site>
- * Opens the site in the persistent profile (data/browser-profile). Log in by hand, then close the window.
- * We never automate login; the session cookies are reused by later runs.
- * Reports whether a login was detected and whether the auth cookies will survive a browser restart
- * (cookie names and expiry only, never values).
+ * Opens the site in the user's INSTALLED Google Chrome, started as a normal process on our profile folder
+ * (data/browser-profile): no Playwright, no remote debugging, no automation flags — so Google sign-in works.
+ * You log in by hand and close Chrome; then the session is checked with the same profile and a report shows which
+ * login cookies survived (names and expiry only, never values). We never type or automate a login.
+ * Without Chrome: a window of the bundled browser opens instead, for the site's non-Google login (code or password).
  */
-import type { Cookie } from 'playwright';
+import { spawn } from 'node:child_process';
+import { config } from '../config.js';
 import { SITES } from '../sites/registry.js';
-import { getContext, getPage } from '../browser/session.js';
-
-const AUTH_COOKIE = /token|auth|session|refresh|login|user/i;
-const PROBES: Record<string, RegExp> = { drushim: /gw\.drushim\.co\.il\/auth\/seeker-details/ };
+import { CHROME_MISSING_HELP, findChrome, profileInUse, PROFILE_IN_USE } from '../browser/chrome.js';
+import { formatSessionReport, sessionReport } from '../browser/session-report.js';
 
 const site = process.argv[2];
 const entry = SITES.find((s) => s.id === site);
@@ -18,42 +18,49 @@ if (!entry) {
   console.error(`usage: npm run login -- <${SITES.map((s) => s.id).join('|')}>`);
   process.exit(1);
 }
+const profile = config.paths.browserProfile;
+if (profileInUse(profile)) {
+  console.error(PROFILE_IN_USE);
+  process.exit(1);
+}
 
-const ctx = await getContext({ headless: false });
-const page = await getPage({ headless: false });
-let loggedIn = false;
-const probe = PROBES[entry.id];
-if (probe) {
-  ctx.on('response', (r) => {
-    if (!probe.test(r.url())) return;
-    const ok = r.status() === 200;
-    if (ok && !loggedIn) console.log('  ✓ login detected (session probe returned 200) — you can close the window now.');
-    loggedIn = ok;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const chrome = findChrome();
+
+if (chrome) {
+  console.log(`\n  Opening ${entry.displayName} in Google Chrome ${chrome.version ?? ''} (a separate window with JobHunter's own profile).`);
+  console.log('  Log in there by hand — "Sign in with Google" works — then CLOSE THAT CHROME WINDOW.\n');
+  // a plain Chrome process; the two --no-* switches only skip the first-run welcome and the default-browser prompt
+  const child = spawn(chrome.path, [`--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', entry.loginUrl], { stdio: 'ignore' });
+  const started = Date.now();
+  await new Promise<void>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('exit', () => resolve());
+  });
+  // Chrome may hand over to a relaunched process: wait until nothing holds the profile any more
+  if (profileInUse(profile)) {
+    console.log('  waiting for Chrome to close…');
+    while (profileInUse(profile)) await sleep(1000);
+  }
+  if (Date.now() - started < 4000) console.log('  (Chrome closed right away — was the window opened and closed, or did Chrome fail to start?)');
+} else {
+  console.log(`\n${CHROME_MISSING_HELP}\n`);
+  console.log(`  Opening ${entry.displayName} in the bundled browser instead. Log in with a code by SMS/email or a password, then CLOSE THE WINDOW.\n`);
+  const { getContext, getPage } = await import('../browser/session.js');
+  const ctx = await getContext({ headless: false });
+  const page = await getPage({ headless: false });
+  await page.goto(entry.loginUrl, { waitUntil: 'domcontentloaded' });
+  await new Promise<void>((resolve) => {
+    ctx.on('close', () => resolve());
+    page.on('close', () => {
+      if (ctx.pages().length === 0) void ctx.close().then(resolve);
+    });
   });
 }
 
-let snapshot: Cookie[] = [];
-const timer = setInterval(() => {
-  void ctx
-    .cookies()
-    .then((c) => (snapshot = c.filter((x) => x.domain.includes(entry.id) && AUTH_COOKIE.test(x.name))))
-    .catch(() => undefined);
-}, 2000);
-
-await page.goto(entry.loginUrl, { waitUntil: 'domcontentloaded' });
-console.log(`\n  ${entry.displayName} is open. Log in manually (click "התחברות"/"כניסה"), then CLOSE THE BROWSER WINDOW.\n`);
-await new Promise<void>((resolve) => {
-  ctx.on('close', () => resolve());
-  page.on('close', () => {
-    if (ctx.pages().length === 0) void ctx.close().then(resolve);
-  });
-});
-clearInterval(timer);
-
-console.log(`\nlogin detected: ${probe ? (loggedIn ? 'YES' : 'NO') : 'n/a (no probe for this site)'}`);
-if (snapshot.length) {
-  console.log('auth-like cookies (name → expiry):');
-  for (const c of snapshot) console.log(`  ${c.domain} ${c.name} → ${c.expires === -1 ? 'SESSION ONLY (lost on browser restart)' : new Date(c.expires * 1000).toISOString()}`);
-}
-console.log('\nVerify with: npm run session:check -- ' + entry.id);
+console.log('\nChecking the session with the same profile (browser restarted, in the background)…');
+const report = await sessionReport(profile, entry.id);
+console.log(formatSessionReport(report));
+// one machine-readable line for the dashboard, which started this command
+console.log(`SESSION_RESULT ${JSON.stringify({ site: entry.id, ...report.session })}`);
 process.exit(0);
