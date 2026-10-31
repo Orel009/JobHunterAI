@@ -10,7 +10,7 @@ import { nowIso } from '../db/index.js';
 import { Repo } from '../db/repo.js';
 import { log } from '../log.js';
 import { ServiceError, prepareJobs } from '../apply/service.js';
-import { getActiveRun, startRun } from '../pipeline/runner.js';
+import { getActiveRun, startRun, syncSalaries } from '../pipeline/runner.js';
 import { startLinkedInRun } from '../pipeline/linkedin-run.js';
 import { linkedInEnabled, publicLinkedInSettings, saveLinkedInSettings, setImapConfig } from '../linkedin/settings.js';
 import { LinkedInDisabledError, testImap } from '../linkedin/imap.js';
@@ -121,6 +121,7 @@ export function registerLinkedInRoutes(app: FastifyInstance, db: DB): void {
       // a new content hash makes the scorer pick it up again (jobsNeedingScore)
       'UPDATE jobs SET description_text = ?, details_fetched = 1, content_hash = ?, updated_at = ? WHERE id = ?',
     ).run(text, hash, nowIso(), job.id);
+    syncSalaries(repo); // a pasted description may state the salary
     if (getActiveRun()) return { ok: true, note: 'saved — it is scored again on the next LinkedIn run (another run is active)' };
     return { ok: true, runId: startLinkedInRun(db, 'score'), note: 'saved — scoring again with the full description…' };
   });

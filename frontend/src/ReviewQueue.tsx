@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apply, type Application, type ResolvedField } from './api';
+import { apply, type Application, type ResolvedField, salaryLabel } from './api';
 import { RankBadge } from './RankBadge';
 
 const SOURCE_LABEL: Record<string, string> = {
   profile: 'profile',
   bank: 'answers bank',
   skill_years: 'skill years (work roles)',
+  salary: 'salary rule',
   declared_experience: 'declared experience',
   draft: 'LLM draft',
   user: 'you (this job only)',
@@ -80,7 +81,7 @@ function AppCard({ app, dryRun, busy, applyDisabled, act }: { app: Application; 
             {job?.title} — <span dir="auto">{job?.company}</span>
           </div>
           <div className="muted">
-            #{app.id} · {job?.site} · {job?.applyType} · <span className={`pill status-${app.status}`}>{app.status}</span> · {READINESS[plan.readiness]}
+            #{app.id} · {job?.site} · {job?.applyType} · {job && <span title={job.salaryText ?? ''}>salary {salaryLabel(job)} · </span>}<span className={`pill status-${app.status}`}>{app.status}</span> · {READINESS[plan.readiness]}
             {job && (
               <>
                 {' '}

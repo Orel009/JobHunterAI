@@ -10,6 +10,9 @@ import type { StoredJob } from '../db/repo.js';
 import { AnswersBank } from '../apply/bank.js';
 import { chooseCv } from '../apply/cv.js';
 import { findSkill, loadProfile, skillYears } from '../profile/facts.js';
+import { loadPrefs } from '../core/prefs.js';
+import { composeSalaryAnswer } from '../core/salary.js';
+import { jobSalaryContext } from '../apply/plan.js';
 
 export interface HelperItem {
   label: string;
@@ -24,6 +27,8 @@ export interface ApplyHelper {
   answers: HelperItem[];
   declared: { totalDevYears: number; basis: string } | null;
   skillYears: HelperItem[];
+  /** salary expectation, by the same rules as applications (posted range / fallback / pending) */
+  salary: HelperItem[];
   incompleteInfo: boolean;
 }
 
@@ -62,6 +67,12 @@ export function applyHelper(db: DB, job: StoredJob, matchedSkills: string[] = []
     }
   }
 
+  const sal = jobSalaryContext(job, loadPrefs());
+  const salary: HelperItem[] = (['text', 'number'] as const).map((kind) => {
+    const a = composeSalaryAnswer(sal.posted, sal.settings, kind);
+    return { label: kind === 'text' ? 'Salary expectation (text)' : 'Salary expectation (number only)', value: a.value ?? '', source: `${a.basis}: ${a.detail}` };
+  });
+
   return {
     cv: {
       lang: choice.lang,
@@ -73,6 +84,7 @@ export function applyHelper(db: DB, job: StoredJob, matchedSkills: string[] = []
     answers,
     declared: profile?.declaredExperience ?? null,
     skillYears: years,
+    salary,
     incompleteInfo: !job.descriptionText,
   };
 }

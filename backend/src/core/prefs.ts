@@ -12,6 +12,18 @@ export const DEFAULT_SENIORITY_EXCLUDES = [
   'בכיר', 'בכירה', 'ראש צוות', 'ארכיטקט', 'מנהל פיתוח',
 ];
 
+/** Salary settings; every value optional and empty by default (empty = fall back to the tier, then the default). */
+export const SalarySettingsSchema = z
+  .object({
+    /** minimum acceptable monthly gross (ILS); empty = no salary filtering */
+    floor: z.number().nonnegative().nullable().optional(),
+    /** answer to a text salary question when the job posts no range */
+    textAnswerNoRange: z.string().nullable().optional(),
+    /** answer to a number-only salary field when the job posts no range */
+    numericFallback: z.number().nonnegative().nullable().optional(),
+  })
+  .prefault({});
+
 export const RoleTypeSchema = z.object({
   id: z.string().min(1),
   /** shown in the UI and given to the scorer; defaults to id */
@@ -27,6 +39,8 @@ export const RoleTypeSchema = z.object({
   titleKeywords: strList,
   /** extra guidance for the scorer, e.g. "development-oriented only" */
   notes: z.string().optional(),
+  /** salary settings for this role type (empty values fall back to the tier, then the default) */
+  salary: SalarySettingsSchema.optional(),
 });
 export type RoleType = z.infer<typeof RoleTypeSchema>;
 
@@ -68,7 +82,13 @@ export const PrefsSchema = z.object({
         })
         .prefault({}),
       tierBoost: z.object({ tier1: z.number().default(5), tier2: z.number().default(0), tier3: z.number().default(-25) }).prefault({}),
+      /** added when the posted monthly range reaches the role type's salary floor (0 = off) */
+      salaryBoost: z.number().default(0),
     })
+    .prefault({}),
+  /** Salary settings per tier and default; a role type's own `salary` wins (see core/salary.ts). */
+  salary: z
+    .object({ default: SalarySettingsSchema, tier1: SalarySettingsSchema, tier2: SalarySettingsSchema, tier3: SalarySettingsSchema })
     .prefault({}),
   /** Used by the scorer only until data/profile/profile.json exists. True facts only. */
   candidateSummary: z.string().default(''),

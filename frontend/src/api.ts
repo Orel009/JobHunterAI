@@ -12,9 +12,10 @@ export type JobStatus =
   | 'skipped'
   | 'skipped_experience'
   | 'skipped_screening'
-  | 'skipped_not_a_job';
+  | 'skipped_not_a_job'
+  | 'skipped_salary';
 
-export const STATUSES: JobStatus[] = ['discovered', 'scored', 'queued', 'needs_review', 'dry_run_ok', 'submitted', 'submitted_manual', 'failed', 'blocked', 'skipped', 'skipped_experience', 'skipped_screening', 'skipped_not_a_job'];
+export const STATUSES: JobStatus[] = ['discovered', 'scored', 'queued', 'needs_review', 'dry_run_ok', 'submitted', 'submitted_manual', 'failed', 'blocked', 'skipped', 'skipped_experience', 'skipped_screening', 'skipped_not_a_job', 'skipped_salary'];
 
 export interface Rank {
   rank: number | null;
@@ -22,6 +23,7 @@ export interface Rank {
   rawScore: number | null;
   experience: number;
   tier: number;
+  salary: number;
   category: 'junior' | 'years2' | 'years3' | 'above3' | 'unknown';
   roleType: string | null;
   roleTier: number | null;
@@ -67,8 +69,30 @@ export interface JobItem {
   requiredYearsSource: 'regex' | 'llm' | null;
   requiredYearsText: string | null;
   juniorText: string | null;
+  /** posted salary: monthly gross ₪ unless salaryUnit = 'hour' */
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryUnit: 'month' | 'hour' | null;
+  salarySource: 'drushim_field' | 'description' | 'drushim_bucket' | null;
+  salaryText: string | null;
   rank: Rank;
 }
+
+const k = (n: number) => (n >= 1000 ? `${Math.round(n / 100) / 10}K` : String(n));
+/** "10K–13K ₪", "~10K–13K ₪" (search bucket), "45 ₪/hour", or "not posted" */
+export function salaryLabel(j: Pick<JobItem, 'salaryMin' | 'salaryMax' | 'salaryUnit' | 'salarySource'>): string {
+  if (!j.salaryUnit || (j.salaryMin === null && j.salaryMax === null)) return 'not posted';
+  const r =
+    j.salaryMin !== null && j.salaryMax !== null && j.salaryMin !== j.salaryMax
+      ? `${k(j.salaryMin)}–${k(j.salaryMax)}`
+      : j.salaryMin !== null && j.salaryMax === null
+        ? `${k(j.salaryMin)}+`
+        : j.salaryMin === null
+          ? `up to ${k(j.salaryMax!)}`
+          : k(j.salaryMin);
+  return `${j.salarySource === 'drushim_bucket' ? '~' : ''}${r} ₪${j.salaryUnit === 'hour' ? '/hour' : ''}`;
+}
+export const SALARY_SOURCE: Record<string, string> = { drushim_field: "site's salary field", description: 'from the post text', drushim_bucket: 'search salary bucket (approximate)' };
 
 export interface RunInfo {
   id: number;
@@ -268,6 +292,7 @@ export interface ApplyHelper {
   answers: HelperItem[];
   declared: { totalDevYears: number; basis: string } | null;
   skillYears: HelperItem[];
+  salary: HelperItem[];
   incompleteInfo: boolean;
 }
 export const linkedin = {
@@ -284,3 +309,27 @@ export const linkedin = {
   description: (id: string, text: string) => req<{ note: string }>('POST', `/api/linkedin/jobs/${id}/description`, { text }),
   external: (id: string, url: string) => req<{ kind: 'site' | 'manual'; note: string }>('POST', `/api/linkedin/jobs/${id}/external`, { url }),
 };
+
+// ---------- salary market ----------
+export interface MarketBucket {
+  roleType: string;
+  years: 'all' | '0–1' | '2' | '3' | '4+' | 'not stated';
+  count: number;
+  p25: number;
+  median: number;
+  p75: number;
+  min: number;
+  max: number;
+  floor: number | null;
+  belowFloorPct: number | null;
+  suggestedFloor: number;
+  lowSample: boolean;
+}
+export interface MarketReport {
+  days: number;
+  jobsInWindow: number;
+  withMonthlySalary: number;
+  hourlyOnly: number;
+  buckets: MarketBucket[];
+}
+export const market = (days: 30 | 60 | 90) => req<MarketReport>('GET', `/api/market?days=${days}`);

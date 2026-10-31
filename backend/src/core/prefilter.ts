@@ -2,14 +2,23 @@ import type { Job } from '../sites/types.js';
 import { activeRoleTypes, type Prefs, type RoleType } from './prefs.js';
 import { containsKeyword, normalizeCompany, normalizeText } from './text.js';
 import { skillKey } from '../profile/facts.js';
+import { belowFloor, describeSalary, fmtIls, salarySettings } from './salary.js';
 
 export interface PrefilterResult {
   pass: boolean;
   reason: string;
+  /** a more specific skip status than 'skipped' (e.g. skipped_salary) */
+  status?: 'skipped_salary';
 }
 
-type PrefilterInput = Pick<Job, 'title' | 'company' | 'location'> & { regions?: string[] };
-type PrefilterPrefs = Pick<Prefs, 'locations' | 'filters'> & Partial<Pick<Prefs, 'roleTypes' | 'queries'>>;
+type PrefilterInput = Pick<Job, 'title' | 'company' | 'location'> & {
+  regions?: string[];
+  roleTypes?: string[];
+  salaryMin?: number | null;
+  salaryMax?: number | null;
+  salaryUnit?: string | null;
+};
+type PrefilterPrefs = Pick<Prefs, 'locations' | 'filters'> & Partial<Pick<Prefs, 'roleTypes' | 'queries' | 'salary'>>;
 
 /**
  * Expands keywords with every spelling of the same skill (profile aliases): "JavaScript" also matches
@@ -74,6 +83,16 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
       return prefs.locations.some((l) => containsKeyword(n, l) || containsKeyword(normalizeText(l), place)) || f.remoteKeywords.some((k) => containsKeyword(n, k));
     };
     if (!places.some(matches)) return { pass: false, reason: `location: ${job.location}${job.regions?.length ? ` (regions: ${job.regions.join(', ')})` : ''}` };
+  }
+
+  // posted monthly salary below the role type's floor (known range only; an empty floor = no salary filtering)
+  if (prefs.salary && job.salaryUnit === 'month' && job.salaryMax !== null && job.salaryMax !== undefined) {
+    const role = scoringRole({ title: job.title, roleTypes: job.roleTypes ?? [] }, { roleTypes: prefs.roleTypes ?? [], queries: prefs.queries ?? { titles: [], keywords: [] } });
+    const st = salarySettings({ salary: prefs.salary }, role);
+    const posted = { min: job.salaryMin ?? null, max: job.salaryMax, unit: 'month' as const };
+    if (belowFloor(posted, st.floor)) {
+      return { pass: false, status: 'skipped_salary', reason: `salary: posted ${describeSalary(posted)} < floor ${fmtIls(st.floor!)} ₪ (${role ? `role ${role.id}, ` : ''}${st.from.floor})` };
+    }
   }
 
   return { pass: true, reason: 'ok' };

@@ -292,6 +292,8 @@ export function LinkedInScreen({ busy, onChanged }: { busy: boolean; onChanged: 
                   />
                 )}
                 <HelperTable title="Years per skill (from your work roles)" items={helper.skillYears} />
+                <HelperTable title="Salary expectation (posted range → your floor; else your fallback; empty = decide yourself)" items={helper.salary.filter((s) => s.value)} />
+                {helper.salary.some((s) => !s.value) && <p className="muted">{helper.salary.find((s) => !s.value)!.source}</p>}
                 <HelperTable title="Answers bank" items={helper.answers} />
                 {!helper.contact.length && !helper.answers.length && <p className="muted">No profile or saved answers yet.</p>}
               </>

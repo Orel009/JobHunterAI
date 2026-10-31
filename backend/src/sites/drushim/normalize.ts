@@ -171,6 +171,6 @@ export function fromJobPage(j: DrushimJobPage, url: string): RawJob {
     applyTarget: external || sendCvUrl(j.id),
     language: j.isEnglish ? 'en' : detectLanguage(`${j.title} ${descriptionText}`),
     detailsFetched: true,
-    raw: { shape: 'job-page', filterQuestions: j.filterQuestions ?? [], hasSmartFilter: !!j.hasSmartFilter, allowNoCv: !!j.allowNoCv, externalApplyUrl: external },
+    raw: { shape: 'job-page', filterQuestions: j.filterQuestions ?? [], hasSmartFilter: !!j.hasSmartFilter, allowNoCv: !!j.allowNoCv, externalApplyUrl: external, salaryRange: j.salaryRange ?? null },
   };
 }

@@ -9,6 +9,8 @@ import { AnswersBank, bankTypeFor, yesNo } from './bank.js';
 import { chooseCv } from './cv.js';
 import { makeBankMatcher, makeDrafter, makeYearsClassifier } from './draft.js';
 import { resolveField, type ResolveDeps } from './resolve.js';
+import { salarySettings, type PostedSalary } from '../core/salary.js';
+import { scoringRole } from '../core/prefilter.js';
 import type { ApplyPlan, CvChoice, FormField, ResolvedField } from './types.js';
 
 /** Statement-style screening questions ("I confirm…") must be true for the candidate to tick them. */
@@ -33,6 +35,15 @@ export interface PlanContext {
  * Resolves every field, stores pending questions in the answers bank, and returns the plan.
  * Fields come from the site adapter (live panel) or, before the panel is read, from the job data.
  */
+/** The job's posted salary + the settings of the role type it is ranked as (for salary questions). */
+export function jobSalaryContext(job: StoredJob, prefs: Prefs): NonNullable<ResolveDeps['salary']> {
+  const posted: PostedSalary | null =
+    job.salaryUnit && (job.salaryMin !== null || job.salaryMax !== null)
+      ? { min: job.salaryMin, max: job.salaryMax, unit: job.salaryUnit, source: job.salarySource ?? 'description', text: job.salaryText ?? '' }
+      : null;
+  return { posted, settings: salarySettings(prefs, scoringRole(job, prefs)) };
+}
+
 export async function buildPlan(job: StoredJob, fields: FormField[], ctx: PlanContext, cvOverride?: CvChoice | null): Promise<ApplyPlan> {
   const bank = new AnswersBank(ctx.db);
   const profile = ctx.deps?.profile !== undefined ? ctx.deps.profile : loadProfile();
@@ -45,6 +56,7 @@ export async function buildPlan(job: StoredJob, fields: FormField[], ctx: PlanCo
     classifyYears: makeYearsClassifier({ cache: ctx.repo }),
     minConfidence: effectiveLimits(ctx.prefs).matchConfidence,
     job: { title: job.title, text: jobText, language: job.language },
+    salary: jobSalaryContext(job, ctx.prefs),
     ...ctx.deps,
   };
   const resolved: ResolvedField[] = [];

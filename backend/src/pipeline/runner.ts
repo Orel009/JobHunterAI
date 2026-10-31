@@ -8,6 +8,7 @@ import { BlockedError, closeContext, getPage } from '../browser/session.js';
 import { toJob } from '../core/job.js';
 import { findCrossSiteDuplicate } from '../core/dedupe.js';
 import { prefilter, scoringRole } from '../core/prefilter.js';
+import { jobSalary } from '../core/salary.js';
 import { effectiveLimits, loadPrefs, searchPlan } from '../core/prefs.js';
 import { experienceInput, extractRequiredYears } from '../core/experience.js';
 import { candidateContext, scoreJob } from '../llm/score.js';
@@ -217,11 +218,15 @@ function aliasGroupsOrNone(): string[][] {
 const prefilterJob = (j: StoredJob, prefs: ReturnType<typeof loadPrefs>, aliasGroups: string[][]) =>
   prefilter({ ...j, regions: ((j.raw as { regions?: unknown } | null)?.regions as string[] | undefined) ?? [] }, prefs, { aliasGroups });
 
+/** Reads the posted salary of new / changed jobs (deterministic, no LLM). */
+export const syncSalaries = (repo: Repo) => repo.syncSalaries((j) => jobSalary(j));
+
 export function applyPrefilter(repo: Repo, run: ActiveRun, prefs: ReturnType<typeof loadPrefs>): void {
   const aliasGroups = aliasGroupsOrNone();
+  syncSalaries(repo);
   for (const j of repo.jobsNeedingPrefilter(run.site)) {
     const r = prefilterJob(j, prefs, aliasGroups);
-    repo.setPrefilter(j.id, r.pass, r.reason);
+    repo.setPrefilter(j.id, r.pass, r.reason, r.status);
     if (r.pass) run.stats.prefilterPassed++;
     else run.stats.prefilterSkipped++;
   }
@@ -234,13 +239,14 @@ export function applyPrefilter(repo: Repo, run: ActiveRun, prefs: ReturnType<typ
 export function refilterExisting(repo: Repo, prefs = loadPrefs()): { checked: number; newlySkipped: number; restored: number } {
   const aliasGroups = aliasGroupsOrNone();
   const out = { checked: 0, newlySkipped: 0, restored: 0 };
+  syncSalaries(repo);
   for (const j of repo.jobsForRefilter()) {
     out.checked++;
     const r = prefilterJob(j, prefs, aliasGroups);
-    const wasSkipped = j.status === 'skipped';
+    const wasSkipped = j.status === 'skipped' || j.status === 'skipped_salary';
     if (!r.pass && !wasSkipped) out.newlySkipped++;
     if (r.pass && wasSkipped) out.restored++;
-    repo.refilter(j.id, r.pass, r.reason);
+    repo.refilter(j.id, r.pass, r.reason, r.status);
   }
   return out;
 }

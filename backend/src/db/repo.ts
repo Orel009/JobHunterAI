@@ -36,6 +36,11 @@ interface JobRow {
   required_years_source: string | null;
   required_years_text: string | null;
   junior_text: string | null;
+  salary_min: number | null;
+  salary_max: number | null;
+  salary_unit: string | null;
+  salary_source: string | null;
+  salary_text: string | null;
 }
 
 export interface StoredJob extends Job {
@@ -53,6 +58,12 @@ export interface StoredJob extends Job {
   requiredYearsSource: 'regex' | 'llm' | null;
   requiredYearsText: string | null;
   juniorText: string | null;
+  /** posted salary (core/salary.ts): monthly gross ILS unless salaryUnit = 'hour' */
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryUnit: 'month' | 'hour' | null;
+  salarySource: 'drushim_field' | 'description' | 'drushim_bucket' | null;
+  salaryText: string | null;
 }
 
 export interface ScoreRecord {
@@ -104,6 +115,11 @@ const fromRow = (r: JobRow): StoredJob => ({
   requiredYearsSource: (r.required_years_source as 'regex' | 'llm' | null) ?? null,
   requiredYearsText: r.required_years_text ?? null,
   juniorText: r.junior_text ?? null,
+  salaryMin: r.salary_min ?? null,
+  salaryMax: r.salary_max ?? null,
+  salaryUnit: (r.salary_unit as StoredJob['salaryUnit']) ?? null,
+  salarySource: (r.salary_source as StoredJob['salarySource']) ?? null,
+  salaryText: r.salary_text ?? null,
 });
 
 export type UpsertOutcome = 'inserted' | 'updated' | 'unchanged';
@@ -176,15 +192,29 @@ export class Repo {
     this.db.prepare('UPDATE jobs SET status=?, status_reason=?, updated_at=? WHERE id=?').run(status, reason, nowIso(), id);
   }
 
-  setPrefilter(id: string, pass: boolean, reason: string): void {
+  setPrefilter(id: string, pass: boolean, reason: string, skipStatus: JobStatus = 'skipped'): void {
     this.db
       .prepare(
         `UPDATE jobs SET prefilter_pass=?, prefilter_reason=?,
-           status=CASE WHEN ? = 0 AND status='discovered' THEN 'skipped' ELSE status END,
+           status=CASE WHEN ? = 0 AND status='discovered' THEN ? ELSE status END,
            status_reason=CASE WHEN ? = 0 AND status='discovered' THEN ? ELSE status_reason END,
            updated_at=? WHERE id=?`,
       )
-      .run(pass ? 1 : 0, reason, pass ? 1 : 0, pass ? 1 : 0, `prefilter: ${reason}`, nowIso(), id);
+      .run(pass ? 1 : 0, reason, pass ? 1 : 0, skipStatus, pass ? 1 : 0, skipStatus === 'skipped' ? `prefilter: ${reason}` : reason, nowIso(), id);
+  }
+
+  /** Reads the posted salary of every job whose content changed since it was last read (core/salary.ts). */
+  syncSalaries(read: (j: StoredJob) => { min: number | null; max: number | null; unit: string; source: string; text: string } | null): number {
+    const rows = this.db.prepare('SELECT * FROM jobs WHERE salary_hash IS NULL OR salary_hash != content_hash').all() as unknown as JobRow[];
+    if (rows.length === 0) return 0;
+    const upd = this.db.prepare('UPDATE jobs SET salary_min=?, salary_max=?, salary_unit=?, salary_source=?, salary_text=?, salary_hash=? WHERE id=?');
+    tx(this.db, () => {
+      for (const r of rows) {
+        const s = read(fromRow(r));
+        upd.run(s?.min ?? null, s?.max ?? null, s?.unit ?? null, s?.source ?? null, s?.text ?? null, r.content_hash, r.id);
+      }
+    });
+    return rows.length;
   }
 
   /** Jobs of a site that have not been through the prefilter yet. */
@@ -199,29 +229,29 @@ export class Repo {
   jobsForRefilter(): StoredJob[] {
     const rows = this.db
       .prepare(
-        `SELECT * FROM jobs WHERE duplicate_of IS NULL AND (status IN ('discovered','scored') OR (status = 'skipped' AND status_reason LIKE 'prefilter:%'))`,
+        `SELECT * FROM jobs WHERE duplicate_of IS NULL AND (status IN ('discovered','scored','skipped_salary') OR (status = 'skipped' AND status_reason LIKE 'prefilter:%'))`,
       )
       .all() as unknown as JobRow[];
     return rows.map(fromRow);
   }
 
   /** Applies a fresh prefilter result to an existing job (see jobsForRefilter). */
-  refilter(id: string, pass: boolean, reason: string): void {
+  refilter(id: string, pass: boolean, reason: string, skipStatus: JobStatus = 'skipped'): void {
     const now = nowIso();
     if (!pass) {
       this.db
-        .prepare(`UPDATE jobs SET prefilter_pass = 0, prefilter_reason = ?, status = 'skipped', status_reason = ?, updated_at = ? WHERE id = ?`)
-        .run(reason, `prefilter: ${reason}`, now, id);
+        .prepare(`UPDATE jobs SET prefilter_pass = 0, prefilter_reason = ?, status = ?, status_reason = ?, updated_at = ? WHERE id = ?`)
+        .run(reason, skipStatus, skipStatus === 'skipped' ? `prefilter: ${reason}` : reason, now, id);
       return;
     }
     // passing: a job the prefilter had skipped comes back — scored if its score is still current, else discovered
     this.db
       .prepare(
         `UPDATE jobs SET prefilter_pass = 1, prefilter_reason = 'ok',
-           status = CASE WHEN status = 'skipped' THEN
+           status = CASE WHEN status IN ('skipped','skipped_salary') THEN
              CASE WHEN EXISTS (SELECT 1 FROM scores s WHERE s.job_id = jobs.id AND s.content_hash = jobs.content_hash) THEN 'scored' ELSE 'discovered' END
              ELSE status END,
-           status_reason = CASE WHEN status = 'skipped' THEN NULL ELSE status_reason END,
+           status_reason = CASE WHEN status IN ('skipped','skipped_salary') THEN NULL ELSE status_reason END,
            updated_at = ? WHERE id = ?`,
       )
       .run(now, id);

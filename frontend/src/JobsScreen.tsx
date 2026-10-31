@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
-import { api, STATUSES, type JobItem, type Status } from './api';
+import { api, salaryLabel, SALARY_SOURCE, STATUSES, type JobItem, type Status } from './api';
 import { RankBadge } from './RankBadge';
 
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('he-IL') : '');
@@ -91,6 +91,7 @@ export function JobsScreen({
             <th>Role</th>
             <th>Company</th>
             <th>Location</th>
+            <th title="posted salary, monthly gross (~ = approximate search bucket)">Salary</th>
             <th>Site</th>
             <th>Apply</th>
             <th>Status</th>
@@ -114,6 +115,9 @@ export function JobsScreen({
                 </td>
                 <td dir="auto">{j.company}</td>
                 <td dir="auto">{j.location}</td>
+                <td className={j.salaryUnit ? '' : 'muted'} title={j.salaryText ?? ''}>
+                  {salaryLabel(j)}
+                </td>
                 <td>{j.site}</td>
                 <td className="muted">{j.applyType.replace('site_', '')}</td>
                 <td>
@@ -148,7 +152,7 @@ export function JobsScreen({
               </tr>
               {open === j.id && (
                 <tr className="detail">
-                  <td colSpan={10}>
+                  <td colSpan={11}>
                     <JobDetail job={j} />
                   </td>
                 </tr>
@@ -209,6 +213,11 @@ function JobDetail({ job }: { job: JobItem }) {
         ) : (
           <p className="muted">Not scored{job.prefilterReason && job.prefilterPass === false ? ` — prefilter: ${job.prefilterReason}` : ''}</p>
         )}
+        <p className="muted" dir="auto">
+          salary: {salaryLabel(job)}
+          {job.salarySource && ` · ${SALARY_SOURCE[job.salarySource]}: “${job.salaryText}”`}
+          {job.rank.salary ? ` · salary boost +${job.rank.salary}` : ''}
+        </p>
         {job.statusReason && <p className="muted">status: {job.statusReason}</p>}
         <p className="muted">
           apply: {job.applyType} → <span dir="ltr">{job.applyTarget}</span>

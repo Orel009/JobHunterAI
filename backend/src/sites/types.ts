@@ -23,6 +23,8 @@ export const JOB_STATUSES = [
   'skipped_screening',
   /** the post is a training program / course, not a job */
   'skipped_not_a_job',
+  /** the posted monthly salary is below the role type's floor */
+  'skipped_salary',
 ] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 

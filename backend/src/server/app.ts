@@ -6,10 +6,11 @@ import type { DB } from '../db/index.js';
 import { Repo } from '../db/repo.js';
 import { SITES } from '../sites/registry.js';
 import { JOB_STATUSES } from '../sites/types.js';
-import { getActiveRun, refilterExisting, startRun, startTask, stopRun } from '../pipeline/runner.js';
+import { getActiveRun, refilterExisting, startRun, startTask, stopRun, syncSalaries } from '../pipeline/runner.js';
 import { scorePending } from '../pipeline/score-pending.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
 import { byRank, rankStoredJob } from '../core/rank.js';
+import { marketStats } from '../core/market.js';
 import { listLocalModels } from '../llm/llm.js';
 import { taskConfig } from '../llm/settings.js';
 import { usageReport } from '../llm/usage.js';
@@ -24,10 +25,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { allSessions, checkDrushimSession, getSession } from '../browser/site-session.js';
 
+const OFF_FIELD = /^(seniority|excluded title|no include keyword|role type disabled|excluded company)/;
+
 export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   // No per-request logging (the dashboard polls); errors are logged below.
   const app = Fastify({ logger: false });
   const repo = new Repo(db);
+  syncSalaries(repo); // posted salary of jobs stored before this version (or whose text changed)
 
   app.setErrorHandler((err, req, reply) => {
     const status = err instanceof z.ZodError ? 400 : err instanceof ServiceError ? err.status : ((err as { statusCode?: number }).statusCode ?? 500);
@@ -122,6 +126,16 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
       return { ok: true, note: 'queued — click "Prepare queued" when the current run finishes' };
     }
     return { ok: true, runId: prepareJobs(db, [job.id]), note: 'preparing plan…' };
+  });
+
+  /** Posted-salary stats per role type × required years over the last 30/60/90 days (core/market.ts). */
+  app.get('/api/market', async (req) => {
+    const { days } = z.object({ days: z.coerce.number().int().refine((d) => [30, 60, 90].includes(d)).default(30) }).parse(req.query);
+    syncSalaries(repo);
+    // your market = jobs in your field: not those the title filters reject (wrong field, too senior, excluded company);
+    // location and salary skips stay in
+    const jobs = repo.listJobs({ limit: 100_000 }).items.filter((j) => !j.duplicateOf && !OFF_FIELD.test(j.prefilterReason ?? ''));
+    return marketStats(jobs, loadPrefs(), { days });
   });
 
   registerApplyRoutes(app, db);

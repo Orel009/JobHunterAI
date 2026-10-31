@@ -49,7 +49,7 @@ roleTypes:
 # Jobs that REQUIRE more years than this are skipped (status skipped_experience).
 maxRequiredYears: 5
 
-# rank = score + experienceBoost + tierBoost
+# rank = score + experienceBoost + tierBoost + salaryBoost
 ranking:
   experienceBoost:
     junior: 15     # junior / entry-level / ללא ניסיון / בוגרי קורס / סטודנטים / 0-1 years
@@ -61,6 +61,22 @@ ranking:
     tier1: 5
     tier2: 0
     tier3: -25
+  # added when the posted monthly salary reaches the role type's floor (0 = off)
+  salaryBoost: 0
+
+# Salary — monthly gross ILS. Every value starts EMPTY: fill in your own (Preferences screen → Salary).
+# Per value: a role type's own `salary:` wins, then its tier below, then `default`.
+#   floor              minimum acceptable monthly gross; a job whose posted maximum is lower → skipped_salary.
+#                      Empty = no salary filtering.
+#   textAnswerNoRange  answer to a text salary question when the job posts no range
+#                      (suggested wording: "גמיש, בהתאם להיקף התפקיד ולתנאים")
+#   numericFallback    one number for number-only salary fields when the job posts no range
+# With a posted range the answer is computed: "X–Y ₪ ברוטו", X = max(posted minimum, floor). Nothing set → asked each time.
+salary:
+  default: { floor: null, textAnswerNoRange: null, numericFallback: null }
+  tier1: { floor: null, textAnswerNoRange: null, numericFallback: null }
+  tier2: { floor: null, textAnswerNoRange: null, numericFallback: null }
+  tier3: { floor: null, textAnswerNoRange: null, numericFallback: null }
 
 # Accepted job locations. A job passes if its location contains one of these
 # (or matches remoteKeywords). Jobs with no location pass. Empty list = any location.

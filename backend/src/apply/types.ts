@@ -10,7 +10,8 @@ export interface FormField {
 }
 
 /** user = typed in the review queue for this application only (not saved to the bank) */
-export type ProvenanceSource = 'profile' | 'bank' | 'skill_years' | 'declared_experience' | 'draft' | 'user' | 'none';
+/** salary = the job's posted range or your salary settings (core/salary.ts; ref = "posted range" | "fallback") */
+export type ProvenanceSource = 'profile' | 'bank' | 'skill_years' | 'declared_experience' | 'salary' | 'draft' | 'user' | 'none';
 
 export interface Provenance {
   source: ProvenanceSource;

@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Field, Issues, Num, TextList } from './forms';
 
+export interface SalarySettings {
+  floor?: number | null;
+  textAnswerNoRange?: string | null;
+  numericFallback?: number | null;
+}
+/** suggested wording for the no-range text answer (offered, never filled in by itself) */
+export const SUGGESTED_TEXT_NO_RANGE = 'גמיש, בהתאם להיקף התפקיד ולתנאים';
+
 interface RoleType {
   id: string;
   label?: string;
@@ -10,13 +18,15 @@ interface RoleType {
   queries: string[];
   titleKeywords: string[];
   notes?: string;
+  salary?: SalarySettings;
 }
 export interface Prefs {
   roleTypes: RoleType[];
   locations: string[];
   maxRequiredYears: number;
   filters: { includeTitleKeywords: string[]; excludeTitleKeywords: string[]; excludeSeniorityKeywords: string[]; excludeCompanies: string[]; remoteKeywords: string[] };
-  ranking: { experienceBoost: Record<'junior' | 'years2' | 'years3' | 'above3' | 'unknown', number>; tierBoost: Record<'tier1' | 'tier2' | 'tier3', number> };
+  ranking: { experienceBoost: Record<'junior' | 'years2' | 'years3' | 'above3' | 'unknown', number>; tierBoost: Record<'tier1' | 'tier2' | 'tier3', number>; salaryBoost: number };
+  salary: Record<'default' | 'tier1' | 'tier2' | 'tier3', SalarySettings>;
   thresholds: { autoSubmitMinScore?: number; matchConfidence?: number };
   limits: { maxPagesPerRun?: number; dailyApplyLimit?: number; companyCooldownDays?: number };
   cv: { he: string; en: string; englishMaxHebrewRatio?: number };
@@ -179,7 +189,7 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
 
       {show('ranking') && (
         <fieldset>
-          <legend>Ranking (rank = score + experience boost + tier boost) · thresholds · limits</legend>
+          <legend>Ranking (rank = score + experience boost + tier boost + salary boost) · thresholds · limits</legend>
           <div className="grid4">
             {(['junior', 'years2', 'years3', 'above3', 'unknown'] as const).map((k) => (
               <Field key={k} label={`experience: ${k}`}>
@@ -191,6 +201,9 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
                 <Num value={p.ranking.tierBoost[k]} onChange={(v) => up((d) => void (d.ranking.tierBoost[k] = v ?? 0))} />
               </Field>
             ))}
+            <Field label="salary boost" hint="added when the posted salary reaches the role type's floor (0 = off)">
+              <Num value={p.ranking.salaryBoost} onChange={(v) => up((d) => void (d.ranking.salaryBoost = v ?? 0))} />
+            </Field>
             <Field label="Prepare plans for score ≥ (--hunt)">
               <Num value={p.thresholds.autoSubmitMinScore} min={0} max={100} onChange={(v) => up((d) => void (d.thresholds.autoSubmitMinScore = v))} />
             </Field>
@@ -207,6 +220,59 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
               <Num value={p.limits.companyCooldownDays} min={0} onChange={(v) => up((d) => void (d.limits.companyCooldownDays = v))} />
             </Field>
           </div>
+        </fieldset>
+      )}
+
+      {show('salary') && (
+        <fieldset>
+          <legend>Salary (monthly gross ₪)</legend>
+          <p className="muted">
+            Everything starts empty. Per value, a role type's own setting wins, then its tier, then the default. <b>Floor</b>: a job whose posted maximum is lower is skipped
+            (skipped_salary); empty = no salary filtering. With a posted range, salary answers are computed (“X–Y ₪ ברוטו”, X = max(posted minimum, floor)); without one,
+            the text / number below are used; nothing set = the question waits for you. The Market screen shows posted salaries and can suggest a floor.
+          </p>
+          <table className="edit-table">
+            <thead>
+              <tr>
+                <th>Applies to</th>
+                <th>Floor</th>
+                <th>Text answer when no range is posted</th>
+                <th>Number when no range is posted</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(
+                [
+                  ['default', 'Default (everything)', (d: Prefs) => d.salary.default],
+                  ['tier1', 'Tier 1 role types', (d: Prefs) => d.salary.tier1],
+                  ['tier2', 'Tier 2 role types', (d: Prefs) => d.salary.tier2],
+                  ['tier3', 'Tier 3 role types', (d: Prefs) => d.salary.tier3],
+                  ...p.roleTypes.map((r, i) => [`role:${r.id}`, `${r.label ?? r.id} (tier ${r.tier})`, (d: Prefs) => (d.roleTypes[i]!.salary ??= {})] as const),
+                ] as Array<readonly [string, string, (d: Prefs) => SalarySettings]>
+              ).map(([key, label, get]) => {
+                const v = get(JSON.parse(JSON.stringify(p)) as Prefs);
+                return (
+                  <tr key={key}>
+                    <td dir="auto">{label}</td>
+                    <td>
+                      <Num value={v.floor} min={0} step={500} onChange={(n) => up((d) => void (get(d).floor = n ?? null))} />
+                    </td>
+                    <td>
+                      <input dir="auto" value={v.textAnswerNoRange ?? ''} onChange={(e) => up((d) => void (get(d).textAnswerNoRange = e.target.value || null))} />
+                      {!v.textAnswerNoRange && (
+                        <button className="link" title={SUGGESTED_TEXT_NO_RANGE} onClick={() => up((d) => void (get(d).textAnswerNoRange = SUGGESTED_TEXT_NO_RANGE))}>
+                          use suggested wording
+                        </button>
+                      )}
+                    </td>
+                    <td>
+                      <Num value={v.numericFallback} min={0} step={500} onChange={(n) => up((d) => void (get(d).numericFallback = n ?? null))} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </fieldset>
       )}
 
