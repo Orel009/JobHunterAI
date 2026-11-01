@@ -86,6 +86,54 @@ describe('Greenhouse form (real markup)', () => {
   });
 });
 
+describe('LinkedIn / Indeed: manual only', () => {
+  it('the page core refuses there: nothing filled, no overlay (checked with the page address given, no LinkedIn page loaded)', async () => {
+    const page = await open(EASY_APPLY);
+    for (const href of ['https://www.linkedin.com/jobs/view/4012345678/', 'https://il.indeed.com/viewjob?jk=a1b2c3d4e5f60718']) {
+      const r = await page.evaluate(
+        ([d, h]) => (window as unknown as { JobHunterFill: { run: (doc: Document, x: unknown, o: unknown) => Promise<unknown> } }).JobHunterFill.run(document, d, { location: new URL(h as string) }),
+        [DATA, href] as const,
+      );
+      expect(r).toMatchObject({ refused: 'LinkedIn/Indeed: manual only, use the copy panel', filled: 0 });
+    }
+    expect(await val(page, '#a1')).toBe('');
+    expect(await page.locator('#jobhunter-fill-overlay').count()).toBe(0);
+    await nothingSent(page);
+  });
+
+  it('the popup: on LinkedIn / Indeed only the message, no Fill button, nothing sent to the worker; elsewhere the button', async () => {
+    const ext = path.join(process.cwd(), '..', 'extension');
+    browser ??= await chromium.launch({ headless: true });
+    const show = async (tabUrl: string) => {
+      const page = await browser!.newPage();
+      await page.route('**/*', (r) => {
+        const f = new URL(r.request().url()).pathname.slice(1) || 'popup.html';
+        return fs.existsSync(path.join(ext, f)) ? r.fulfill({ path: path.join(ext, f) }) : r.abort();
+      });
+      await page.addInitScript((u) => {
+        const w = window as unknown as { __sent: unknown[]; chrome: unknown };
+        w.__sent = [];
+        w.chrome = { tabs: { query: async () => [{ id: 7, url: u }] }, runtime: { sendMessage: (m: unknown, cb: (r: unknown) => void) => (w.__sent.push(m), cb({ ok: true, summary: { filled: 3, needYou: 1, cv: 'cv.pdf' } })) } };
+      }, tabUrl);
+      await page.goto('http://ext.test/popup.html');
+      return page;
+    };
+    for (const u of ['https://www.linkedin.com/jobs/view/1/', 'https://www.indeed.com/viewjob?jk=1']) {
+      const p = await show(u);
+      await expect.poll(() => p.locator('#manual').isVisible()).toBe(true);
+      expect(await p.locator('#manual').innerText()).toBe('LinkedIn/Indeed: manual only, use the copy panel');
+      expect(await p.locator('#go').isVisible()).toBe(false);
+      expect(await p.evaluate(() => (window as unknown as { __sent: unknown[] }).__sent)).toEqual([]);
+      await p.close();
+    }
+    const p = await show('https://job-boards.greenhouse.io/similarweb/jobs/7972320');
+    await p.locator('#go').click();
+    await expect.poll(() => p.locator('#msg').innerText()).toMatch(/filled 3, 1 need you/);
+    expect(await p.evaluate(() => (window as unknown as { __sent: unknown[] }).__sent)).toEqual([{ type: 'fill', tabId: 7, url: 'https://job-boards.greenhouse.io/similarweb/jobs/7972320' }]);
+    await p.close();
+  });
+});
+
 describe('Lever form (real markup)', () => {
   it('full name, email, phone, location, LinkedIn and GitHub by their labels; the CV upload marked', async () => {
     const page = await open(fx('form-lever.html'));

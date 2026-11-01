@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font: 13px system-ui, sans-serif; width: 280px; margin: 10px 12px; color: #222; }
+      .t { font-weight: 600; margin-bottom: 6px; }
+      .m { color: #666; font-size: 12px; margin-top: 6px; }
+      .no { background: #fff4d6; border: 1px solid #f2c200; border-radius: 6px; padding: 8px; }
+      button { font: inherit; padding: 6px 14px; border-radius: 5px; border: 1px solid #2e9e5b; background: #2e9e5b; color: #fff; cursor: pointer; }
+      button:disabled { opacity: 0.6; cursor: default; }
+    </style>
+  </head>
+  <body>
+    <div class="t">JobHunter Fill</div>
+    <div id="manual" class="no" hidden></div>
+    <div id="fill" hidden>
+      <button id="go">Fill this form</button>
+      <div class="m">Fills what JobHunter knows and highlights what needs you. It never submits: check everything, attach the CV, then submit yourself.</div>
+    </div>
+    <div id="msg" class="m"></div>
+    <script src="fill-core.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

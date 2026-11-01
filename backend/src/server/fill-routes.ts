@@ -13,6 +13,8 @@ import { ServiceError } from '../apply/service.js';
 import { extensionToken, regenerateExtensionToken, tokenOk } from '../extension/token.js';
 import { fillData, markAppliedByHand, matchJob } from '../extension/fill.js';
 import { ROOT_DIR } from '../config.js';
+import { isIndeedHost } from '../alerts/assisted.js';
+import { isLinkedInHost } from '../linkedin/parse.js';
 import path from 'node:path';
 
 /** A browser page's request (any http/https origin) — the dashboard is same-origin and sends none for GET. */
@@ -32,6 +34,8 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
   /** The JobHunter job of the page in your browser (null = not one of yours; contact details and the bank still fill). */
   app.get('/api/fill/match', async (req) => {
     const { url } = z.object({ url: z.string().min(8).max(4000) }).parse(req.query);
+    // LinkedIn and Indeed are manual only: the extension never fills there (it refuses too; this is the second lock)
+    if (isLinkedInHost(url) || isIndeedHost(url)) throw new ServiceError(403, 'LinkedIn/Indeed: manual only, use the copy panel');
     const job = matchJob(db, url);
     return { job: job ? { id: job.id, title: job.title, company: job.company, site: job.site, status: job.status } : null };
   });

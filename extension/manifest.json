@@ -1,11 +1,23 @@
 {
   "manifest_version": 3,
   "name": "JobHunter Fill",
-  "version": "0.1.0",
-  "description": "Fills job application forms from your local JobHunter when you click it. Never submits, never clicks buttons, never touches CAPTCHA.",
-  "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
-  "background": { "service_worker": "background.js" },
-  "action": { "default_title": "JobHunter Fill: fill this application form (you submit it yourself)" },
+  "version": "0.2.0",
+  "description": "Fills job application forms from your local JobHunter when you ask it to. Never submits, never clicks buttons, never touches CAPTCHA. Never runs on LinkedIn or Indeed.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "JobHunter Fill: fill this application form (you submit it yourself; LinkedIn / Indeed: manual only)",
+    "default_popup": "popup.html"
+  },
   "options_page": "options.html"
 }

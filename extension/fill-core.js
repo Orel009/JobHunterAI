@@ -10,6 +10,19 @@
 (function (root) {
   'use strict';
 
+  // ---------- where it never runs ----------
+  /** LinkedIn and Indeed are manual only: the extension never fills (or injects anything) there. */
+  const MANUAL_ONLY_MESSAGE = 'LinkedIn/Indeed: manual only, use the copy panel';
+  function manualOnlyHost(url) {
+    let h = '';
+    try {
+      h = new URL(String(url)).hostname.toLowerCase();
+    } catch {
+      return false;
+    }
+    return /(^|\.)linkedin\.com$/.test(h) || /(^|\.)lnkd\.in$/.test(h) || /(^|\.)indeed\.(com|co\.[a-z]{2}|com\.[a-z]{2}|[a-z]{2})$/.test(h) || /(^|\.)indeedapply\.com$/.test(h);
+  }
+
   // ---------- text ----------
   const norm = (s) =>
     String(s ?? '')
@@ -184,6 +197,8 @@
 
   /** Fills the page. Returns the summary; shows the overlay unless opts.overlay === false. */
   async function run(doc, data, opts = {}) {
+    // defense in depth: the popup and the background worker never get here on LinkedIn / Indeed
+    if (manualOnlyHost((opts.location ?? doc.location).href)) return { refused: MANUAL_ONLY_MESSAGE, filled: 0, needYou: 0, cv: null, cvFields: 0, skipped: 0, details: [] };
     clearMarks(doc);
     const out = { filled: 0, needYou: 0, cv: data.cv?.file ?? null, cvFields: 0, skipped: 0, details: [] };
     const done = new Set();
@@ -368,5 +383,5 @@
 
   const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
-  root.JobHunterFill = { norm, classify, bankAnswer, chooseOption, answerFor, run, clearMarks };
+  root.JobHunterFill = { norm, classify, bankAnswer, chooseOption, answerFor, run, clearMarks, manualOnlyHost, MANUAL_ONLY_MESSAGE };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

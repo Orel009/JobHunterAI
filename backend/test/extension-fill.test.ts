@@ -25,6 +25,8 @@ import { profilePath } from '../src/profile/facts.js';
 
 await import(pathToFileURL(path.join(process.cwd(), '..', 'extension', 'fill-core.js')).href);
 type Fill = {
+  manualOnlyHost(u: string): boolean;
+  MANUAL_ONLY_MESSAGE: string;
   classify(t: string): string | null;
   chooseOption(o: string[], a: string): number;
   bankAnswer(l: string, b: Array<{ question: string; answer: string }>): { answer: string } | null;
@@ -82,6 +84,50 @@ describe('field mapping (extension/fill-core.js)', () => {
   });
 });
 
+describe('LinkedIn and Indeed: manual only', () => {
+  it('the shared host check', () => {
+    expect(['https://www.linkedin.com/jobs/view/1', 'https://linkedin.com/jobs', 'https://il.linkedin.com/x', 'https://lnkd.in/abc', 'https://il.indeed.com/viewjob?jk=1', 'https://www.indeed.com/x', 'https://uk.indeed.co.uk/x', 'https://apply.indeed.com/x', 'https://smartapply.indeedapply.com/x'].map(F.manualOnlyHost)).toEqual(Array(9).fill(true));
+    expect(['https://job-boards.greenhouse.io/x/jobs/1', 'https://www.comeet.com/jobs/x', 'https://jobs.lever.co/x', 'https://notlinkedin.com/x', 'https://www.indeedish.io/', 'not a url'].map(F.manualOnlyHost)).toEqual(Array(6).fill(false));
+    expect(F.MANUAL_ONLY_MESSAGE).toBe('LinkedIn/Indeed: manual only, use the copy panel');
+  });
+
+  it('the background worker refuses them: no request to JobHunter, nothing injected, "I applied" from there refused', async () => {
+    const vm = await import('node:vm');
+    const ext = path.join(process.cwd(), '..', 'extension');
+    const calls = { fetch: 0, inject: 0 };
+    let listener: (m: unknown, s: unknown, r: (x: unknown) => void) => boolean = () => false;
+    let tabUrl = 'https://www.linkedin.com/jobs/view/4012345678/';
+    const ctx: Record<string, unknown> = {
+      fetch: async () => (calls.fetch++, new Response('{"job":null}')),
+      chrome: {
+        storage: { local: { get: async () => ({ token: 'x'.repeat(48) }) } },
+        tabs: { get: async (id: number) => ({ id, url: tabUrl }) },
+        scripting: { executeScript: async () => (calls.inject++, [{ result: { filled: 0, needYou: 0, cv: null } }]) },
+        runtime: { onMessage: { addListener: (fn: typeof listener) => (listener = fn) } },
+      },
+      URL,
+      Response,
+      console,
+    };
+    ctx.globalThis = ctx;
+    ctx.importScripts = (f: string) => vm.runInContext(fs.readFileSync(path.join(ext, f), 'utf8'), ctx as never);
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(ext, 'background.js'), 'utf8'), ctx as never);
+    const ask = (msg: unknown, sender: unknown) => new Promise<{ ok: boolean; error?: string }>((res) => void listener(msg, sender, res as never));
+    for (const u of ['https://www.linkedin.com/jobs/view/4012345678/', 'https://il.indeed.com/viewjob?jk=a1b2c3d4e5f60718']) {
+      tabUrl = u;
+      expect(await ask({ type: 'fill', tabId: 1 }, {})).toEqual({ ok: false, error: 'LinkedIn/Indeed: manual only, use the copy panel' });
+      expect(await ask({ type: 'applied', jobId: 'j1' }, { tab: { id: 1, url: u } })).toEqual({ ok: false, error: 'LinkedIn/Indeed: manual only, use the copy panel' });
+    }
+    expect(calls).toEqual({ fetch: 0, inject: 0 });
+    // elsewhere it does ask JobHunter (and injects)
+    tabUrl = 'https://job-boards.greenhouse.io/similarweb/jobs/7972320';
+    await ask({ type: 'fill', tabId: 1 }, {});
+    expect(calls.fetch).toBeGreaterThan(0);
+    expect(calls.inject).toBeGreaterThan(0);
+  });
+});
+
 describe('job addresses', () => {
   it('normalized; the ids an ATS / job site puts in them', () => {
     expect(normalizeJobUrl('https://job-boards.greenhouse.io/similarweb/jobs/7972320/apply?utm=x#top')).toBe('job-boards.greenhouse.io/similarweb/jobs/7972320');
@@ -126,14 +172,19 @@ describe('the local backend (token, never from a web page)', () => {
     expect((await app.inject({ method: 'GET', url: '/api/extension', headers: { origin: 'https://evil.example' } })).statusCode).toBe(403);
   });
 
-  it('matches the page to the job: the form address, the company page (gh_jid), a LinkedIn job id', async () => {
+  it('matches the page to the job: the form address, the company page (gh_jid); LinkedIn / Indeed pages refused (manual only)', async () => {
     const app = buildApp(db);
     const gh = add('greenhouse', 'similarweb:7972320', 'https://www.similarweb.com/corp/careers/job/?gh_jid=7972320', 'https://job-boards.greenhouse.io/similarweb/jobs/7972320');
     const li = add('linkedin', '4012345678', 'https://www.linkedin.com/jobs/view/4012345678/');
     const match = async (u: string) => (await app.inject({ method: 'GET', url: `/api/fill/match?url=${encodeURIComponent(u)}`, headers: hdr() })).json().job?.id ?? null;
     expect(await match('https://job-boards.greenhouse.io/similarweb/jobs/7972320?gh_src=abc')).toBe(gh);
     expect(await match('https://www.similarweb.com/corp/careers/job/?gh_jid=7972320#app')).toBe(gh);
-    expect(await match('https://www.linkedin.com/jobs/search/?currentJobId=4012345678&keywords=x')).toBe(li);
+    for (const u of ['https://www.linkedin.com/jobs/search/?currentJobId=4012345678&keywords=x', 'https://il.indeed.com/viewjob?jk=a1b2c3d4e5f60718']) {
+      const r = await app.inject({ method: 'GET', url: `/api/fill/match?url=${encodeURIComponent(u)}`, headers: hdr() });
+      expect(r.statusCode).toBe(403);
+      expect(r.json().error).toBe('LinkedIn/Indeed: manual only, use the copy panel');
+    }
+    expect(li).toBeTruthy(); // the LinkedIn job exists; only its LinkedIn page is refused
     expect(await match('https://www.example.com/careers/123')).toBeNull();
   });
 

@@ -28,7 +28,7 @@ export function ExtensionCard() {
       <ol className="muted">
         <li>Chrome → <code>chrome://extensions</code> → turn on <b>Developer mode</b> → <b>Load unpacked</b> → choose the folder below.</li>
         <li>Pin it, open its <b>Options</b>, paste the token, <b>Save and test</b>.</li>
-        <li>On an application form: click the JobHunter Fill button.</li>
+        <li>On an application form: click the JobHunter Fill button, then <b>Fill this form</b>. On LinkedIn and Indeed it does nothing (manual only: use the copy panel).</li>
       </ol>
       {info && (
         <>
