@@ -2,7 +2,7 @@ import type { Page } from 'playwright';
 
 /** linkedin: jobs from LinkedIn job-alert emails only (never opened by the automated browser; applying is manual) */
 /** greenhouse / comeet: jobs from your target companies' public ATS job lists (assisted apply only) */
-export type SiteId = 'drushim' | 'alljobs' | 'jobmaster' | 'jobnet' | 'jobkarov' | 'sqlink' | 'linkedin' | 'indeed' | 'greenhouse' | 'comeet';
+export type SiteId = 'drushim' | 'alljobs' | 'jobmaster' | 'jobnet' | 'jobkarov' | 'sqlink' | 'linkedin' | 'indeed' | 'greenhouse' | 'comeet' | 'smartrecruiters';
 export type ApplyType = 'site_one_click' | 'site_questionnaire' | 'external' | 'email';
 
 export const JOB_STATUSES = [

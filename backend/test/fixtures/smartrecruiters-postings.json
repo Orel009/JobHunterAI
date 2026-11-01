@@ -1,0 +1,266 @@
+{
+ "offset": 0,
+ "limit": 100,
+ "totalFound": 8,
+ "content": [
+  {
+   "id": "744000158971809",
+   "name": "Technical Support Team Lead | Customer Care",
+   "uuid": "8563a7fa-d926-41a8-9ece-49e1501d03bf",
+   "company": {
+    "identifier": "Wix2",
+    "name": "Wix"
+   },
+   "releasedDate": "2026-11-01T13:46:43.100Z",
+   "location": {
+    "city": "Tel Aviv",
+    "country": "il",
+    "remote": false,
+    "hybrid": false,
+    "fullLocation": "Tel Aviv, , Israel"
+   },
+   "department": {},
+   "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+   },
+   "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+   },
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  },
+  {
+   "id": "744000158476089",
+   "name": "Business Analyst - Wix Marketing",
+   "uuid": "785359bc-5abb-479d-99cd-244ab1b9ec11",
+   "company": {
+    "identifier": "Wix2",
+    "name": "Wix"
+   },
+   "releasedDate": "2026-10-29T09:59:14.992Z",
+   "location": {
+    "city": "Tel Aviv",
+    "country": "il",
+    "remote": false,
+    "hybrid": false,
+    "fullLocation": "Tel Aviv, , Israel"
+   },
+   "department": {},
+   "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+   },
+   "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+   },
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  },
+  {
+   "id": "744000157666699",
+   "name": "Talent Sourcer (Temp Position)",
+   "uuid": "e810023e-128f-4880-a532-c9bb1c4a55ef",
+   "company": {
+    "identifier": "Wix2",
+    "name": "Wix"
+   },
+   "releasedDate": "2026-10-25T08:08:53.655Z",
+   "location": {
+    "city": "Tel Aviv",
+    "country": "il",
+    "remote": false,
+    "hybrid": false,
+    "fullLocation": "Tel Aviv, , Israel"
+   },
+   "department": {},
+   "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+   },
+   "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+   },
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  },
+  {
+   "id": "744000158967689",
+   "name": "Brand and Web Designer - DesignDev team",
+   "uuid": "05716b3c-b2af-4471-be07-7b158f756ef4",
+   "company": {
+    "identifier": "Wix2",
+    "name": "Wix"
+   },
+   "releasedDate": "2026-11-01T10:16:13.246Z",
+   "location": {
+    "city": "Tel Aviv",
+    "country": "il",
+    "remote": false,
+    "hybrid": false,
+    "fullLocation": "Tel Aviv, , Israel"
+   },
+   "department": {},
+   "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+   },
+   "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+   },
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  },
+  {
+   "id": "744000156782609",
+   "name": "Full Stack Engineer - Wix Code",
+   "uuid": "abbedf86-84fd-4bc7-aefb-8ef814bde017",
+   "company": {
+    "identifier": "Wix2",
+    "name": "Wix"
+   },
+   "releasedDate": "2026-10-21T12:00:35.416Z",
+   "location": {
+    "city": "Tel Aviv-Yafo",
+    "region": "Tel Aviv District",
+    "country": "il",
+    "remote": false,
+    "hybrid": false,
+    "latitude": "32.0852999",
+    "longitude": "34.78176759999999",
+    "fullLocation": "Tel Aviv-Yafo, Tel Aviv District, Israel"
+   },
+   "department": {},
+   "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+   },
+   "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+   },
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  },
+  {
+   "id": "744000158556399",
+   "name": "Account Executive, SMB - Base44",
+   "uuid": "da68a209-21d2-4828-b70a-c34472d378d4",
+   "company": {
+    "identifier": "Wix2",
+    "name": "Wix"
+   },
+   "releasedDate": "2026-10-29T15:47:03.549Z",
+   "location": {
+    "city": "New York",
+    "country": "us",
+    "remote": false,
+    "hybrid": true,
+    "fullLocation": "New York, , United States"
+   },
+   "department": {},
+   "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+   },
+   "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+   },
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  },
+  {
+   "id": "744000158603300",
+   "name": "Outbound Sales Development Representative - POS",
+   "uuid": "8733ea51-3eaf-422f-8b4b-e57392eb8c27",
+   "company": {
+    "identifier": "Wix2",
+    "name": "Wix"
+   },
+   "releasedDate": "2026-10-29T20:50:15.316Z",
+   "location": {
+    "city": "Remote",
+    "region": "OR",
+    "country": "us",
+    "postalCode": "97458",
+    "remote": true,
+    "hybrid": false,
+    "latitude": "43.0059455",
+    "longitude": "-123.8925908",
+    "fullLocation": "Remote, OR, United States"
+   },
+   "department": {},
+   "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+   },
+   "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+   },
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  },
+  {
+   "id": "744000154838069",
+   "name": "QA Engineer",
+   "uuid": "f901c6c9-be9a-43f1-be49-09309b724a1c",
+   "company": {
+    "identifier": "Wix2",
+    "name": "Wix"
+   },
+   "releasedDate": "2026-10-10T19:18:29.320Z",
+   "location": {
+    "city": "Dnipro",
+    "region": "Dnipropetrovsk Oblast",
+    "country": "ua",
+    "postalCode": "49000",
+    "remote": false,
+    "hybrid": false,
+    "latitude": "48.464717",
+    "longitude": "35.046183",
+    "fullLocation": "Dnipro, Dnipropetrovsk Oblast, Ukraine"
+   },
+   "department": {},
+   "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+   },
+   "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+   },
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  }
+ ]
+}

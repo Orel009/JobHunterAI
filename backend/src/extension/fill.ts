@@ -100,6 +100,8 @@ export function jobIdsInUrl(u: string): string[] {
   m(/comeet\.com?\/jobs\/[^/]+\/[0-9A-F]{2}\.[0-9A-F]{3}\/[^/]+\/([0-9A-F]{2}\.[0-9A-F]{3})/i);
   m(/lever\.co\/[^/]+\/([0-9a-f-]{36})/i);
   m(/ashbyhq\.com\/[^/]+\/([0-9a-f-]{36})/i);
+  m(/smartrecruiters\.com\/(?!oneclick-ui)[^/]+\/(\d{6,})/i);
+  m(/smartrecruiters\.com\/oneclick-ui\/company\/[^/]+\/publication\/([0-9a-f-]{36})/i);
   m(/linkedin\.com\/jobs\/view\/(?:[^/?]*-)?(\d{6,})/i);
   m(/[?&]currentJobId=(\d{6,})/);
   m(/[?&](?:v?jk)=([0-9a-f]{10,})/i);
@@ -114,7 +116,7 @@ export function matchJob(db: DB, pageUrl: string): StoredJob | null {
   const rows = db
     .prepare(
       `SELECT id, url, apply_target AS applyTarget, external_id AS externalId, status FROM jobs
-        WHERE site IN ('linkedin','indeed','greenhouse','comeet') OR status = 'needs_manual' OR (apply_type = 'external' AND apply_target != '')`,
+        WHERE site IN ('linkedin','indeed','greenhouse','comeet','smartrecruiters') OR status = 'needs_manual' OR (apply_type = 'external' AND apply_target != '')`,
     )
     .all() as Array<{ id: string; url: string; applyTarget: string; externalId: string; status: string }>;
   const score = (r: (typeof rows)[number]) => {

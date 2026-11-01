@@ -1,5 +1,5 @@
 /**
- * Target companies (Greenhouse, Comeet): ATS detection from a careers URL / job link / page, the two readers (sanitized
+ * Target companies (Greenhouse, Comeet, SmartRecruiters): ATS detection from a careers URL / job link / page, the two readers (sanitized
  * real API answers, 2026-11-01), Comeet's request discipline (one positions request per company per run; the token only
  * from the company's public page; a rejected token is not retried; never stored on a job), the run (only your locations,
  * prefilter + scoring, a Drushim copy wins for applying, a refusal pauses that ATS), the Companies routes, the Greenhouse
@@ -11,13 +11,13 @@ const h = vi.hoisted(() => {
   process.env.DATA_DIR = 'data/test-companies';
   process.env.PREFERENCES_FILE = 'data/test-companies/preferences.yaml';
   Object.assign(process.env, { LLM_ANALYZE_PROVIDER: 'fake', LLM_ANALYZE_MODEL: 'test', LLM_WRITE_PROVIDER: 'fake', LLM_WRITE_MODEL: 'test' });
-  return {};
+  return { pace: vi.fn(async () => undefined) };
 });
 vi.mock('../src/browser/session.js', async (orig) => ({
   ...(await orig<typeof import('../src/browser/session.js')>()),
   getPage: async () => ({}) as never,
   closeContext: async () => undefined,
-  pace: async () => undefined,
+  pace: h.pace,
 }));
 
 import fs from 'node:fs';
@@ -30,6 +30,7 @@ import { waitIdle } from '../src/pipeline/runner.js';
 import { detectAts, detectFromHtml, detectFromUrl, nameVariants } from '../src/companies/detect.js';
 import { ghQuestionFields, ghToRawJob, type GhJob } from '../src/companies/greenhouse.js';
 import { comeetToken, comeetToRawJob, type ComeetPosition } from '../src/companies/comeet.js';
+import { srListToRawJob, srPostingToRawJob, type SrListItem, type SrPosting } from '../src/companies/smartrecruiters.js';
 import { fetchCompanyJobs, isIsraelLocation, keepCompanyJob } from '../src/companies/fetch.js';
 import { addCompany, cleanUrl, companiesFile, companyId, loadCompanies, saveCompanies, seedCompanies, updateCompany, type Company } from '../src/companies/store.js';
 import { runCompaniesToCompletion } from '../src/companies/run.js';
@@ -47,6 +48,8 @@ const GHQ = JSON.parse(fx('greenhouse-questions.json'));
 const POSITIONS = JSON.parse(fx('comeet-positions.json')) as ComeetPosition[];
 const COMEET_PAGE = fx('comeet-page.html');
 const TOKEN = '0000FIXTURE0000TOKEN0000000000000000';
+const SR = JSON.parse(fx('smartrecruiters-postings.json')) as { totalFound: number; content: SrListItem[] };
+const SR1 = JSON.parse(fx('smartrecruiters-posting.json')) as SrPosting;
 
 fs.mkdirSync(path.dirname(config.paths.preferences), { recursive: true });
 fs.writeFileSync(
@@ -55,14 +58,14 @@ fs.writeFileSync(
 );
 
 /** a fetch stand-in: answers by URL, records every request */
-function fakeFetch(routes: Array<[RegExp, () => { status?: number; body: unknown }]>) {
+function fakeFetch(routes: Array<[RegExp, (url: string) => { status?: number; body: unknown }]>) {
   const calls: string[] = [];
   const f = (async (input: string | URL | Request) => {
     const url = String(input instanceof Request ? input.url : input);
     calls.push(url);
     const hit = routes.find(([re]) => re.test(url));
     if (!hit) return new Response('not found', { status: 404 });
-    const { status = 200, body } = hit[1]();
+    const { status = 200, body } = hit[1](url);
     return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'content-type': typeof body === 'string' ? 'text/html' : 'application/json' } });
   }) as typeof fetch;
   return { f, calls };
@@ -77,6 +80,7 @@ beforeEach(() => {
   repo = new Repo(db);
   if (fs.existsSync(companiesFile())) fs.rmSync(companiesFile());
   for (const s of Object.keys(sitePauses())) unpauseSite(s);
+  h.pace.mockClear();
 });
 
 describe('ATS detection', () => {
@@ -362,9 +366,90 @@ describe('the Greenhouse form, answered ahead for the assisted panel', () => {
   });
 });
 
+describe('SmartRecruiters', () => {
+  const wix = (o: Partial<Company> = {}) => company({ ats: 'smartrecruiters', board: 'Wix2', name: 'Wix', ...o });
+  /** the list in two pages (5 + 3) and every posting's ad (the fixture's, under each id) */
+  const srFetch = (o: { status?: number; empty?: boolean; detailStatus?: number } = {}) =>
+    fakeFetch([
+      [/\/postings\?limit=100&offset=0/, () => ({ status: o.status ?? 200, body: o.status ? 'no' : o.empty ? { totalFound: 0, content: [] } : { ...SR, content: SR.content.slice(0, 5) } })],
+      [/\/postings\?limit=100&offset=5/, () => ({ body: { ...SR, offset: 5, content: SR.content.slice(5) } })],
+      [/\/postings\/(\d+)$/, (u) => ({ status: o.detailStatus ?? 200, body: o.detailStatus ? 'no' : { ...SR1, ...SR.content.find((x) => u.endsWith(`/${x.id}`)) } })],
+    ]);
+  const details = (calls: string[]) => calls.filter((u) => /\/postings\/\d+$/.test(u));
+
+  it('detection: the "Easy apply" link, a job page, the careers page and the API address give the company id', () => {
+    expect(detectFromUrl('https://jobs.smartrecruiters.com/oneclick-ui/company/Wix2/publication/8563a7fa-d926-41a8-9ece-49e1501d03bf')).toMatchObject({ ats: 'smartrecruiters', board: 'Wix2' });
+    expect(detectFromUrl('https://jobs.smartrecruiters.com/Wix2/744000158971809-technical-support-team-lead')).toMatchObject({ ats: 'smartrecruiters', board: 'Wix2' });
+    expect(detectFromUrl('https://careers.smartrecruiters.com/Wix2')).toMatchObject({ ats: 'smartrecruiters', board: 'Wix2' });
+    expect(detectFromUrl('https://api.smartrecruiters.com/v1/companies/Wix2/postings')).toMatchObject({ ats: 'smartrecruiters', board: 'Wix2' });
+    expect(detectFromUrl('https://jobs.smartrecruiters.com/oneclick-ui/')?.board ?? null).toBeNull();
+  });
+
+  it('the probe by name counts only a company that has postings (SmartRecruiters answers 200 for any name)', async () => {
+    const none = fakeFetch([[/api\.smartrecruiters\.com\/v1\/companies\/[^/]+\/postings\?limit=1/, () => ({ body: { totalFound: 0, content: [] } })], [/careers\.example/, () => ({ body: '<html>script</html>' })]]);
+    expect((await detectAts('https://careers.example/jobs', none.f, 'Nobody')).ats).toBe('unknown');
+    const some = fakeFetch([[/companies\/wix\/postings\?limit=1/, () => ({ body: { totalFound: 89, content: [] } })], [/careers\.example/, () => ({ body: '<html>script</html>' })]]);
+    expect(await detectAts('https://careers.example/jobs', some.f, 'Wix')).toMatchObject({ ats: 'smartrecruiters', board: 'wix', how: 'probe' });
+  });
+
+  it('readers: the list has title and location only ("il" → Israel); the ad gives description / requirements; never the recruiter', () => {
+    const l = srListToRawJob('Wix2', 'Wix', SR.content[0]!);
+    expect(l).toMatchObject({ site: 'smartrecruiters', externalId: 'Wix2:744000158971809', location: 'Tel Aviv, Israel', detailsFetched: false, descriptionText: '' });
+    expect(l.applyTarget).toBe('https://jobs.smartrecruiters.com/oneclick-ui/company/Wix2/publication/8563a7fa-d926-41a8-9ece-49e1501d03bf');
+    expect(srListToRawJob('Wix2', 'Wix', SR.content.find((p) => p.location?.remote)!).location).toBe('Remote, OR, United States');
+    const d = srPostingToRawJob('Wix2', 'Wix', SR1);
+    expect(d.detailsFetched).toBe(true);
+    expect(d.descriptionText).toMatch(/Technical Support Team Lead/);
+    expect(d.descriptionText).toMatch(/Work model/); // additional information
+    expect(d.requirementsText).toMatch(/2\+ years leading technical support/);
+    expect(d.descriptionText).not.toMatch(/<p>|&#xa0;/);
+    expect(JSON.stringify(d)).not.toMatch(/FIXTURE RECRUITER|avatar/);
+  });
+
+  it('the list: paged (100 per request, a pause between pages); no postings at all → most likely the wrong id; 429 → refusal', async () => {
+    const ok = srFetch();
+    const r = await fetchCompanyJobs(wix(), ok.f);
+    expect(ok.calls).toHaveLength(2);
+    expect(h.pace).toHaveBeenCalledTimes(1);
+    expect(r).toMatchObject({ total: 8, israel: 5, error: null, blocked: null });
+    expect(details(ok.calls)).toEqual([]); // no ad is read here
+    expect((await fetchCompanyJobs(wix(), srFetch({ empty: true }).f)).error).toMatch(/no SmartRecruiters postings for "Wix2"/);
+    expect((await fetchCompanyJobs(wix(), srFetch({ status: 429 }).f)).blocked).toMatch(/HTTP 429/);
+  });
+
+  it('the run reads the full ad only for jobs that pass the title and location filters, with a pause before each; not again on the next run', async () => {
+    saveCompanies([wix()]);
+    const a = srFetch();
+    const p = (await runCompaniesToCompletion(db, { fetchImpl: a.f }))!;
+    const jobs = repo.listJobs({ site: 'smartrecruiters', limit: 100 }).items;
+    expect(jobs).toHaveLength(5);
+    expect(jobs.every((j) => /Israel/.test(j.location))).toBe(true);
+    // only titles with your keywords — never Talent Sourcer / Brand and Web Designer
+    const read = details(a.calls).map((u) => u.split('/').pop()!);
+    const passed = jobs.filter((j) => j.detailsFetched).map((j) => j.externalId.split(':')[1]!);
+    expect(read.length).toBeGreaterThan(0);
+    expect([...read].sort()).toEqual([...passed].sort());
+    for (const id of ['744000157666699', '744000158967689']) expect(read).not.toContain(id);
+    expect(h.pace).toHaveBeenCalledTimes(1 + read.length); // one between the list pages, one before each ad
+    expect(p.companies[0]).toMatchObject({ name: 'Wix', ats: 'smartrecruiters', read: 8, israel: 5, inLocations: 5, postingsRead: read.length });
+    const b = srFetch();
+    const q = (await runCompaniesToCompletion(db, { fetchImpl: b.f }))!;
+    expect(details(b.calls)).toEqual([]);
+    expect(q.companies[0]!.postingsRead).toBe(0);
+  });
+
+  it('a refused ad pauses SmartRecruiters for 48 hours and stops reading', async () => {
+    saveCompanies([wix()]);
+    const a = srFetch({ detailStatus: 403 });
+    await runCompaniesToCompletion(db, { fetchImpl: a.f });
+    expect(details(a.calls)).toHaveLength(1);
+    expect(isPaused('smartrecruiters')).toBe(true);
+  });
+});
+
 describe('never in the automated browser', () => {
   it('ATS careers pages and apply forms are blocked like LinkedIn / Indeed', () => {
-    for (const u of ['https://job-boards.greenhouse.io/x/jobs/1', 'https://boards.greenhouse.io/x', 'https://www.comeet.com/jobs/x/17.008', 'https://www.comeet.co/careers-api/2.0/company/x', 'https://jobs.lever.co/x', 'https://jobs.ashbyhq.com/x'])
+    for (const u of ['https://job-boards.greenhouse.io/x/jobs/1', 'https://boards.greenhouse.io/x', 'https://www.comeet.com/jobs/x/17.008', 'https://www.comeet.co/careers-api/2.0/company/x', 'https://jobs.lever.co/x', 'https://jobs.ashbyhq.com/x', 'https://jobs.smartrecruiters.com/oneclick-ui/company/Wix2/publication/x', 'https://api.smartrecruiters.com/v1/companies/Wix2/postings'])
       expect(isAssistedOnlyHost(u)).toBe(true);
     expect(isAssistedOnlyHost('https://www.drushim.co.il/job/1/')).toBe(false);
   });

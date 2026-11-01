@@ -160,7 +160,7 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
   return { pass: true, reason: 'ok' };
 }
 
-/** Israeli cities as English-language posts and ATS lists write them (Greenhouse, Comeet), with the Hebrew name. */
+/** Israeli cities as English-language posts and ATS lists write them (Greenhouse, Comeet, SmartRecruiters), with the Hebrew name. */
 const CITY_NAMES: Array<[RegExp, string]> = [
   [/tel[ -]?aviv|jaffa|yafo/i, 'תל אביב'],
   [/herzliy?a/i, 'הרצליה'],

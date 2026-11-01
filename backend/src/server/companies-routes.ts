@@ -1,7 +1,7 @@
 /**
  * Companies screen: your target companies (data/companies.yaml). Adding one detects its ATS from a careers URL or a job
  * link (or by asking the ATS APIs with the company's name) and reads its job list once to show the totals; a company on
- * your excluded list is refused. Supported ones (Greenhouse, Comeet) are read by the companies run.
+ * your excluded list is refused. Supported ones (Greenhouse, Comeet, SmartRecruiters) are read by the companies run.
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';

@@ -12,6 +12,8 @@ import { locationAccepted } from '../core/prefilter.js';
 import type { Company } from './store.js';
 import { ghListUrl, ghToRawJob, type GhJob } from './greenhouse.js';
 import { comeetPageUrl, comeetPositionsUrl, comeetToken, comeetToRawJob, type ComeetPosition } from './comeet.js';
+import { srListToRawJob, srListUrl, srPostingToRawJob, srPostingUrl, type SrListItem, type SrPosting } from './smartrecruiters.js';
+import { pace } from '../browser/session.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const get = (fetchImpl: typeof fetch, url: string, accept = 'application/json') =>
@@ -43,6 +45,18 @@ export function keepCompanyJob(j: RawJob, prefs: Pick<Prefs, 'locations' | 'filt
   const country = (j.raw as { country?: string | null } | null)?.country ?? null;
   if (j.location.trim() && !isIsraelLocation(j.location, country)) return false;
   return locationAccepted(j.location, prefs);
+}
+
+/** One SmartRecruiters posting's full ad (one request). */
+export async function fetchSrPosting(c: Company, postingId: string, fetchImpl: typeof fetch = fetch): Promise<{ job: RawJob | null; blocked: string | null; error: string | null }> {
+  try {
+    const r = await get(fetchImpl, srPostingUrl(c.board!, postingId));
+    if (refused(r.status)) return { job: null, blocked: `SmartRecruiters refused the request (HTTP ${r.status})`, error: null };
+    if (!r.ok) return { job: null, blocked: null, error: `HTTP ${r.status}` };
+    return { job: srPostingToRawJob(c.board!, c.name, (await r.json()) as SrPosting), blocked: null, error: null };
+  } catch (e) {
+    return { job: null, blocked: null, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 export async function fetchCompanyJobs(c: Company, fetchImpl: typeof fetch = fetch, now = new Date()): Promise<CompanyFetch> {
@@ -82,6 +96,25 @@ export async function fetchCompanyJobs(c: Company, fetchImpl: typeof fetch = fet
       if (!r.ok) return { ...out, error: `Comeet answered HTTP ${r.status}` };
       const positions = ((await r.json()) as ComeetPosition[] | null) ?? [];
       out.jobs = (Array.isArray(positions) ? positions : []).filter((p) => !p.is_internal).map((p) => comeetToRawJob(c.board!, c.name, p));
+    } else if (c.ats === 'smartrecruiters') {
+      // the list: title, location and ids (no job text), 100 per request; the ads are read later, for jobs that pass
+      const items: SrListItem[] = [];
+      let total = 0;
+      for (let offset = 0, n = 0; n < 10; n++) {
+        if (n) await pace(1000, 2500);
+        out.requests.push('smartrecruiters postings');
+        const r = await get(fetchImpl, srListUrl(c.board, offset));
+        if (refused(r.status)) return { ...out, blocked: `SmartRecruiters refused the request (HTTP ${r.status})` };
+        if (!r.ok) return { ...out, error: `SmartRecruiters answered HTTP ${r.status}` };
+        const j = (await r.json()) as { totalFound?: number; content?: SrListItem[] };
+        total = j.totalFound ?? 0;
+        items.push(...(j.content ?? []));
+        offset += (j.content ?? []).length;
+        if (!(j.content ?? []).length || offset >= total) break;
+      }
+      // SmartRecruiters answers for any name: a company with no postings at all is most likely the wrong id
+      if (!total) return { ...out, error: `no SmartRecruiters postings for "${c.board}" (check the company id in one of its job links)` };
+      out.jobs = items.map((p) => srListToRawJob(c.board!, c.name, p));
     } else {
       return { ...out, error: `${c.ats}: not supported yet` };
     }

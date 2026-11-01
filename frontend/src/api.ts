@@ -407,6 +407,7 @@ export interface CompanySummary {
   skipped: Array<{ reason: string; count: number; examples: string[] }>;
   scored: number;
   answersPrepared: number;
+  postingsRead?: number;
   ready: number;
   error: string | null;
   ms: number;

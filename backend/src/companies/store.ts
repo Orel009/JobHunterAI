@@ -34,7 +34,7 @@ export type Company = z.infer<typeof CompanySchema>;
 const FileSchema = z.object({ companies: z.array(CompanySchema).default([]) });
 export const companiesFile = () => path.join(config.dataDir, 'companies.yaml');
 
-const HEADER = `# Your target companies. JobHunter reads their public job lists (Greenhouse, Comeet) once per Run & send; applying
+const HEADER = `# Your target companies. JobHunter reads their public job lists (Greenhouse, Comeet, SmartRecruiters) once per Run & send; applying
 # is done by you in the assisted panel. Add companies on the Companies screen (a careers URL or a job link).
 `;
 

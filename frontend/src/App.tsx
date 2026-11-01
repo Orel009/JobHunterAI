@@ -153,7 +153,7 @@ export function App() {
       {onboarding === false && tab === 'prefs' && <PreferencesEditor onSaved={refresh} />}
       {onboarding === false && tab === 'linkedin' && (status?.emailAlerts.enabled || !!status?.needsManual || !!status?.companies?.listed) && (
         <LinkedInScreen
-          sources={[...(status.emailAlerts.enabled ? status.emailAlerts.sources : []), ...(status.companies?.listed ? ['greenhouse', 'comeet'] : [])]}
+          sources={[...(status.emailAlerts.enabled ? status.emailAlerts.sources : []), ...(status.companies?.listed ? ['greenhouse', 'comeet', 'smartrecruiters'] : [])]}
           alertsOn={status.emailAlerts.enabled}
           busy={!!status.activeRun}
           onChanged={refresh}

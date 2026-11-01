@@ -14,10 +14,10 @@ export const SITE_LABEL: Record<AssistedSite, string> = { linkedin: 'LinkedIn', 
  * Jobs from your target companies' public ATS lists (Companies screen). Like LinkedIn / Indeed they are applied to by
  * you (assisted panel): the ATS forms have CAPTCHA and the submit APIs need the employer's key. Not tied to email alerts.
  */
-export const COMPANY_SOURCES = ['greenhouse', 'comeet'] as const;
+export const COMPANY_SOURCES = ['greenhouse', 'comeet', 'smartrecruiters'] as const;
 export type CompanySource = (typeof COMPANY_SOURCES)[number];
 export const isCompanySource = (site: string): site is CompanySource => (COMPANY_SOURCES as readonly string[]).includes(site);
-export const COMPANY_SOURCE_LABEL: Record<CompanySource, string> = { greenhouse: 'Greenhouse', comeet: 'Comeet' };
+export const COMPANY_SOURCE_LABEL: Record<CompanySource, string> = { greenhouse: 'Greenhouse', comeet: 'Comeet', smartrecruiters: 'SmartRecruiters' };
 /** never applied to by the automated flow: alert-email sources and company ATS sources */
 export const isAssistedOnly = (site: string): boolean => isAssistedSite(site) || isCompanySource(site);
 
@@ -25,7 +25,7 @@ export const isAssistedOnly = (site: string): boolean => isAssistedSite(site) ||
 export function isAtsHost(url: string): boolean {
   try {
     const h = new URL(url).hostname.toLowerCase();
-    return /(^|\.)greenhouse\.io$/.test(h) || /(^|\.)comeet\.(com|co)$/.test(h) || /(^|\.)lever\.co$/.test(h) || /(^|\.)ashbyhq\.com$/.test(h);
+    return /(^|\.)greenhouse\.io$/.test(h) || /(^|\.)comeet\.(com|co)$/.test(h) || /(^|\.)lever\.co$/.test(h) || /(^|\.)ashbyhq\.com$/.test(h) || /(^|\.)smartrecruiters\.com$/.test(h);
   } catch {
     return false;
   }

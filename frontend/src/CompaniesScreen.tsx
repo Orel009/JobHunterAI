@@ -66,7 +66,7 @@ export function CompaniesScreen({ busy, onChanged }: { busy: boolean; onChanged:
     <section className="companies">
       <div className="banner info">
         <div>
-          Target companies: JobHunter reads their <b>public</b> job lists (Greenhouse, Comeet), keeps the jobs in Israel and your locations, and scores them like any other
+          Target companies: JobHunter reads their <b>public</b> job lists (Greenhouse, Comeet, SmartRecruiters), keeps the jobs in Israel and your locations, and scores them like any other
           job. Applying is done <b>by you</b> in Assisted apply (their forms have CAPTCHA). Careers pages and apply forms are never opened by the automated browser. Lever
           and Ashby are detected but not supported yet.
         </div>
@@ -75,7 +75,7 @@ export function CompaniesScreen({ busy, onChanged }: { busy: boolean; onChanged:
       <fieldset className="card">
         <legend>Add a company</legend>
         <div className="row">
-          <input dir="ltr" style={{ minWidth: 380 }} value={url} placeholder="careers page or job link, e.g. https://job-boards.greenhouse.io/… or https://www.comeet.com/jobs/…" onChange={(e) => setUrl(e.target.value)} />
+          <input dir="ltr" style={{ minWidth: 380 }} value={url} placeholder="careers page or job link: job-boards.greenhouse.io/…, comeet.com/jobs/…, jobs.smartrecruiters.com/…" onChange={(e) => setUrl(e.target.value)} />
           <input dir="auto" value={name} placeholder="name (helps the detection)" onChange={(e) => setName(e.target.value)} />
           <button
             disabled={!!working || url.trim().length < 8}
@@ -200,7 +200,7 @@ function RunSummary({ p }: { p: CompaniesProgress }) {
               <th>New</th>
               <th>Skipped (by reason)</th>
               <th>Scored</th>
-              <th>Answers ready</th>
+              <th>Answers ready / postings read</th>
               <th>Ready in Assisted apply</th>
             </tr>
           </thead>
@@ -224,7 +224,7 @@ function RunSummary({ p }: { p: CompaniesProgress }) {
                   {!c.skipped.length && <span className="muted">none</span>}
                 </td>
                 <td>{c.scored}</td>
-                <td>{c.ats === 'greenhouse' ? c.answersPrepared : '—'}</td>
+                <td>{c.ats === 'greenhouse' ? c.answersPrepared : c.ats === 'smartrecruiters' ? `${c.postingsRead ?? 0} postings read` : '—'}</td>
                 <td>
                   <b>{c.ready}</b>
                 </td>

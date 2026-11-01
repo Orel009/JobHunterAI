@@ -148,7 +148,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     };
 
     const runs: HuntSummary['runs'] = [];
-    // FIRST: your target companies' public job lists (Greenhouse, Comeet) — no browser, so they never wait for one; a
+    // FIRST: your target companies' public job lists (Greenhouse, Comeet, SmartRecruiters) — no browser, so they never wait for one; a
     // Drushim copy found later in this run takes over from a company copy for applying (company jobs: by you)
     const companies = enabledCompanies();
     let companiesMs: number | null = null;

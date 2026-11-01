@@ -1,0 +1,56 @@
+{
+ "id": "744000158971809",
+ "name": "Technical Support Team Lead | Customer Care",
+ "uuid": "8563a7fa-d926-41a8-9ece-49e1501d03bf",
+ "company": {
+  "name": "Wix",
+  "identifier": "Wix2"
+ },
+ "location": {
+  "city": "Tel Aviv",
+  "country": "il",
+  "remote": false,
+  "hybrid": false,
+  "fullLocation": "Tel Aviv, , Israel"
+ },
+ "releasedDate": "2026-11-01T13:46:43.100Z",
+ "postingUrl": "https://jobs.smartrecruiters.com/Wix2/744000158971809-technical-support-team-lead-customer-care",
+ "applyUrl": "https://jobs.smartrecruiters.com/Wix2/744000158971809-technical-support-team-lead-customer-care?oga=true",
+ "jobAd": {
+  "sections": {
+   "companyDescription": {
+    "title": "Company Description",
+    "text": "<p>We're Base44, a newly acquired part of Wix, on a mission to change how products and apps get built. Our AI-powered platform allows anyone to create custom applications using natural language, with no traditional coding required. We operate like a startup within Wix: fast-moving, collaborative, and focused on solving complex problems with simple, elegant solutions.&#xa0;&#xa0;</p><p>We're here for anyone who wants to build: creators, solo founders, startups, entrepreneurs, side hustlers, and everyone in between. Whether you're launching a product, validating a concept, or chasing a hunch, Base44 gives you the power to make it real.&#xa0;&#xa0;</p>"
+   },
+   "jobDescription": {
+    "title": "Job Description",
+    "text": "<p>We're looking for a highly motivated, curious, and dynamic Technical Support Team Lead to join our growing Customer Care group. This is a unique opportunity to play a pivotal role in a fast-paced, cutting-edge AI product environment. As a leader with a builder mindset, you won't just manage a team. You'll bridge technical support, product, and engineering, and help shape how our users build software with AI.&#xa0;&#xa0;</p><p>What you'll do&#xa0;&#xa0;</p><ul><li><p>Manage the team queue and prioritize tickets based on urgency and SLAs, protecting the user experience with top-quality, high-touch support&#xa0;&#xa0;</p></li><li><p>Use support data and KPIs to identify bottlenecks, optimize team workflows, and continuously improve support quality&#xa0;&#xa0;</p></li><li><p>Foster personal and technical career development, mentor technical experts to excel, and help them take ownership and grow&#xa0;&#xa0;</p></li><li><p>Act as a key feedback loop by translating user roadblocks and data insights into actionable product improvements and bug priorities, alongside R&amp;D and Product teams&#xa0;&#xa0;</p></li><li><p>Take full ownership in a fast-paced, young, and evolving organization: shape your role, propose new initiatives, and drive cross-functional projects&#xa0;</p></li></ul><p>&#xa0;</p>"
+   },
+   "qualifications": {
+    "title": "Qualifications",
+    "text": "<ul><li><p>2+ years leading technical support or customer-facing technical teams, with hands-on experience in queue management, SLA tracking, and driving team output&#xa0;&#xa0;</p></li><li><p>Strong analytical skills, with a track record of using data, dashboards, and metrics to drive decisions and improve overall performance&#xa0;&#xa0;</p></li><li><p>A self-starter who thrives in an evolving, flexible environment, ready to define processes, build structure, and own new initiatives from scratch&#xa0;&#xa0;</p></li><li><p>Exceptional interpersonal skills, with experience mentoring technical experts and building strong team cohesion&#xa0;&#xa0;</p></li><li><p>Hands-on experience building with Base44 (or similar AI app</p></li><li><p>&#xa0;builders like Lovable, Bolt, or Replit), and the ability to understand user problems from the builder’s point of view</p></li><li><p>High technical curiosity and a passion for building and experimenting with modern software</p></li></ul><p>Nice to have&#xa0;&#xa0;</p><ul><li><p>Strong understanding of web technologies (HTML/CSS/JS), client-server architecture, and APIs&#xa0;&#xa0;</p></li><li><p>Experience with browser DevTools and troubleshooting tools such as Postman&#xa0;</p></li></ul>"
+   },
+   "additionalInformation": {
+    "title": "Additional Information",
+    "text": "<p>Work model&#xa0;&#xa0;</p><p>At Base44, we believe our best work happens together. Our work model is fully in person, 5 days a week from our Tel Aviv office.&#xa0;&#xa0;</p><p>&#xa0;</p><p><em>Wix and Base44 are proud to be equal opportunity employers. We believe everyone has the right to be successful, online, and we're committed to a work environment where everyone is welcome and anyone has the right to succeed.</em></p>"
+   }
+  }
+ },
+ "experienceLevel": {
+  "id": "mid_senior_level",
+  "label": "Mid-Senior Level"
+ },
+ "typeOfEmployment": {
+  "id": "permanent",
+  "label": "Full-time"
+ },
+ "language": {
+  "code": "en",
+  "label": "English",
+  "labelNative": "English (US)"
+ },
+ "creator": {
+  "name": "FIXTURE RECRUITER NAME",
+  "avatarUrl": "https://example.invalid/avatar.png"
+ }
+}

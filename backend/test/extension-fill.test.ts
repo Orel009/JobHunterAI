@@ -181,6 +181,9 @@ describe('job addresses', () => {
     expect(jobIdsInUrl('https://www.comeet.com/jobs/cyera/17.008/ai-researcher/2B.D67')).toEqual(['2B.D67']);
     expect(jobIdsInUrl('https://www.linkedin.com/jobs/collections/recommended/?currentJobId=4012345678')).toEqual(['4012345678']);
     expect(jobIdsInUrl('https://il.indeed.com/viewjob?jk=a1b2c3d4e5f60718')).toEqual(['a1b2c3d4e5f60718']);
+    // SmartRecruiters: a job page (its posting id) and the "Easy apply" form (its uuid, which the stored apply target holds)
+    expect(jobIdsInUrl('https://jobs.smartrecruiters.com/Wix2/744000158971809-technical-support-team-lead-customer-care')).toEqual(['744000158971809']);
+    expect(jobIdsInUrl('https://jobs.smartrecruiters.com/oneclick-ui/company/Wix2/publication/8563a7fa-d926-41a8-9ece-49e1501d03bf?dcr_ci=Wix2')).toEqual(['8563a7fa-d926-41a8-9ece-49e1501d03bf']);
   });
 });
 
@@ -232,6 +235,11 @@ describe('the local backend (token, never from a web page)', () => {
     }
     expect(li).toBeTruthy(); // the LinkedIn job exists; only its LinkedIn page is refused
     expect(await match('https://www.example.com/careers/123')).toBeNull();
+    // a SmartRecruiters company job: its job page, and its "Easy apply" form (matched by the uuid in the apply target)
+    const sr = toJob({ site: 'smartrecruiters', externalId: 'Wix2:744000158971809', company: 'Wix', title: 'Business Analyst', location: 'Tel Aviv, Israel', descriptionText: 'x', requirementsText: '', url: 'https://jobs.smartrecruiters.com/Wix2/744000158971809', postedAt: null, applyType: 'external', applyTarget: 'https://jobs.smartrecruiters.com/oneclick-ui/company/Wix2/publication/8563a7fa-d926-41a8-9ece-49e1501d03bf', language: 'en', detailsFetched: true, raw: {} });
+    repo.upsertJob(sr);
+    expect(await match('https://jobs.smartrecruiters.com/Wix2/744000158971809-business-analyst')).toBe(sr.id);
+    expect(await match('https://jobs.smartrecruiters.com/oneclick-ui/company/Wix2/publication/8563a7fa-d926-41a8-9ece-49e1501d03bf?dcr_ci=Wix2')).toBe(sr.id);
   });
 
   it('unknown labels → a field type (the model picks a type, never a value), cached', async () => {

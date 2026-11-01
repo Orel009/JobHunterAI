@@ -16,7 +16,8 @@ import { isPaused, pauseSite } from '../core/site-pause.js';
 import { COMPANY_SOURCES } from '../alerts/assisted.js';
 import { Repo } from '../db/repo.js';
 import { applyPrefilter, score, startTask, waitIdle } from '../pipeline/runner.js';
-import { fetchCompanyJobs, keepCompanyJob, type CompanyFetch } from './fetch.js';
+import { fetchCompanyJobs, fetchSrPosting, keepCompanyJob, type CompanyFetch } from './fetch.js';
+import { prefilter } from '../core/prefilter.js';
 import { formAnswers } from './answers.js';
 import { isSupported, loadCompanies, updateCompany, type Company } from './store.js';
 
@@ -38,6 +39,8 @@ export interface CompanySummary {
   scored: number;
   /** Greenhouse: jobs whose form answers were prepared */
   answersPrepared: number;
+  /** SmartRecruiters: full postings read (only for jobs that passed the title and location filters) */
+  postingsRead?: number;
   /** waiting for you in Assisted apply (scored, not skipped, not applied) */
   ready: number;
   error: string | null;
@@ -119,7 +122,7 @@ export function startCompaniesRun(db: DB, opts: { fetch?: boolean; fetchImpl?: t
   const runId = startTask(db, COMPANIES_RUN_SITE, opts.fetch === false ? 'score' : 'full', async (run, repo, L) => {
     p.runId = run.id;
     const prefs = loadPrefs();
-    const fetched = new Map<string, { f: CompanyFetch | null; kept: Set<string>; added: number; ms: number }>();
+    const fetched = new Map<string, { f: CompanyFetch | null; kept: Set<string>; added: number; ms: number; postingsRead?: number }>();
     if (opts.fetch !== false) {
       run.stats.companies = 0;
       let first = true;
@@ -163,7 +166,29 @@ export function startCompaniesRun(db: DB, opts: { fetch?: boolean; fetchImpl?: t
           run.stats.outsideLocations = (run.stats.outsideLocations ?? 0) + (f.jobs.length - kept.length);
           L.info({ company: c.name, ats: c.ats, total: f.total, israel: f.israel, kept: kept.length, requests: f.requests }, 'company list read');
         } else L.warn({ company: c.name, err: f.error }, 'company list not read');
-        fetched.set(c.id, { f, kept: new Set(kept.map((j) => j.externalId)), added, ms: Date.now() - t0 });
+        // SmartRecruiters: the list has no job text — read the full posting only for jobs that pass your title (and
+        // location) filters and are not read yet, with a pause between requests
+        let postingsRead = 0;
+        if (c.ats === 'smartrecruiters' && !f.error) {
+          const toRead = kept.filter((j) => prefilter({ ...j, roleTypes: [] }, prefs).pass && !repo.getJob(toJob(j).id)?.detailsFetched);
+          for (const [i, j] of toRead.entries()) {
+            if (run.controller.signal.aborted) return;
+            await pace(1000, 2500);
+            p.stage = run.stage = `reading ${c.name || c.board}: posting ${i + 1}/${toRead.length}`;
+            const d = await fetchSrPosting(c, String((j.raw as { postingId: string }).postingId), opts.fetchImpl);
+            if (d.blocked) {
+              pauseSite(c.ats, d.blocked);
+              L.error({ company: c.name, reason: d.blocked }, 'SmartRecruiters refused — paused for 48 hours');
+              break;
+            }
+            if (d.job) {
+              repo.upsertJob(toJob(d.job));
+              postingsRead++;
+            } else L.warn({ company: c.name, job: j.title, err: d.error }, 'posting not read');
+          }
+          run.stats.postingsRead = (run.stats.postingsRead ?? 0) + postingsRead;
+        }
+        fetched.set(c.id, { f, kept: new Set(kept.map((j) => j.externalId)), added, ms: Date.now() - t0, postingsRead });
         p.done++;
       }
     }
@@ -193,7 +218,7 @@ export function startCompaniesRun(db: DB, opts: { fetch?: boolean; fetchImpl?: t
     run.stats.answersPrepared = [...prepared.values()].reduce((a, b) => a + b, 0);
     p.companies = (opts.fetch === false ? loadCompanies().filter((c) => isSupported(c)) : list).map((c) => {
       const x = fetched.get(c.id);
-      return summarize(db, c, x?.f ?? null, x?.kept ?? new Set(), x?.added ?? 0, c.ats === 'greenhouse' ? (prepared.get(c.board ?? '') ?? 0) : 0, x?.ms ?? 0);
+      return { ...summarize(db, c, x?.f ?? null, x?.kept ?? new Set(), x?.added ?? 0, c.ats === 'greenhouse' ? (prepared.get(c.board ?? '') ?? 0) : 0, x?.ms ?? 0), ...(c.ats === 'smartrecruiters' ? { postingsRead: x?.postingsRead ?? 0 } : {}) };
     });
     p.stage = 'done';
     p.current = null;
