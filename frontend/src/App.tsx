@@ -144,7 +144,7 @@ export function App() {
       )}
       {onboarding === false && status && <Controls status={status} onChange={refresh} profileReady={profile?.valid ?? true} />}
       {onboarding === false && tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} alertSources={status?.emailAlerts.enabled ? status.emailAlerts.sources : []} roleTypes={status?.roleTypes ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
-      {onboarding === false && tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} onChanged={refresh} />}
+      {onboarding === false && tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} runLabel={status?.activeRun ? `${status.activeRun.site}/${status.activeRun.kind}: ${status.activeRun.stage}` : null} loggedOut={Object.entries(status?.sessions ?? {}).filter(([, v]) => v.state === 'logged_out').map(([k]) => k)} onChanged={refresh} />}
       {onboarding === false && tab === 'answers' && <AnswersBank onChanged={refresh} />}
       {onboarding === false && tab === 'profile' && <ProfileScreen onChanged={refresh} />}
       {onboarding === false && tab === 'prefs' && <PreferencesEditor onSaved={refresh} />}

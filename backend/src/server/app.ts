@@ -22,7 +22,7 @@ import { autoSubmitSettings, effectiveMinRank, pauseAutoSubmit, saveAutoSubmitSe
 import { huntProgress, huntRunning, recentHunts, runHunt, sendingMode } from '../pipeline/hunt.js';
 import { inQuietHours, isHhmm, nextRun, runnableTimes, saveScheduleSettings, scheduleSettings } from '../pipeline/schedule.js';
 import { emailAlertsEnabled, enabledSources, linkedInEnabled } from '../linkedin/settings.js';
-import { batchProgress, prepareJobs, ServiceError } from '../apply/service.js';
+import { batchProgress, prepareJobs, recoverStuckApprovals, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
 import { registerCvRoutes, registerEditorRoutes } from './editor-routes.js';
 import fs from 'node:fs';
@@ -36,6 +36,10 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   const app = Fastify({ logger: false });
   const repo = new Repo(db);
   syncSalaries(repo); // posted salary of jobs stored before this version (or whose text changed)
+  // applications left "approved" by a run that never finished (no run is active at startup): back to review, or blocked
+  // when the send may have gone out
+  const stuck = recoverStuckApprovals(db);
+  if (stuck.length) log.warn({ applications: stuck }, 'approved applications that were never sent: recovered');
   // one job per company + title within the window, on any site — also for jobs stored before this rule existed
   const dups = repo.dedupeExisting(config.DEDUPE_WINDOW_DAYS);
   if (dups.length) log.info({ jobs: dups.length, examples: dups.slice(0, 5) }, 'duplicates of the same company + title marked skipped_duplicate (open applications closed)');

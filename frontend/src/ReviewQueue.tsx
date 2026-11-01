@@ -20,7 +20,21 @@ const READINESS: Record<string, string> = {
 };
 const OPEN = 'needs_review,approved,dry_run_ok,failed';
 
-export function ReviewQueue({ dryRun, busy, applyDisabled = false, onChanged }: { dryRun: boolean; busy: boolean; applyDisabled?: boolean; onChanged: () => void }) {
+export function ReviewQueue({
+  dryRun,
+  busy,
+  runLabel = null,
+  loggedOut = [],
+  onChanged,
+}: {
+  dryRun: boolean;
+  busy: boolean;
+  /** the active run, shown as the reason controls are locked */
+  runLabel?: string | null;
+  /** sites whose login has expired: their applications cannot be approved until you log in again */
+  loggedOut?: string[];
+  onChanged: () => void;
+}) {
   const [items, setItems] = useState<Application[]>([]);
   const [filter, setFilter] = useState(OPEN);
   const [msg, setMsg] = useState<string | null>(null);
@@ -89,7 +103,7 @@ export function ReviewQueue({ dryRun, busy, applyDisabled = false, onChanged }: 
           <option value="skipped,rejected">Skipped / rejected</option>
           <option value="">All</option>
         </select>
-        <button className="secondary" disabled={busy || applyDisabled} onClick={() => act(apply.prepareQueued, 'preparing queued jobs…')}>
+        <button className="secondary" disabled={busy} title={busy ? `locked: ${runLabel ?? 'a run is active'}` : ''} onClick={() => act(apply.prepareQueued, 'preparing queued jobs…')}>
           Prepare queued
         </button>
         <span className="muted">{items.length} applications</span>
@@ -105,7 +119,7 @@ export function ReviewQueue({ dryRun, busy, applyDisabled = false, onChanged }: 
         <button className="link" disabled={!selected.size} onClick={() => setSelected(new Set())}>
           clear
         </button>
-        <button className={dryRun ? '' : 'danger'} disabled={!selected.size || busy || running || applyDisabled} onClick={() => void approveSelected()}>
+        <button className={dryRun ? '' : 'danger'} disabled={!selected.size || busy || running} title={busy ? `locked: ${runLabel ?? 'a run is active'}` : running ? 'locked: batch approval running' : ''} onClick={() => void approveSelected()}>
           {dryRun ? `Approve selected (${selected.size}) → DRY RUN` : `Approve selected (${selected.size}) → SUBMIT`}
         </button>
         <span className="muted">
@@ -115,7 +129,7 @@ export function ReviewQueue({ dryRun, busy, applyDisabled = false, onChanged }: 
       {batch && <BatchPanel batch={batch} />}
       {items.length === 0 && <p className="muted">Nothing here. Use “apply” on the Jobs screen to prepare a plan.</p>}
       {items.map((a) => (
-        <AppCard key={a.id} app={a} dryRun={dryRun} busy={busy} applyDisabled={applyDisabled} act={act} selected={selected.has(a.id)} onToggle={() => toggle(a.id)} batchLocked={running} />
+        <AppCard key={a.id} app={a} dryRun={dryRun} busy={busy} runLabel={runLabel} applyDisabled={!!a.job && loggedOut.includes(a.job.site)} act={act} selected={selected.has(a.id)} onToggle={() => toggle(a.id)} batchLocked={running} />
       ))}
     </section>
   );
@@ -152,6 +166,7 @@ function AppCard({
   app,
   dryRun,
   busy,
+  runLabel,
   applyDisabled,
   act,
   selected,
@@ -161,6 +176,7 @@ function AppCard({
   app: Application;
   dryRun: boolean;
   busy: boolean;
+  runLabel: string | null;
   applyDisabled: boolean;
   act: (fn: () => Promise<unknown>, ok?: string) => Promise<void>;
   selected: boolean;
@@ -169,7 +185,14 @@ function AppCard({
 }) {
   const { plan, job } = app;
   const pending = plan.fields.filter((f) => f.status === 'pending').length;
-  const canApprove = !busy && !applyDisabled && pending === 0 && plan.readiness !== 'blocked_no' && !!plan.cv && ['needs_review', 'dry_run_ok', 'failed'].includes(app.status);
+  // every reason Approve / the checkbox is off, the first one shown on the card
+  const lock =
+    app.approveBlock ??
+    (busy ? `locked: ${runLabel ?? 'a run is active'}` : null) ??
+    (batchLocked ? 'locked: batch approval running' : null) ??
+    (applyDisabled ? `locked: not logged in to ${job?.site} — log in again` : null);
+  const checkLock = lock ?? app.batchBlock;
+  const canApprove = !lock;
   return (
     <div className={`app-card status-${app.status}`}>
       <div className="app-head">
@@ -178,8 +201,8 @@ function AppCard({
             <input
               type="checkbox"
               checked={selected}
-              disabled={!!app.batchBlock || batchLocked}
-              title={app.batchBlock ? `individual review needed: ${app.batchBlock}` : 'select for batch approval'}
+              disabled={!!checkLock}
+              title={checkLock ? (lock ? lock : `individual review needed: ${app.batchBlock}`) : 'select for batch approval'}
               onChange={onToggle}
             />{' '}
             <bdi>
@@ -281,7 +304,7 @@ function AppCard({
         <button
           className={dryRun ? '' : 'danger'}
           disabled={!canApprove}
-          title={pending ? 'answer the pending questions first' : ''}
+          title={lock ?? ''}
           onClick={() => {
             if (!dryRun && !window.confirm('DRY_RUN is OFF. This will REALLY submit the application. Continue?')) return;
             void act(() => apply.approve(app.id), dryRun ? 'dry run started' : 'submitting…');
@@ -292,8 +315,11 @@ function AppCard({
         <button className="secondary" disabled={busy || app.status === 'submitted'} onClick={() => act(() => apply.reject(app.id), 'rejected')}>
           Reject / skip job
         </button>
-        {pending > 0 && <span className="note">{pending} pending answer(s)</span>}
-        {app.batchBlock && ['needs_review', 'dry_run_ok', 'failed'].includes(app.status) && <span className="muted">not for batch: {app.batchBlock}</span>}
+        {lock ? (
+          <span className="note lock-reason">🔒 {lock}</span>
+        ) : (
+          app.batchBlock && <span className="muted">not for batch: {app.batchBlock}</span>
+        )}
       </div>
     </div>
   );

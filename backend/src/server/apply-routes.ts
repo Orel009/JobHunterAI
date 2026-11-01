@@ -9,7 +9,7 @@ import { loadPrefs } from '../core/prefs.js';
 import { byRank, rankStoredJob } from '../core/rank.js';
 import { AnswersBank } from '../apply/bank.js';
 import { Applications, type AppStatus } from '../apply/plan.js';
-import { approveApplication, approveBatch, batchBlock, batchProgress, editField, prepareJobs, refreshFromBank, rejectApplication, setCv } from '../apply/service.js';
+import { approveApplication, approveBatch, approveBlock, batchBlock, batchProgress, editField, prepareJobs, refreshFromBank, rejectApplication, setCv } from '../apply/service.js';
 import { candidateGender, listFacts, loadProfile, profilePath } from '../profile/facts.js';
 import { assertCanApply } from './app.js';
 
@@ -31,7 +31,9 @@ export function registerApplyRoutes(app: FastifyInstance, db: DB) {
     const job = repo.getJob(a.jobId);
     const score = repo.getScore(a.jobId);
     const rank = job ? rankStoredJob(job, score, loadPrefs()) : rankStoredJob({ title: '', roleTypes: [], requiredYears: null, juniorText: null }, null, loadPrefs());
-    return { ...a, job: job ? { ...job, raw: undefined } : null, score, rank, batchBlock: batchBlock(a) };
+    // why Approve / the batch checkbox is not possible, from the application's own state (the UI adds runs and logins)
+    const block = approveBlock(db, a);
+    return { ...a, job: job ? { ...job, raw: undefined } : null, score, rank, approveBlock: block, batchBlock: block ?? batchBlock(a) };
   };
 
   // ---------- applications ----------

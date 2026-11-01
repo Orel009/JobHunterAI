@@ -232,6 +232,8 @@ export interface Application {
   rank: Rank;
   /** why this one can't be approved in a batch (drafts, pending answers, flagged claims…); null = it can */
   batchBlock: string | null;
+  /** why Approve is not possible from the application's own state (already sent, duplicate, pending…); null = it is */
+  approveBlock: string | null;
 }
 export interface SendResult {
   appId: number;

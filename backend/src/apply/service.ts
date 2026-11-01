@@ -391,6 +391,73 @@ async function autoSubmitPrepared(o: {
   return res.status === 'submitted';
 }
 
+// ---------- never twice, never stuck ----------
+/** This job already has a sent application (or you applied by hand): the reason, or null. */
+export function alreadySent(db: DB, jobId: string, exceptAppId?: number): string | null {
+  const a = db.prepare(`SELECT id, submitted_at FROM applications WHERE job_id = ? AND status = 'submitted' AND id != ? ORDER BY id LIMIT 1`).get(jobId, exceptAppId ?? -1) as { id: number; submitted_at: string | null } | undefined;
+  if (a) return `already sent (application #${a.id}${a.submitted_at ? `, ${a.submitted_at.slice(0, 10)}` : ''})`;
+  const j = db.prepare(`SELECT status, applied_manually_at FROM jobs WHERE id = ?`).get(jobId) as { status: string; applied_manually_at: string | null } | undefined;
+  if (j?.status === 'submitted_manual') return `already applied by hand${j.applied_manually_at ? ` (${j.applied_manually_at.slice(0, 10)})` : ''}`;
+  return null;
+}
+
+/** A send that ended before reaching the final click: the application goes back to the review queue. */
+function releaseIfStuck(db: DB, appId: number, why: string): void {
+  const apps = new Applications(db);
+  // approved: stopped before the final step; needs_review: the run failed before even reaching it — either way say why
+  if (!['approved', 'needs_review'].includes(apps.get(appId)?.status ?? '')) return;
+  apps.update(appId, { status: 'needs_review', error: `not sent — the run stopped before sending: ${why.split('\n')[0]}` });
+}
+
+/**
+ * At startup (no run can be active then): applications left "approved" by a run that never finished. Without any
+ * trace of the final step (a before-submit screenshot, a saved send request or response after the approval) they go
+ * back to needs_review. With such a trace the send may have gone out: they are blocked, never sent again
+ * automatically — check on the site, then mark it in History or reject it.
+ */
+export function recoverStuckApprovals(db: DB): Array<{ id: number; to: 'needs_review' | 'blocked'; why: string }> {
+  const apps = new Applications(db);
+  const out: Array<{ id: number; to: 'needs_review' | 'blocked'; why: string }> = [];
+  const files = fs.existsSync(config.paths.screenshots) ? fs.readdirSync(config.paths.screenshots) : [];
+  for (const a of apps.list(['approved'])) {
+    const since = Date.parse(a.reviewedAt ?? a.updatedAt);
+    const trace = files.find(
+      (f) => (f.startsWith(`app${a.id}-before-submit-`) || f.startsWith(`app${a.id}-after-`) || f === `app${a.id}-request.txt` || f.startsWith(`app${a.id}-response.`)) &&
+        fs.statSync(path.join(config.paths.screenshots, f)).mtimeMs >= since - 1000,
+    );
+    if (trace) {
+      const why = `the send may have gone out (${trace}) but no answer was recorded — check on the site, then mark it in History or reject it`;
+      apps.update(a.id, { status: 'blocked', error: why });
+      out.push({ id: a.id, to: 'blocked', why });
+    } else {
+      const lastRun = db.prepare(`SELECT reason FROM runs WHERE kind IN ('submit','dry_run','submit_batch','dry_run_batch') AND status != 'done' AND started_at >= ? ORDER BY id LIMIT 1`).get(new Date(since - 5000).toISOString()) as { reason: string | null } | undefined;
+      const why = `approved on ${(a.reviewedAt ?? a.updatedAt).slice(0, 16).replace('T', ' ')} but never sent${lastRun?.reason ? ` (${lastRun.reason.split('\n')[0]})` : ''} — back for review`;
+      apps.update(a.id, { status: 'needs_review', error: why });
+      out.push({ id: a.id, to: 'needs_review', why });
+    }
+  }
+  return out;
+}
+
+/** Why Approve is not possible for this application right now (from its own state; null = it can be approved). */
+export function approveBlock(db: DB, app: ApplicationRow): string | null {
+  const sent = alreadySent(db, app.jobId, app.status === 'submitted' ? app.id : undefined);
+  if (app.status === 'submitted') return 'already sent';
+  if (sent) return sent;
+  if (app.status === 'approved') return 'sending now';
+  if (app.status === 'rejected') return /^duplicate of /.test(app.error ?? '') ? `duplicate: ${app.error}` : `rejected${app.error ? `: ${app.error}` : ''}`;
+  if (app.status === 'skipped') return `skipped${app.error ? `: ${app.error}` : ''}`;
+  if (app.status === 'blocked') return `blocked: ${app.error ?? 'check on the site'}`;
+  if (!(OPEN as readonly string[]).includes(app.status)) return `application is ${app.status}`;
+  const pending = app.plan.fields.filter((f) => f.status === 'pending').length;
+  if (pending) return `answer ${pending} pending question${pending > 1 ? 's' : ''} first`;
+  if (app.plan.readiness === 'blocked_no') return 'a required statement is false for you';
+  if (!app.plan.cv) return 'no CV chosen (Preferences)';
+  const job = new Repo(db).getJob(app.jobId);
+  if (job && !driverFor(job.site)) return `no automated apply flow for ${job.site}`;
+  return null;
+}
+
 // ---------- approve ----------
 /** The checks an application must pass to be approved (one by one or in a batch). */
 function approvable(db: DB, appId: number): { app: ApplicationRow; job: StoredJob } {
@@ -404,6 +471,8 @@ function approvable(db: DB, appId: number): { app: ApplicationRow; job: StoredJo
   if (!job) throw new ServiceError(404, 'job not found');
   if (!app.plan.cv) throw new ServiceError(409, `no CV chosen (set ${cvNamesFor(job.site, loadPrefs()).where})`);
   if (!driverFor(job.site)) throw new ServiceError(400, `no automated apply flow for ${job.site}`);
+  const sent = alreadySent(db, job.id);
+  if (sent) throw new ServiceError(409, sent);
   return { app, job };
 }
 
@@ -471,6 +540,12 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
       L.warn({ job: job.title }, `not sent: ${excluded}`);
       return done('skipped', excluded);
     }
+    const twice = alreadySent(db, job.id, appId);
+    if (twice) {
+      apps.update(appId, { status: 'skipped', error: `not sent: ${twice}` });
+      L.warn({ job: job.title }, twice);
+      return done('skipped', twice);
+    }
     const dup = sentAlready(apps, repo, appId, job); // e.g. the same job sent from another site earlier in this batch
     if (dup) {
       L.warn({ job: job.title }, dup);
@@ -504,12 +579,18 @@ export function approveApplication(db: DB, appId: number): { runId: number; dryR
   const repo = new Repo(db);
   const dryRun = config.DRY_RUN;
   if (!dryRun && dailyLimitReached(repo, job.site)) throw new ServiceError(429, `daily apply limit reached (${effectiveLimits(loadPrefs()).dailyApplyLimit})`);
-  new Applications(db).update(appId, { status: 'approved', reviewed: true, dryRun });
+  // "approved" is set by sendApproved when the send really starts: a run that cannot start (another run is active) or
+  // fails before reaching the job (browser profile in use, login) leaves the application in review, never stuck
   const runId = startTask(db, job.site, dryRun ? 'dry_run' : 'submit', async (run, _repo, L) => {
     run.stage = `${dryRun ? 'dry run' : 'SUBMIT'}: ${job.title}`;
-    const applied = await driverFor(job.site)!.fetchAppliedJobs(await getPage()).catch(() => null);
-    const r = await sendApproved(db, appId, job, dryRun, L, applied);
-    if (r.stop) throw new Error(r.detail); // bot protection / daily cap / session: the run failed
+    try {
+      const applied = await driverFor(job.site)!.fetchAppliedJobs(await getPage()).catch(() => null);
+      const r = await sendApproved(db, appId, job, dryRun, L, applied);
+      if (r.stop) throw new Error(r.detail); // bot protection / daily cap / session: the run failed
+    } catch (e) {
+      releaseIfStuck(db, appId, e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   });
   return { runId, dryRun };
 }
@@ -559,7 +640,8 @@ export function approveBatch(db: DB, appIds: number[]): { runId: number; dryRun:
     const app = apps.get(id);
     const block = app ? batchBlock(app) : 'not found';
     const job = app ? repo.getJob(app.jobId) : null;
-    if (block || !app || !job || !driverFor(job.site)) refused.push({ appId: id, reason: block ?? (job ? `no automated apply flow for ${job.site}` : 'job not found') });
+    const sent = job ? alreadySent(db, job.id) : null;
+    if (block || sent || !app || !job || !driverFor(job.site)) refused.push({ appId: id, reason: block ?? sent ?? (job ? `no automated apply flow for ${job.site}` : 'job not found') });
     else accepted.push({ app, job, rank: rankStoredJob(job, repo.getScore(job.id), prefs).rank ?? -Infinity });
   }
   if (!accepted.length) throw new ServiceError(409, `nothing to approve: ${refused.map((r) => `#${r.appId} ${r.reason}`).join('; ')}`);
