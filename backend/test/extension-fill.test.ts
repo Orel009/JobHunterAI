@@ -28,6 +28,8 @@ type Fill = {
   fieldType(f: Record<string, unknown>, d?: Record<string, unknown>): string | null;
   localPhone(p: string): string;
   exactPlace(o: string, v: string): boolean;
+  bucketOption(o: string[], n: number): number;
+  nameQueries(v: string, alt?: string): string[];
   closeMatch(o: string, v: string): boolean;
   dateFor(el: Record<string, unknown>, d: string | null): string | null;
   entryKey(section: string, label: string): string | null;
@@ -85,11 +87,11 @@ describe('field mapping (extension/fill-core.js)', () => {
     expect(F.answerFor({ label: 'ציפיות שכר', type: 'text' }, DATA)).toMatchObject({ value: '14,000–16,000 ₪ ברוטו' });
     expect(F.answerFor({ label: 'Resume/CV', type: 'file' }, DATA)).toEqual({ cv: true });
     // cover letters: the AI draft when there is one; yellow without; left alone when the setting is off
-    expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, { ...DATA, draft: { text: 'Hello.' } })).toEqual({ draft: 'Hello.' });
-    expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, DATA)).toMatchObject({ pending: 'cover letter: write it yourself' });
+    expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, { ...DATA, draft: { text: 'Hello.' } })).toEqual({ draft: 'Hello.', flaggedClaims: [] });
+    expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, DATA)).toMatchObject({ pending: 'cover letter: no draft was written — write it yourself' });
     expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, { ...DATA, fillCoverLetters: false })).toMatchObject({ skip: expect.stringMatching(/off/) });
     expect(F.answerFor({ label: 'GitHub URL', type: 'url' }, DATA)).toMatchObject({ pending: 'no github in your profile' });
-    expect(F.answerFor({ label: 'Why us?', type: 'textarea', required: true }, DATA)).toMatchObject({ pending: 'cover letter: write it yourself' });
+    expect(F.answerFor({ label: 'Why us?', type: 'textarea', required: true }, DATA)).toMatchObject({ pending: 'cover letter: no draft was written — write it yourself' });
     expect(F.answerFor({ label: 'Describe a challenge you solved', type: 'textarea', required: true }, DATA)).toMatchObject({ pending: 'no answer on file' });
     expect(F.answerFor({ label: 'Favourite colour', type: 'text', required: false }, DATA)).toMatchObject({ skip: expect.any(String) });
   });
@@ -98,7 +100,10 @@ describe('field mapping (extension/fill-core.js)', () => {
 describe('semantic field types (dictionary, autocomplete, form-control names)', () => {
   it('Hebrew and English synonyms', () => {
     expect(['Confirm your email', 'Re-enter email', 'אימות דוא"ל'].map(F.classify)).toEqual(['confirmEmail', 'confirmEmail', 'confirmEmail']);
-    expect(['Message to the Hiring Team', 'Let the company know about your interest working there', 'Why do you want to work here?', 'Tell us about yourself', 'ספר/י על עצמך', 'מכתב מקדים'].map(F.classify)).toEqual(Array(6).fill('coverLetter'));
+    expect(['Message to the Hiring Team', 'Let the company know about your interest working there', 'Why do you want to work here?', 'Please send us a note on why you want to join', 'מכתב מקדים'].map(F.classify)).toEqual(Array(5).fill('coverLetter'));
+    // about you: a bio, not a cover letter
+    expect(['Bio', 'Bio *', 'Tell us about yourself', 'About you', 'ספר/י על עצמך', 'קצת על עצמי'].map(F.classify)).toEqual(Array(6).fill('bio'));
+    expect(['Country', 'Country of residence', 'מדינה'].map(F.classify)).toEqual(['country', 'country', 'country']);
     expect(['Current job title', 'Current company', 'Notice period', 'When can you start?'].map(F.classify)).toEqual(['currentTitle', 'currentCompany', 'noticePeriod', 'noticePeriod']);
     expect(['Facebook', 'X (fka Twitter)'].map(F.classify)).toEqual(['social', 'social']);
   });
@@ -136,6 +141,14 @@ describe('semantic field types (dictionary, autocomplete, form-control names)', 
     expect(F.closeMatch('ORT Braude College', 'ORT Hermelin College')).toBe(false);
     expect(F.closeMatch('Tel Aviv University', 'Open University')).toBe(false);
     expect(F.closeMatch('College', 'ORT Hermelin College')).toBe(false); // generic words only
+  });
+
+  it('a years bucket in a select; the queries tried in a list of names', () => {
+    const b = ['Select', 'Less than 1 year', '1-3 years', '3–5 years', '5+ years'];
+    expect([0.5, 2, 4, 7].map((n) => F.bucketOption(b, n))).toEqual([1, 2, 3, 4]);
+    expect(F.bucketOption(['פחות משנה', '1 עד 3 שנים', '3 שנים ומעלה'], 2)).toBe(1);
+    expect(F.nameQueries('ORT Hermelin College', 'מכללת אורט הרמלין')).toEqual(['ORT Hermelin College', 'מכללת אורט הרמלין', 'ORT Hermelin', 'ORT', 'Hermelin', 'ORT Hermelin Academic College']);
+    expect(F.nameQueries('John Bryce College', '')).toEqual(['John Bryce College', 'John Bryce', 'John', 'Bryce', 'John Bryce Academic College']);
   });
 
   it('the very question in your answers bank wins over a profile value', () => {
@@ -277,6 +290,12 @@ describe('the local backend (token, never from a web page)', () => {
     const drafter = (async (f: { label: string }, ctx: { language: string; jobText: string }) => (asked.push(`${ctx.language}|${f.label}|${ctx.jobText}`), { text: 'I build APIs.', usedFactIds: ['exp.acme'], unanswerable: false, flaggedClaims: [] })) as never;
     expect(await coverLetterDraft(db, { job: null, title: 'Support Lead', company: 'Base44', label: 'Message to the hiring team', lang: 'en' }, drafter)).toMatchObject({ text: 'I build APIs.', error: null });
     expect(asked[0]).toBe('en|Message to the hiring team: a short note to the hiring team on why I fit the Support Lead role at Base44|Support Lead at Base44');
+    // a page JobHunter does not know: the job ad from the page itself is the job text (context "page"); a bio is asked as a bio
+    const ad = 'Requirements: 2+ years with Node.js and TypeScript, React, SQL. We build a delivery management platform. '.repeat(3);
+    asked.length = 0;
+    expect(await coverLetterDraft(db, { job: null, title: 'Full Stack Developer', company: 'Example Logistics', label: 'Bio *', lang: 'en', kind: 'bio', pageText: ad }, drafter)).toMatchObject({ text: 'I build APIs.', context: 'page' });
+    expect(asked[0]).toBe(`en|Bio *: a few sentences about me, for the Full Stack Developer role at Example Logistics|${ad.trim()}`);
+    expect((await coverLetterDraft(db, { job: null, title: 'x', company: 'y', label: '', lang: 'en', pageText: 'short' }, drafter)).context).toBe('title');
     const none = (async () => ({ text: null, usedFactIds: [], unanswerable: false, flaggedClaims: [], rejectedReason: 'draft cites no facts' })) as never;
     expect(await coverLetterDraft(db, { job: null, title: 'x', company: 'y', label: '', lang: 'he' }, none)).toMatchObject({ text: null, error: 'draft cites no facts' });
   });
@@ -286,7 +305,7 @@ describe('the local backend (token, never from a web page)', () => {
     const course = edu('course', 'Full Stack Development Course', '2024', '2025');
     const degree = edu('degree', 'Practical Software Engineer', '2021', '2024', { field: { en: 'Software Engineering' }, city: { en: 'Netanya' } });
     const older = edu('older', 'B.A. Economics', '2010', '2013');
-    const p = ProfileSchema.parse({ contact: { name: { en: 'Test Person' }, city: { en: 'Tel Aviv' } }, forms: { city: { en: 'Netanya' } }, education: [course, older, degree] });
+    const p = ProfileSchema.parse({ contact: { name: { en: 'Test Person' }, city: { en: 'Tel Aviv' } }, forms: { city: { en: 'Netanya' }, country: { he: 'ישראל', en: 'Israel' } }, education: [course, older, degree] });
     expect(p.education.map(isCourse)).toEqual([true, false, false]);
     expect(isCourse({ kind: null, degree: { he: 'קורס פיתוח', en: null } })).toBe(true);
     expect(isCourse({ kind: 'degree', degree: { he: null, en: 'Full Stack Development Course' } })).toBe(false); // your choice wins
@@ -299,7 +318,7 @@ describe('the local backend (token, never from a web page)', () => {
     // the city for application forms, not the CV's
     fs.writeFileSync(profilePath(), JSON.stringify(p));
     try {
-      expect((await fillData(db, null, 'en')).contact.city).toBe('Netanya');
+      expect((await fillData(db, null, 'en')).contact).toMatchObject({ city: 'Netanya', country: 'Israel', countryAlts: ['ישראל', 'Israel'], cityAlts: ['Netanya', 'Tel Aviv'] });
       fs.writeFileSync(profilePath(), JSON.stringify({ ...p, forms: { city: { he: null, en: null } } }));
       expect((await fillData(db, null, 'en')).contact.city).toBe('Tel Aviv');
     } finally {

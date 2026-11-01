@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<!--
+  Synthetic fixture modeled on a live form (an unlinked careers page with the job ad and the form on the same page, and
+  a required "Bio *"). No real company, person or text: names and content are made up. Replace with a sanitized saved
+  page when one is available.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Full Stack Developer - Example Logistics</title>
+  <meta property="og:site_name" content="Example Logistics">
+</head>
+<body>
+  <header>
+    <a href="/">Example Logistics</a>
+    <nav><a href="/about">About us</a> <a href="/careers">Careers</a> <a href="/contact">Contact sales</a></nav>
+  </header>
+  <main>
+    <article class="job">
+      <h1>Full Stack Developer</h1>
+      <p class="meta">Tel Aviv · Full-time · R&amp;D</p>
+      <h2>About the role</h2>
+      <p>We are building the delivery management platform used by furniture retailers to schedule and track last-mile deliveries. You will own features end to end, from the API to the React dashboard our customers use every day.</p>
+      <h2>Requirements</h2>
+      <ul>
+        <li>2+ years of experience building web applications with Node.js and TypeScript</li>
+        <li>Experience with React and REST API design</li>
+        <li>Hands-on experience with SQL databases</li>
+        <li>Advantage: experience integrating third-party APIs and working with AI tools in development</li>
+      </ul>
+    </article>
+    <section class="apply">
+      <h2>Apply for this position</h2>
+      <form id="apply" onsubmit="return false">
+        <div class="field"><label for="fn">First name *</label><input id="fn" name="first_name" required></div>
+        <div class="field"><label for="ln">Last name *</label><input id="ln" name="last_name" required></div>
+        <div class="field"><label for="em">Email *</label><input id="em" name="email" type="email" required></div>
+        <div class="field"><label for="ph">Phone *</label><input id="ph" name="phone" type="tel" required></div>
+        <div class="field"><label for="bio">Bio *</label><textarea id="bio" name="bio" rows="5" required></textarea></div>
+        <div class="field"><label for="cv">Resume *</label><input id="cv" name="resume" type="file" required></div>
+        <button type="submit">Submit application</button>
+      </form>
+    </section>
+  </main>
+  <footer>
+    <p>© Example Logistics. All rights reserved.</p>
+    <a href="/privacy">Privacy policy</a> <a href="/terms">Terms of use</a>
+  </footer>
+</body>
+</html>

@@ -43,7 +43,7 @@ export interface ProfileDoc {
   blockedSkills: string[];
   contact: { name: Bi; email: string | null; phone: string | null; city: Bi };
   /** values for application forms only (JobHunter Fill / form filling); never in the CV or a draft */
-  forms?: { city: Bi };
+  forms?: { city: Bi; country?: Bi };
   links: Array<{ id: string; label: string; url: string }>;
   summary: Bi;
   experience: Role[];
@@ -190,6 +190,12 @@ export function ProfileEditor({ compact = false, sections, onSaved, onDirtyChang
             </Field>
             <Field label="City for application forms (English)" hint="e.g. Netanya; used instead of the CV's city on forms">
               <input value={p.forms?.city.en ?? ''} onChange={(e) => up((d) => void ((d.forms ??= { city: { he: null, en: null } }).city.en = e.target.value || null))} />
+            </Field>
+            <Field label="Country for application forms (Hebrew)" hint="a form's Country list or field">
+              <input dir="rtl" value={p.forms?.country?.he ?? ''} onChange={(e) => up((d) => void (((d.forms ??= { city: { he: null, en: null } }).country ??= { he: null, en: null }).he = e.target.value || null))} />
+            </Field>
+            <Field label="Country for application forms (English)" hint="e.g. Israel">
+              <input value={p.forms?.country?.en ?? ''} onChange={(e) => up((d) => void (((d.forms ??= { city: { he: null, en: null } }).country ??= { he: null, en: null }).en = e.target.value || null))} />
             </Field>
           </div>
           {!compact && (

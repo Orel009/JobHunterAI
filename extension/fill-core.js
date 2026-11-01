@@ -53,6 +53,8 @@
     'address-line1': 'address',
     url: 'website',
     organization: 'currentCompany',
+    'country-name': 'country',
+    country: 'country',
     'organization-title': 'currentTitle',
   };
   /** then the synonym dictionary (Hebrew + English; order matters: specific before general) */
@@ -60,7 +62,8 @@
     ['never', /captcha|recaptcha|hcaptcha|turnstile|password|סיסמה|credit card|cvv|i agree|i consent|i confirm|i acknowledge|i certify|privacy|terms|consent|אני מאשר|אני מסכים|מסכים לתנאי|מדיניות הפרטיות|תנאי השימוש|הצהרה|gdpr/],
     ['social', /facebook|twitter|\bx fka\b|instagram|tiktok|פייסבוק|טוויטר/],
     ['cv', /\b(resume|cv|curriculum)\b|קורות חיים|קו ח/],
-    ['coverLetter', /cover letter|motivation letter|message to (the )?hiring|hiring (team|manager) message|let the company know|why (do you want|us|are you interested|this (role|company|position))|about (yourself|you)|tell us about|introduce yourself|מכתב מקדים|מכתב פנייה|מכתב לצוות|ספר (י )?על עצמך|ספרו על עצמכם|קצת על עצמי|למה (את|אתה|את ה|אתם)|מדוע (את|אתה)/],
+    ['bio', /^(bio|biography|about|about me|about you|about yourself|summary|professional summary)$|\bbio(graphy)?\b|tell us (a bit |a little |more )?about (yourself|you)\b|introduce yourself|about yourself|ספר (י )?על עצמך|ספרו (לנו )?על עצמכם|ספר(י)? לנו על עצמך|קצת על עצמי|על עצמך/],
+    ['coverLetter', /cover letter|motivation letter|message to (the )?hiring|hiring (team|manager) message|let the company know|note on why|why (do you want|you want|us|are you interested|this (role|company|position))|מכתב מקדים|מכתב פנייה|מכתב לצוות|למה (את|אתה|את ה|אתם)|מדוע (את|אתה)/],
     ['confirmEmail', /\b(confirm|re enter|reenter|repeat|verify|retype) (your )?e ?mail|e ?mail (confirmation|again)|אימות (דוא ל|דואל|מייל|כתובת)|הקלד(ה| י)? שוב/],
     ['firstName', /\b(first name|given name|fname|first)\b|שם פרטי/],
     ['lastName', /\b(last name|family name|surname|lname|last)\b|שם משפחה/],
@@ -75,6 +78,7 @@
     ['yearsExperience', /^(total )?(number of )?years of (professional |work |relevant |overall )?experience$|^how many years of (professional |work |relevant |overall )?experience (do you have|have you got)$|^(סה כ )?שנות ניסיון( מקצועי| בעבודה)?$/],
     ['currentTitle', /current (job )?(title|position|role)|job title|תפקיד נוכחי/],
     ['currentCompany', /current (company|employer)|present employer|employer name|מקום עבודה נוכחי|מעסיק נוכחי|חברה נוכחית/],
+    ['country', /^(country|country of residence|current country|country region|country or region|nationality country)$|^(מדינה|ארץ|ארץ מגורים|מדינת מגורים)$/],
     ['city', /^(city|current city|current location|location|location city|town|place of residence|city of residence|where do you live)$|^(עיר|עיר מגורים|מקום מגורים|יישוב|מגורים)$/],
     ['address', /\b(street )?address\b|^כתובת( מגורים)?$/],
     ['fullName', /^(name|full name|your name|legal name|candidate name)$|^(שם|שם מלא)$/],
@@ -87,20 +91,33 @@
     return null;
   }
 
-  /** A field's type: autocomplete → label → form-control name / name / id → placeholder → the cached label classification. */
-  function fieldType(f, data) {
+  /** The dictionary's type: autocomplete → label → form-control name / name / id → placeholder. */
+  function dictType(f) {
     const ac = String(f.autocomplete || '').toLowerCase().split(/\s+/).pop();
     if (AUTOCOMPLETE[ac]) {
       // "email" twice on a page: the one whose label / id says confirm is the confirmation
       if (AUTOCOMPLETE[ac] === 'email' && classify(`${f.label} ${words(f.id)} ${words(f.name)}`) === 'confirmEmail') return 'confirmEmail';
       return AUTOCOMPLETE[ac];
     }
-    const byLabel = classify(f.label);
-    if (byLabel) return byLabel;
-    const byName = classify(`${words(f.controlName)} ${words(f.name)} ${words(f.id)} ${words(f.dataTest)}`);
-    if (byName) return byName;
-    const byPlaceholder = classify(f.placeholder);
-    if (byPlaceholder) return byPlaceholder;
+    return classify(f.label) || classify(`${words(f.controlName)} ${words(f.name)} ${words(f.id)} ${words(f.dataTest)}`) || classify(f.placeholder) || null;
+  }
+
+  /** the form planner's kinds → field types ("draft:cover" is a cover letter / message, "draft:bio" a bio) */
+  const PLANNED = { 'draft:cover': 'coverLetter', 'draft:bio': 'bio' };
+  const DRAFT_TYPES = ['coverLetter', 'bio'];
+  /**
+   * A field's type: the dictionary, then the form plan (data.plan, by the field's key). A planned draft wins over the
+   * dictionary (a "Message" under "send us a note on why…" is a cover note) except where the dictionary says never /
+   * CV / social. Then the cached label classification.
+   */
+  function fieldType(f, data) {
+    const d = dictType(f);
+    if (d === 'never' || d === 'cv' || d === 'social') return d;
+    const raw = data && data.plan && f.key ? data.plan[f.key] : undefined;
+    const planned = raw ? PLANNED[raw] || raw : undefined;
+    if (DRAFT_TYPES.includes(planned) && (f.type === 'textarea' || f.type === 'text' || !f.type)) return planned;
+    if (d) return d;
+    if (planned && planned !== 'unknown') return planned;
     const learned = data && data.labelTypes ? data.labelTypes[norm(f.label)] : undefined;
     return learned && learned !== 'unknown' ? learned : null;
   }
@@ -133,6 +150,22 @@
     if (i >= 0) return i;
     return texts.findIndex((t) => t.length >= 3 && a.length >= 3 && (t.includes(a) || a.includes(t)));
   }
+  /** A select's bucket for a number of years: "1-3", "2–4 years", "3+", "5 or more", "less than 1", "פחות משנה"… */
+  function bucketOption(options, n) {
+    if (!Number.isFinite(n)) return -1;
+    return options.findIndex((o) => {
+      // the raw text: norm() would drop the dash of "1-3"
+      const t = String(o).toLowerCase().replace(/[–—]/g, '-');
+      let m = t.match(/(\d+(?:\.\d+)?)\s*(?:-|to|עד)\s*(\d+(?:\.\d+)?)/);
+      if (m) return n >= Number(m[1]) && n <= Number(m[2]);
+      m = t.match(/(\d+(?:\.\d+)?)\s*(?:\+|plus|or more|and (?:more|above)|ומעלה|ויותר)/);
+      if (m) return n >= Number(m[1]);
+      m = t.match(/(?:less than|under|fewer than|פחות מ)\s*(\d+(?:\.\d+)?)/);
+      if (m) return n < Number(m[1]);
+      return false;
+    });
+  }
+
   /** A suggestion that IS the city: the same text, or the same before its first comma ("Tel Aviv, Israel"). */
   const exactPlace = (option, value) => norm(String(option).split(',')[0]) === norm(value) || norm(option) === norm(value);
 
@@ -181,10 +214,12 @@
     if (sameQuestion && type !== 'never' && type !== 'cv') return { value: sameQuestion.answer, from: 'answers bank' };
     if (type === 'never') return { skip: 'never filled' };
     if (type === 'social') return { skip: 'no such profile on file' };
-    if (type === 'coverLetter') {
+    if (type === 'coverLetter' || type === 'bio') {
       if (data.fillCoverLetters === false) return { skip: 'cover letters are off (Settings)' };
-      if (data.draft && data.draft.text) return { draft: data.draft.text };
-      return { pending: data.draft && data.draft.error ? `no draft: ${data.draft.error}` : 'cover letter: write it yourself' };
+      // this field's own draft (written for this job), else the page's one cover-letter draft
+      const d = (data.drafts && f.key && data.drafts[f.key]) || (type === 'coverLetter' ? data.draft : null);
+      if (d && d.text) return { draft: d.text, flaggedClaims: d.flaggedClaims || [] };
+      return { pending: d && d.error ? `no draft: ${d.error}` : `${type === 'bio' ? 'bio' : 'cover letter'}: no draft was written — write it yourself` };
     }
     const simple = {
       firstName: c.firstName,
@@ -194,6 +229,7 @@
       confirmEmail: c.email,
       phone: f.hasCountry ? localPhone(c.phone) : c.phone,
       city: c.city,
+      country: c.country,
       linkedin: c.linkedin,
       github: c.github,
       website: c.website || c.github,
@@ -201,7 +237,8 @@
       currentCompany: p.currentCompany,
       yearsExperience: p.yearsExperience === null || p.yearsExperience === undefined ? null : String(p.yearsExperience),
     };
-    if (type && type in simple) return simple[type] ? { value: simple[type], from: 'profile', type } : { pending: `no ${type} in your profile` };
+    const alts = type === 'city' ? c.cityAlts || [] : type === 'country' ? c.countryAlts || [] : [];
+    if (type && type in simple) return simple[type] ? { value: simple[type], from: 'profile', type, alts } : { pending: `no ${type} in your profile` };
     if (type === 'salary') {
       const s = data.salary;
       const v = f.type === 'number' ? (s?.number ?? null) : (s?.text ?? s?.number ?? null);
@@ -217,11 +254,38 @@
   const MARK = 'data-jobhunter-fill';
   const STYLE = { pending: '3px solid #f2c200', cv: '3px solid #2b7de9', filled: '2px solid #2e9e5b', draft: '3px solid #8e44ad' };
 
-  /** the document and every open shadow root in it */
+  /** the document, every open shadow root in it, and the documents of same-origin frames (a form inside an iframe) */
   function allRoots(doc) {
     const out = [doc];
-    for (let i = 0; i < out.length; i++) for (const el of out[i].querySelectorAll('*')) if (el.shadowRoot) out.push(el.shadowRoot);
+    for (let i = 0; i < out.length; i++)
+      for (const el of out[i].querySelectorAll('*')) {
+        if (el.shadowRoot) out.push(el.shadowRoot);
+        if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+          let d = null;
+          try {
+            d = el.contentDocument; // null / throws for another site's frame
+          } catch {
+            d = null;
+          }
+          if (d && d.documentElement && !out.includes(d)) out.push(d);
+        }
+      }
     return out;
+  }
+  /** visible frames from another site that look like a form (not CAPTCHA, video, maps or trackers): you open those yourself */
+  function foreignFrames(doc) {
+    return deepAll(doc, 'iframe')
+      .filter((f) => {
+        let same = false;
+        try {
+          same = !!f.contentDocument;
+        } catch {
+          same = false;
+        }
+        const src = f.src || '';
+        return !same && /^https?:/.test(src) && visible(f) && f.offsetWidth >= 300 && f.offsetHeight >= 200 && !/recaptcha|hcaptcha|turnstile|challenges\.cloudflare|youtube|vimeo|google\.com\/maps|doubleclick|googletagmanager|facebook|twitter|instagram|linkedin/i.test(src);
+      })
+      .map((f) => f.src);
   }
   const deepAll = (doc, sel) => allRoots(doc).flatMap((r) => [...r.querySelectorAll(sel)]);
   /** the shadow hosts around an element, innermost first */
@@ -234,7 +298,7 @@
   const outer = (el) => hosts(el).pop() ?? el;
   const visible = (el) => {
     const t = outer(el);
-    return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length || t.offsetWidth || t.getClientRects().length) && getComputedStyle(el).visibility !== 'hidden';
+    return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length || t.offsetWidth || t.getClientRects().length) && win(el).getComputedStyle(el).visibility !== 'hidden';
   };
   const textOf = (el) => (el ? (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim() : '');
 
@@ -258,13 +322,42 @@
       if (l) return l;
     }
     const fs = el.closest('fieldset');
-    if (fs && fs.querySelector('legend')) return textOf(fs.querySelector('legend'));
-    const group = el.closest('[class*="field"], [class*="question"], [class*="form-group"], li, .row, div');
-    if (group) {
-      const lab = group.querySelector('label, legend, [class*="label"], h3, h4, span');
-      if (lab && lab !== el && textOf(lab)) return textOf(lab);
+    if (fs && fs.querySelector('legend') && fs.querySelectorAll('input:not([type=hidden]), textarea, select').length === 1) return textOf(fs.querySelector('legend'));
+    // nearby text: the closest container that holds only this field, and text in it before the field
+    let group = el.parentElement;
+    for (let i = 0; i < 4 && group && group.tagName !== 'FORM' && group.tagName !== 'BODY'; i++, group = group.parentElement) {
+      if (group.querySelectorAll('input:not([type=hidden]), textarea, select').length > 1) break;
+      const lab = [...group.querySelectorAll('label, legend, [class*="label"], h3, h4, h5, span, p, div')].find(
+        (x) => x !== el && !x.contains(el) && !x.querySelector('input, textarea, select') && textOf(x) && textOf(x).length <= 200 && x.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+      if (lab) return textOf(lab);
     }
-    return el.getAttribute('placeholder') || '';
+    return el.getAttribute('placeholder') || words(el.name || el.id || '');
+  }
+
+  /** the text just before the field and the form's heading ("Please send us a note on why you want to be part of our team") */
+  function nearText(el) {
+    const out = [];
+    const host = outer(el);
+    const form = host.closest('form');
+    for (const scope of [form && form.previousElementSibling, form && form.querySelector('h1, h2, h3, h4, legend, p'), host.previousElementSibling]) {
+      if (scope && !scope.contains(host) && !/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(scope.tagName)) out.push(textOf(scope).slice(0, 200));
+    }
+    return [...new Set(out.filter(Boolean))].join(' | ').slice(0, 350);
+  }
+
+  /** The fields JobHunter may fill, each with a key that is the same in the scan and in the fill. */
+  function formFields(doc) {
+    const seen = new Map();
+    return deepAll(doc, 'input, textarea, select')
+      .filter((el) => !['hidden', 'submit', 'button', 'reset', 'image', 'password', 'search'].includes(el.type) && !el.disabled && !el.readOnly && !inCaptcha(el) && !isPickerSearch(el) && (visible(el) || el.type === 'file'))
+      .map((el) => {
+        const f = info(el);
+        const base = `${el.tagName.toLowerCase()}:${f.type}:${f.name || f.id || norm(f.label || f.placeholder).slice(0, 60)}`;
+        const n = seen.get(base) ?? 0;
+        seen.set(base, n + 1);
+        return { el, f: { ...f, key: n ? `${base}#${n}` : base } };
+      });
   }
 
   /** the framework's form-control name around a field (Angular formcontrolname, data-test) */
@@ -288,14 +381,17 @@
     return { label, name: el.name || '', id: el.id || '', type: el.type || el.tagName.toLowerCase(), autocomplete, placeholder: el.placeholder || '', required, hasCountry, ...ctl };
   }
 
-  const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true, composed: true }));
+  /** the element's own window (a form inside a same-origin frame has its own) */
+  const win = (el) => (el.ownerDocument && el.ownerDocument.defaultView) || globalThis;
+  const fire = (el, type) => el.dispatchEvent(new (win(el).Event)(type, { bubbles: true, composed: true }));
   /** React / Angular / Lit friendly: the native setter, the events typing fires (crossing shadow roots), the host's value. */
   function setValue(el, value) {
-    const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    const w = win(el);
+    const proto = el.tagName === 'TEXTAREA' ? w.HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? w.HTMLSelectElement.prototype : w.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
     el.focus();
     setter.call(el, value);
-    el.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, data: value, inputType: 'insertText' }));
+    el.dispatchEvent(new w.InputEvent('input', { bubbles: true, composed: true, data: value, inputType: 'insertText' }));
     fire(el, 'change');
     // a web component that keeps its own value property in step with the inner field
     const h = hosts(el)[0];
@@ -314,7 +410,7 @@
 
   /** Only ever called on a radio / checkbox input (never a button, link or submit). */
   function tick(input) {
-    if (!(input instanceof HTMLInputElement) || (input.type !== 'radio' && input.type !== 'checkbox')) throw new Error('JobHunter Fill: refusing to click a non-choice element');
+    if (!input || input.tagName !== 'INPUT' || (input.type !== 'radio' && input.type !== 'checkbox')) throw new Error('JobHunter Fill: refusing to click a non-choice element');
     if (!input.checked) input.click();
   }
 
@@ -348,7 +444,9 @@
   /** a list's own search box, or a country / country-code picker: never one of your fields */
   const isPickerSearch = (el) =>
     /search/i.test(el.className || '') ||
-    /^(search|חיפוש)|country|region|dial code|calling code|מדינה|קידומת/i.test(`${el.getAttribute('aria-label') || ''} ${el.placeholder || ''}`);
+    /^(search|חיפוש)\b|dial code|calling code|country code|קידומת/i.test(`${el.getAttribute('aria-label') || ''} ${el.placeholder || ''}`) ||
+    // the country / region list of a phone widget (+972): not the form's own "Country"
+    (/country|region|מדינה/i.test(`${el.getAttribute('aria-label') || ''} ${el.placeholder || ''}`) && (hosts(el).some((h) => /phone|tel/i.test(h.tagName)) || !!el.closest('[class*="phone"], [class*="tel-input"], [class*="intl-tel"]')));
   const empty = (el) => (el.tagName === 'SELECT' ? !el.value || el.selectedIndex <= 0 : !String(el.value ?? '').trim());
   const inCaptcha = (el) => !!el.closest('[class*="captcha"], [id*="captcha"], .g-recaptcha, .h-captcha, iframe');
   const isAutocomplete = (el) => el.getAttribute('aria-autocomplete') === 'list' || el.getAttribute('role') === 'combobox' || /select__input/.test(el.className) || hosts(el).some((h) => /autocomplete|combobox/i.test(h.tagName));
@@ -362,15 +460,38 @@
     setValue(input, value);
     input.focus();
     let found = [];
+    let shown = 0;
     for (let i = 0; i < 12 && !found.length; i++) {
       await wait(250);
-      found = deepAll(doc, '[role="option"]').filter((o) => visible(o) && matches(textOf(o)));
+      const opts = deepAll(doc, '[role="option"]').filter((o) => visible(o));
+      found = opts.filter((o) => matches(textOf(o)));
+      // suggestions are there but none is it: no need to wait the full time
+      shown = opts.length ? shown + 1 : 0;
+      if (!found.length && shown >= 3) break;
     }
     if (!found.length) return false;
     const option = found.find((o) => norm(textOf(o)) === norm(value)) || found[0];
     option.click(); // a suggestion in the field's own list (not a button)
     await wait(200);
     return true;
+  }
+
+  /**
+   * What to type into a list of names, in turn: the name, the other language's name, the name without "College",
+   * "University"… ("ORT Hermelin"), each distinctive word ("ORT", "Hermelin"), and "… Academic College".
+   */
+  function nameQueries(value, alt) {
+    const v = String(value || '').trim();
+    const core = v.split(/\s+/).filter((w) => w && !GENERIC.has(norm(w)));
+    const out = [v, String(alt || '').trim(), core.join(' '), ...core.filter((w) => norm(w).length >= 3), /\bcollege$/i.test(v) && !/academic/i.test(v) ? v.replace(/\s*college$/i, ' Academic College') : ''];
+    return [...new Set(out.filter(Boolean))];
+  }
+  /** A name from a list: each query in turn, a suggestion only when it is exactly or closely the name. None: the name typed, yellow. */
+  async function pickName(doc, el, value, alt) {
+    const match = (t) => closeMatch(t, value) || (!!alt && closeMatch(t, alt));
+    for (const q of nameQueries(value, alt)) if (await fillFromList(doc, el, q, match)) return true;
+    setValue(el, value);
+    return false;
   }
 
   // ---------- Experience / Education entries ----------
@@ -468,9 +589,9 @@
         const v = key === 'location' ? next.city || null : key === 'start' || key === 'end' ? (key === 'end' && next.current ? null : dateFor(el, next[key])) : next[key];
         if (!v || !empty(el)) continue;
         if (isAutocomplete(el)) {
-          // institution / company / place lists: a suggestion only when it is exactly or closely the value
+          // institution / company lists: several queries, a suggestion only when exactly or closely the name; places: exact
           const place = key === 'location';
-          if (await fillFromList(doc, el, String(v), (t) => (place ? exactPlace(t, v) : closeMatch(t, v)))) {
+          if (place ? await fillFromList(doc, el, String(v), (t) => exactPlace(t, v)) : await pickName(doc, el, String(v), key === 'institution' ? next.institutionAlt : '')) {
             mark(el, 'filled');
             filled++;
           } else needYou(out, el, labelFor(el) || key, `pick "${v}" from the list`);
@@ -507,21 +628,66 @@
   }
 
   /** The labels the dictionary does not know (for the backend's classification), whether there is a cover-letter field, and the page. */
+  /** The job ad as the page shows it: the main content without navigation, header, footer, forms and scripts. */
+  function pageJobText(doc) {
+    const clean = (root) => {
+      const c = root.cloneNode(true);
+      c.querySelectorAll('nav, header, footer, aside, script, style, noscript, svg, form, iframe, button, select, input, textarea, [role="navigation"], [role="banner"], [role="contentinfo"], [aria-hidden="true"], #jobhunter-fill-overlay').forEach((n) => n.remove());
+      return (c.textContent || '').replace(/\s+/g, ' ').trim();
+    };
+    const main = doc.querySelector('main, article, [role="main"]');
+    let text = main ? clean(main) : '';
+    if (text.length < 300 && doc.body) text = clean(doc.body);
+    return text.slice(0, 6000);
+  }
+
+  const MAX_OPTIONS = 60;
+  /**
+   * What the page asks for, for the background worker: every fillable field as the planner sees it (key, label,
+   * placeholder, name, type, options, required, nearby text, empty or not, the dictionary's type), the job ad on the
+   * page, its title / company / language, and frames from another site that hold a form.
+   */
   function scan(doc, data = {}) {
-    const unknown = [];
-    let coverLetter = false;
-    for (const el of deepAll(doc, 'input, textarea, select')) {
-      if (['hidden', 'submit', 'button', 'reset', 'image', 'password', 'search', 'file', 'radio', 'checkbox'].includes(el.type) || el.disabled || inCaptcha(el) || isPickerSearch(el) || !visible(el)) continue;
-      const f = info(el);
-      const t = fieldType(f, data);
-      if (t === 'coverLetter' && empty(el)) coverLetter = true;
-      if (!t && f.label && !bankAnswer(f.label, data.bank ?? [])) unknown.push(f.label);
-    }
+    const fields = formFields(doc)
+      .filter(({ el }) => el.type !== 'file' && el.type !== 'radio' && el.type !== 'checkbox')
+      .map(({ el, f }) => ({
+        key: f.key,
+        label: String(f.label || '').slice(0, 300),
+        placeholder: String(f.placeholder || '').slice(0, 300),
+        name: String(f.name || f.id || '').slice(0, 200),
+        type: el.tagName === 'TEXTAREA' ? 'textarea' : el.tagName === 'SELECT' ? 'select-one' : f.type,
+        options: el.tagName === 'SELECT' ? [...el.options].map((o) => textOf(o) || o.value).filter(Boolean).slice(0, MAX_OPTIONS) : [],
+        required: !!f.required,
+        near: nearText(el),
+        empty: empty(el),
+        dict: dictType(f),
+      }));
+    // the older shape, still read by tests and older workers
+    const unknown = fields.filter((x) => !x.dict && x.label && !bankAnswer(x.label, data.bank ?? [])).map((x) => x.label);
     const h1 = doc.querySelector('h1');
     // the page's own job title and company (for a page JobHunter does not know): the heading, og:site_name / the tab title's last part
     const parts = String(doc.title || '').split(/\s+[-|–]\s+/).map((x) => x.trim()).filter(Boolean);
     const company = doc.querySelector('meta[property="og:site_name"]')?.getAttribute('content') || (parts.length > 1 ? parts[parts.length - 1] : '');
-    return { unknown: [...new Set(unknown)].slice(0, 40), coverLetter, title: textOf(h1) || parts.slice(0, -1).join(' - ') || doc.title, company, lang: /[א-ת]/.test(textOf(doc.body).slice(0, 3000)) ? 'he' : 'en' };
+    return {
+      fields: fields.slice(0, 120),
+      unknown: [...new Set(unknown)].slice(0, 40),
+      coverLetter: fields.some((x) => x.empty && DRAFT_TYPES.includes(x.dict)),
+      title: textOf(h1) || parts.slice(0, -1).join(' - ') || doc.title,
+      company,
+      lang: /[א-ת]/.test(textOf(doc.body).slice(0, 3000)) ? 'he' : 'en',
+      jobText: pageJobText(doc),
+      frames: foreignFrames(doc),
+    };
+  }
+
+  /** The draft a field gets (pure, also used by the background worker): its planned / dictionary type, if a draft. */
+  function draftKindOf(field, plan) {
+    const d = field.dict;
+    if (d === 'never' || d === 'cv' || d === 'social') return null;
+    const raw = plan ? plan[field.key] : undefined;
+    const planned = raw ? PLANNED[raw] || raw : undefined;
+    const t = DRAFT_TYPES.includes(planned) && (field.type === 'textarea' || field.type === 'text') ? planned : d;
+    return t === 'bio' ? 'bio' : t === 'coverLetter' ? 'cover' : null;
   }
 
   /** Fills the page. Returns the summary; shows the overlay unless opts.overlay === false. */
@@ -531,12 +697,8 @@
     clearMarks(doc);
     const out = { filled: 0, drafts: 0, needYou: 0, pending: [], cv: data.cv?.file ?? null, cvFields: 0, skipped: 0, details: [], notes: [], flaggedClaims: (data.draft && data.draft.flaggedClaims) || [] };
     const done = new Set();
-    const fields = deepAll(doc, 'input, textarea, select').filter(
-      (el) => !['hidden', 'submit', 'button', 'reset', 'image', 'password', 'search'].includes(el.type) && !el.disabled && !el.readOnly && !inCaptcha(el) && !isPickerSearch(el) && (visible(el) || el.type === 'file'),
-    );
-    for (const el of fields) {
+    for (const { el, f } of formFields(doc)) {
       if (done.has(el)) continue;
-      const f = info(el);
 
       // radio group / checkbox group: one question, many inputs
       if (el.type === 'radio' || (el.type === 'checkbox' && el.name && el.getRootNode().querySelectorAll(`input[type=checkbox][name="${CSS.escape(el.name)}"]`).length > 1)) {
@@ -587,6 +749,7 @@
         setValue(el, a.draft);
         mark(el, 'draft', 'AI draft — review before submitting');
         out.drafts++;
+        for (const c of a.flaggedClaims || []) if (!out.flaggedClaims.includes(c)) out.flaggedClaims.push(c);
         continue;
       }
       if (el.type === 'checkbox') {
@@ -598,7 +761,11 @@
       }
       if (el.tagName === 'SELECT') {
         const opts2 = [...el.options];
-        const i = chooseOption(opts2.map((o) => o.text), a.value);
+        const texts = opts2.map((o) => o.text);
+        // your value, the same in the other language (Israel / ישראל), or a years bucket ("1-3 years")
+        let i = chooseOption(texts, a.value);
+        for (const alt of a.alts || []) if (i < 0) i = chooseOption(texts, alt);
+        if (i < 0 && a.type === 'yearsExperience') i = bucketOption(texts, Number(a.value));
         if (i >= 0 && opts2[i].value !== '') {
           setValue(el, opts2[i].value);
           mark(el, 'filled');
@@ -612,7 +779,13 @@
       if (isAutocomplete(el)) {
         // a city: only the exact suggestion; a name (company, school): exact or close; anything else: the matching option.
         // No match: the typed text stays, yellow
-        const ok = await fillFromList(doc, el, String(a.value), a.type === 'city' ? (t) => exactPlace(t, a.value) : (t) => closeMatch(t, a.value) || chooseOption([t], a.value) === 0);
+        const places = [a.value, ...(a.alts || [])];
+        const ok =
+          a.type === 'city' || a.type === 'country'
+            ? await fillFromList(doc, el, String(a.value), (t) => places.some((x) => exactPlace(t, x)))
+            : a.type === 'currentCompany'
+              ? await pickName(doc, el, String(a.value), '')
+              : await fillFromList(doc, el, String(a.value), (t) => closeMatch(t, a.value) || chooseOption([t], a.value) === 0);
         if (ok) {
           mark(el, 'filled');
           out.filled++;
@@ -632,6 +805,12 @@
       out.details.push({ label: f.label, value: a.value, from: a.from });
     }
     await fillEntries(doc, data, out);
+    // a form inside another site's frame: the browser lets no extension script fill it from this page
+    for (const src of data.frames || []) out.notes.push(`part of the form is inside a frame from ${hostOf(src)}: open ${src} in its own tab and click JobHunter Fill there`);
+    // a form with more steps: this step only; you click Next yourself
+    if (deepAll(doc, 'button, [role="button"], input[type="button"]').some((b) => visible(b) && /^(next|continue|הבא|המשך)\b/i.test((textOf(b) || b.value || '').trim()))) {
+      out.notes.push('this form has more steps: this one is filled; after you click Next yourself, click Fill again (or JobHunter Fill) for the next step');
+    }
     // required fields still empty (custom widgets too), in shadow roots as well
     for (const el of deepAll(doc, '[aria-required="true"], [required]')) {
       const host = outer(el);
@@ -662,16 +841,29 @@
       <div class="b">
         <div class="t">JobHunter Fill</div>
         <div id="sum"><span class="g">filled ${out.filled}</span>${out.drafts ? `, <span class="d">AI drafts ${out.drafts}</span>` : ''}, <span class="y">need you ${out.needYou}</span>${out.cv ? `, <span class="c">CV: ${escapeHtml(out.cv)}</span>` : ''}</div>
-        <div class="m">${job ? `${escapeHtml(job.title)} — ${escapeHtml(job.company)} (${escapeHtml(job.siteLabel)})` : 'not linked to a JobHunter job: your details only'}</div>
+        <div class="m">${job ? `${escapeHtml(job.title)} — ${escapeHtml(job.company)} (${escapeHtml(job.siteLabel)})` : 'not linked to a JobHunter job'}</div>
+        ${data.jobContext ? `<div class="m">job context: ${escapeHtml(data.jobContext)}</div>` : ''}
         ${out.drafts ? `<div class="m">The purple text is an AI draft from your profile: read and edit it before submitting.${claims ? ` Check these claims: <ul>${claims}</ul>` : ''}</div>` : ''}
         ${out.pending.length ? `<div class="m"><span class="y">need you</span><ul>${out.pending.slice(0, 12).map((x) => `<li>${escapeHtml(x)}</li>`).join('')}${out.pending.length > 12 ? `<li>… ${out.pending.length - 12} more (outlined yellow)</li>` : ''}</ul></div>` : ''}
         ${(data.problems || []).map((n) => `<div class="m">⚠ ${escapeHtml(n)}</div>`).join('')}
         ${out.notes.map((n) => `<div class="m">${escapeHtml(n)}</div>`).join('')}
         <div class="m">Check everything, attach the CV, then submit yourself.</div>
-        <div class="r">${job ? '<button class="p" id="applied">I applied</button>' : ''}<button id="close">Close</button></div>
+        <div class="r">${job ? '<button class="p" id="applied">I applied</button>' : ''}${opts.onFillAgain ? '<button id="again" title="fills only the fields that are still empty (new fields, the next step)">Fill again</button>' : ''}<button id="close">Close</button></div>
         <div class="m" id="msg"></div>
       </div>`;
     shadow.getElementById('close').onclick = () => clearMarks(doc);
+    const again = shadow.getElementById('again');
+    if (again)
+      again.onclick = async () => {
+        again.disabled = true;
+        shadow.getElementById('msg').textContent = 'filling the empty fields again…';
+        try {
+          await opts.onFillAgain();
+        } catch (e) {
+          again.disabled = false;
+          shadow.getElementById('msg').textContent = `could not fill again: ${e.message}`;
+        }
+      };
     const ap = shadow.getElementById('applied');
     if (ap)
       ap.onclick = async () => {
@@ -688,7 +880,14 @@
     doc.body.appendChild(host);
   }
 
+  const hostOf = (u) => {
+    try {
+      return new URL(u).hostname;
+    } catch {
+      return 'another site';
+    }
+  };
   const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
-  root.JobHunterFill = { norm, classify, fieldType, bankAnswer, chooseOption, exactPlace, closeMatch, localPhone, answerFor, dateFor, entryKey, run, scan, clearMarks, manualOnlyHost, MANUAL_ONLY_MESSAGE, FORBIDDEN };
+  root.JobHunterFill = { norm, classify, dictType, fieldType, draftKindOf, bucketOption, nameQueries, pageJobText, bankAnswer, chooseOption, exactPlace, closeMatch, localPhone, answerFor, dateFor, entryKey, run, scan, clearMarks, manualOnlyHost, MANUAL_ONLY_MESSAGE, FORBIDDEN };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

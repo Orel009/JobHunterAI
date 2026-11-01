@@ -56,7 +56,7 @@ export function educationEntries(p: Profile | null, lang: 'he' | 'en'): FillData
   if (!p) return [];
   const pick = (b: { he: string | null; en: string | null } | undefined) => (b ? (b[lang] ?? b[lang === 'he' ? 'en' : 'he'] ?? '') : '');
   return orderEducation(p.education)
-    .map((e) => ({ institution: pick(e.institution), degree: pick(e.degree), field: pick(e.field), city: pick(e.city), start: e.start, end: isCurrent(e.end) ? null : e.end }))
+    .map((e) => ({ institution: pick(e.institution), institutionAlt: e.institution[lang === 'he' ? 'en' : 'he'] ?? '', degree: pick(e.degree), field: pick(e.field), city: pick(e.city), start: e.start, end: isCurrent(e.end) ? null : e.end }))
     .filter((e) => e.institution);
 }
 
@@ -69,6 +69,11 @@ export interface FillData {
     email: string | null;
     phone: string | null;
     city: string | null;
+    /** the country for application forms (a select's "Country" → Israel / ישראל) */
+    country: string | null;
+    /** the same place in the other language (a list in English on a Hebrew job, and the other way round) */
+    cityAlts: string[];
+    countryAlts: string[];
     linkedin: string | null;
     github: string | null;
     website: string | null;
@@ -86,7 +91,7 @@ export interface FillData {
   /** work roles (most recent first) and education, for Experience / Education entries on the form */
   experience: Array<{ company: string; title: string; start: string | null; end: string | null; current: boolean; description: string }>;
   /** in your order (degrees before courses, newest first, unless you set one); city: the institution's ("school location") */
-  education: Array<{ institution: string; degree: string; field: string; city: string; start: string | null; end: string | null }>;
+  education: Array<{ institution: string; institutionAlt: string; degree: string; field: string; city: string; start: string | null; end: string | null }>;
   /** Settings → JobHunter Fill: fill cover letters / messages to the hiring team with an AI draft (default on) */
   fillCoverLetters: boolean;
 }
@@ -172,6 +177,9 @@ export async function fillData(db: DB, job: StoredJob | null, pageLang?: 'he' | 
       phone: profile?.contact.phone ?? null,
       // the city for application forms (Profile → Contact), else the CV's
       city: pick(profile?.forms?.city) ?? pick(profile?.contact.city),
+      country: pick(profile?.forms?.country),
+      cityAlts: [...new Set([profile?.forms?.city.he, profile?.forms?.city.en, profile?.contact.city.he, profile?.contact.city.en].filter((x): x is string => !!x))],
+      countryAlts: [...new Set([profile?.forms?.country?.he, profile?.forms?.country?.en].filter((x): x is string => !!x))],
       linkedin: link(/linkedin/i),
       github: link(/github/i),
       website: link(/portfolio|website|site|homepage/i),
@@ -202,20 +210,28 @@ export async function fillData(db: DB, job: StoredJob | null, pageLang?: 'he' | 
  */
 export async function coverLetterDraft(
   db: DB,
-  o: { job: StoredJob | null; title: string; company: string; label: string; lang: 'he' | 'en' },
-  drafter = makeDrafter(loadProfile(), { cache: new Repo(db), mode: 'coverLetter', styleSample: extensionSettings().styleSample }),
-): Promise<{ text: string | null; flaggedClaims: string[]; usedFactIds: string[]; error: string | null }> {
+  o: { job: StoredJob | null; title: string; company: string; label: string; lang: 'he' | 'en'; kind?: 'cover' | 'bio'; pageText?: string },
+  drafter = makeDrafter(loadProfile(), { cache: new Repo(db), mode: o.kind === 'bio' ? 'bio' : 'coverLetter', styleSample: extensionSettings().styleSample }),
+): Promise<{ text: string | null; flaggedClaims: string[]; usedFactIds: string[]; error: string | null; context: 'job' | 'page' | 'title' }> {
   const title = o.job?.title || o.title || 'this role';
   const company = o.job?.company || o.company || 'your company';
+  // the job ad: the stored job's; else the page's own text (a page JobHunter does not know); else only its title
+  const stored = o.job ? `${o.job.descriptionText}\n${o.job.requirementsText}`.trim() : '';
+  const pageText = (o.pageText ?? '').trim();
+  const context = stored ? 'job' : pageText.length >= 200 ? 'page' : 'title';
+  const jobText = stored || (context === 'page' ? pageText : '') || `${title} at ${company}`;
   const language = o.job?.language ?? o.lang;
-  const jobText = o.job ? `${o.job.descriptionText}\n${o.job.requirementsText}`.trim() : '';
-  const question =
-    language === 'he'
+  const bio = o.kind === 'bio';
+  const question = bio
+    ? language === 'he'
+      ? `${o.label || 'ספר/י על עצמך'}: כמה משפטים עליי, למשרת ${title} ב-${company}`
+      : `${o.label || 'Bio'}: a few sentences about me, for the ${title} role at ${company}`
+    : language === 'he'
       ? `${o.label || 'מכתב לצוות הגיוס'}: מכתב קצר לצוות הגיוס על ההתאמה שלי לתפקיד ${title} ב-${company}`
       : `${o.label || 'Message to the hiring team'}: a short note to the hiring team on why I fit the ${title} role at ${company}`;
-  const d = await drafter({ key: 'coverLetter', label: question, type: 'textarea', required: false }, { jobTitle: `${title} — ${company}`, jobText: jobText || `${title} at ${company}`, language });
-  if (!d.text || d.rejectedReason || d.unanswerable) return { text: null, flaggedClaims: [], usedFactIds: d.usedFactIds, error: d.rejectedReason ?? 'not answerable from your profile facts' };
-  return { text: d.text, flaggedClaims: d.flaggedClaims, usedFactIds: d.usedFactIds, error: null };
+  const d = await drafter({ key: bio ? 'bio' : 'coverLetter', label: question, type: 'textarea', required: false }, { jobTitle: `${title} — ${company}`, jobText, language });
+  if (!d.text || d.rejectedReason || d.unanswerable) return { text: null, flaggedClaims: [], usedFactIds: d.usedFactIds, error: d.rejectedReason ?? 'not answerable from your profile facts', context };
+  return { text: d.text, flaggedClaims: d.flaggedClaims, usedFactIds: d.usedFactIds, error: null, context };
 }
 
 /** "I applied" from the extension: the job is marked applied by hand (once). */

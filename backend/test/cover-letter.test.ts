@@ -10,13 +10,14 @@ const h = vi.hoisted(() => {
   process.env.DATA_DIR = 'data/test-cover';
   process.env.PREFERENCES_FILE = 'data/test-cover/preferences.yaml';
   Object.assign(process.env, { LLM_ANALYZE_PROVIDER: 'fake', LLM_ANALYZE_MODEL: 'test', LLM_WRITE_PROVIDER: 'fake', LLM_WRITE_MODEL: 'test' });
-  return { drafts: [] as string[], calls: [] as Array<Array<{ role: string; content: string }>>, reach: { ok: true, reason: null as string | null, canStart: true } };
+  return { drafts: [] as string[], calls: [] as Array<Array<{ role: string; content: string }>>, cached: [] as boolean[], reach: { ok: true, reason: null as string | null, canStart: true } };
 });
 vi.mock('../src/llm/llm.js', async (orig) => ({
   ...(await orig<typeof import('../src/llm/llm.js')>()),
-  chatJson: async (o: { task?: string; messages: Array<{ role: string; content: string }> }) => {
+  chatJson: async (o: { task?: string; cache?: unknown; messages: Array<{ role: string; content: string }> }) => {
     if (o.task === 'analyze') return { data: { unsupportedClaims: [] } };
     h.calls.push(o.messages);
+    h.cached.push(!!o.cache);
     return { data: { text: h.drafts.shift() ?? '', usedFactIds: ['exp.matrix.en.1'], unanswerable: false } };
   },
 }));
@@ -42,6 +43,7 @@ const CLEAN = 'I built an API platform for internal teams at Matrix. Your ad ask
 beforeEach(() => {
   h.drafts.length = 0;
   h.calls.length = 0;
+  h.cached.length = 0;
   h.reach = { ok: true, reason: null, canStart: true };
 });
 
@@ -66,7 +68,7 @@ describe('the draft', () => {
     expect(d.text).toBe(CLEAN);
     expect(h.calls).toHaveLength(2);
     expect(h.calls[1]!.at(-1)!.content).toMatch(/^Rejected: it has banned phrase: "thrilled"/);
-    expect(h.calls[0]![0]!.content).toMatch(/2-4 short sentences.*\n.*1-2 concrete facts.*one concrete reason tied to the job ad/s);
+    expect(h.calls[0]![0]!.content).toMatch(/2-4 short sentences.*THIS job only.*\n.*Pick 1-2 requirements from the job ad that the listed facts really meet.*one concrete reason tied to this company or role/s);
   });
 
   it('still breaking the rules after the rewrite → no draft, with the reason', async () => {
@@ -84,6 +86,29 @@ describe('the draft', () => {
     const answer = await makeDrafter(PROFILE)(field, ctx);
     expect(answer.text).toBe('I am excited about it. I build APIs.');
     expect(h.calls).toHaveLength(1);
+  });
+});
+
+describe('a fresh text for every job, and the bio', () => {
+  const cache = { get: () => null, set: () => undefined } as never;
+  it('cover letters and bios are never served from the cache (the same request twice = two texts); form answers are', async () => {
+    h.drafts.push(CLEAN, CLEAN);
+    const draft = makeDrafter(PROFILE, { mode: 'coverLetter', cache });
+    await draft(field, ctx);
+    await draft(field, ctx);
+    expect(h.calls).toHaveLength(2);
+    expect(h.cached).toEqual([false, false]);
+    h.drafts.push('I build APIs.');
+    await makeDrafter(PROFILE, { cache })(field, ctx);
+    expect(h.cached.at(-1)).toBe(true);
+  });
+
+  it('a bio: about you (current role, stack, one project), 2-3 sentences; a fourth sentence sends it back', async () => {
+    h.drafts.push('I am a developer at Matrix. I build APIs. I use Node.js. I built a platform.', 'I am a developer at Matrix, where I built an API platform for internal teams.');
+    const d = await makeDrafter(PROFILE, { mode: 'bio' })(field, ctx);
+    expect(d.text).toBe('I am a developer at Matrix, where I built an API platform for internal teams.');
+    expect(h.calls[0]![0]!.content).toMatch(/short bio of the candidate.*2-3 short plain sentences: the current role, the key stack, and one project/s);
+    expect(h.calls[1]!.at(-1)!.content).toMatch(/^Rejected: it has 4 sentences \(at most 3\)/);
   });
 });
 

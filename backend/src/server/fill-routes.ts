@@ -12,7 +12,7 @@ import { Repo } from '../db/repo.js';
 import { ServiceError } from '../apply/service.js';
 import { extensionToken, regenerateExtensionToken, tokenOk } from '../extension/token.js';
 import { coverLetterDraft, fillData, markAppliedByHand, matchJob } from '../extension/fill.js';
-import { classifyLabels } from '../extension/labels.js';
+import { classifyLabels, planForm } from '../extension/labels.js';
 import { extensionSettings, saveExtensionSettings } from '../extension/settings.js';
 import { ROOT_DIR } from '../config.js';
 import { isIndeedHost } from '../alerts/assisted.js';
@@ -62,10 +62,55 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
     }
   });
 
-  /** A cover letter / message to the hiring team: an AI draft from your profile facts, for you to review on the form. */
+  /**
+   * The form planner: the page's fields (and the job) → a kind per field (a profile key, a draft, or unknown). No values.
+   * Cached per site + form; a failure comes back as the reason for the overlay.
+   */
+  app.post('/api/fill/plan', async (req) => {
+    const S = (n: number) => z.string().max(n).default('');
+    const b = z
+      .object({
+        url: z.string().max(4000),
+        fields: z
+          .array(z.object({ key: z.string().max(300), label: S(300), placeholder: S(300), name: S(200), type: S(40), options: z.array(z.string().max(200)).max(80).default([]), required: z.boolean().default(false), near: S(400) }))
+          .max(120),
+        job: z.object({ title: S(300), company: S(200), text: S(8000) }).default({ title: '', company: '', text: '' }),
+      })
+      .parse(req.body ?? {});
+    const host = (() => {
+      try {
+        return new URL(b.url).hostname;
+      } catch {
+        return 'unknown';
+      }
+    })();
+    const t0 = Date.now();
+    try {
+      const r = await planForm(host, b.fields, b.job);
+      log.info({ host, fields: b.fields.length, cached: r.cached, ms: Date.now() - t0, drafts: Object.values(r.plan).filter((k) => k.startsWith('draft:')).length }, 'extension: form planned');
+      return { ...r, error: null };
+    } catch (e) {
+      const reach = await llmReachable();
+      const error = reach.ok ? `the model failed: ${e instanceof Error ? e.message : String(e)}` : `${reach.reason}: start it (JobHunter → the LLM badge → Start Ollama), then fill again`;
+      log.warn({ host, fields: b.fields.length, err: error }, 'extension: form not planned');
+      return { plan: {}, cached: false, signature: null, error };
+    }
+  });
+
+  /** A cover letter / message / bio: an AI draft from your profile facts, for you to review on the form. */
   app.post('/api/fill/draft', async (req) => {
     const b = z
-      .object({ jobId: z.string().max(80).optional(), title: z.string().max(300).default(''), company: z.string().max(200).default(''), label: z.string().max(300).default(''), lang: z.enum(['he', 'en']).default('en') })
+      .object({
+        jobId: z.string().max(80).optional(),
+        title: z.string().max(300).default(''),
+        company: z.string().max(200).default(''),
+        label: z.string().max(300).default(''),
+        lang: z.enum(['he', 'en']).default('en'),
+        /** cover: a cover letter / message / note; bio: about you */
+        kind: z.enum(['cover', 'bio']).default('cover'),
+        /** the job ad as the page shows it (a page JobHunter does not know) */
+        jobText: z.string().max(8000).default(''),
+      })
       .parse(req.body ?? {});
     if (!extensionSettings().fillCoverLetters) throw new ServiceError(409, 'cover letters are off (Settings → JobHunter Fill)');
     const job = b.jobId ? repo.getJob(b.jobId) : null;
@@ -73,9 +118,15 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
     // the model not there: said in the overlay ("no draft: …"), not an error deep in the call
     const reach = await llmReachable();
     const d = reach.ok
-      ? await coverLetterDraft(db, { job, title: b.title, company: b.company, label: b.label, lang: b.lang }).catch((e: unknown) => ({ text: null, flaggedClaims: [], usedFactIds: [], error: `the model failed: ${e instanceof Error ? e.message : String(e)}` }))
-      : { text: null, flaggedClaims: [], usedFactIds: [], error: `${reach.reason}: start it (JobHunter → the LLM badge → Start Ollama), then fill again` };
-    log.info({ job: job ? `${job.title} — ${job.company}` : `(not linked) ${b.title} — ${b.company}`, ms: Date.now() - t0, ok: !!d.text, error: d.error, flaggedClaims: d.flaggedClaims.length }, 'extension: cover-letter draft');
+      ? await coverLetterDraft(db, { job, title: b.title, company: b.company, label: b.label, lang: b.lang, kind: b.kind, pageText: b.jobText }).catch((e: unknown) => ({
+          text: null,
+          flaggedClaims: [],
+          usedFactIds: [],
+          error: `the model failed: ${e instanceof Error ? e.message : String(e)}`,
+          context: null,
+        }))
+      : { text: null, flaggedClaims: [], usedFactIds: [], error: `${reach.reason}: start it (JobHunter → the LLM badge → Start Ollama), then fill again`, context: null };
+    log.info({ kind: b.kind, job: job ? `${job.title} — ${job.company}` : `(not linked) ${b.title} — ${b.company}`, context: d.context, ms: Date.now() - t0, ok: !!d.text, error: d.error, flaggedClaims: d.flaggedClaims.length }, 'extension: draft');
     return d;
   });
 

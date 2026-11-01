@@ -44,9 +44,9 @@ export const ProfileSchema = z.object({
   }),
   /**
    * USER-OWNED: values for application forms only (JobHunter Fill and form filling) — never a profile fact, never in a
-   * CV or a draft. city: the city forms ask for (your CV may leave it out on purpose).
+   * CV or a draft. city: the city forms ask for (your CV may leave it out on purpose); country: a form's "Country".
    */
-  forms: z.object({ city: Bi.default({ he: null, en: null }) }).default({ city: { he: null, en: null } }),
+  forms: z.object({ city: Bi.default({ he: null, en: null }), country: Bi.default({ he: null, en: null }) }).default({ city: { he: null, en: null }, country: { he: null, en: null } }),
   links: z.array(z.object({ id: z.string(), label: z.string(), url: z.string() })).default([]),
   summary: Bi.default({ he: null, en: null }),
   experience: z

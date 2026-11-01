@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<!--
+  Synthetic fixture modeled on a live form (an unlinked careers page whose fields have placeholders only, a "Country"
+  select, and a "Message" textarea under the heading "Please send us a note on why you want to be part of our team").
+  No real company, person or text. Replace with a sanitized saved page when one is available.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Backend Engineer | Example Payments</title>
+  <meta property="og:site_name" content="Example Payments">
+</head>
+<body>
+  <nav class="top"><a href="/">Home</a> <a href="/products">Products</a> <a href="/blog">Blog</a></nav>
+  <main>
+    <section class="position">
+      <h1>Backend Engineer</h1>
+      <p>Example Payments builds cross-border payment APIs for online merchants. The team owns the services that move money between payment providers, so reliability and clean API design matter more than anything.</p>
+      <h3>What you will do</h3>
+      <p>Design and build REST APIs in Node.js, integrate external payment providers, and improve monitoring of the services in production.</p>
+      <h3>What we are looking for</h3>
+      <p>Experience with Node.js or .NET, microservices and SQL. Experience with AI agents or automation is a plus.</p>
+    </section>
+    <section class="contact-form">
+      <h2>Please send us a note on why you want to be part of our team</h2>
+      <form onsubmit="return false">
+        <div class="row"><input type="text" name="full_name" placeholder="Full name"></div>
+        <div class="row"><input type="email" name="your_email" placeholder="Email"></div>
+        <div class="row"><input type="tel" name="your_phone" placeholder="Phone"></div>
+        <div class="row">
+          <select name="country">
+            <option value="">Country</option>
+            <option value="DE">Germany</option>
+            <option value="IL">Israel</option>
+            <option value="GB">United Kingdom</option>
+            <option value="US">United States</option>
+          </select>
+        </div>
+        <div class="row"><textarea name="msg" rows="6" placeholder="Message"></textarea></div>
+        <button type="submit">Send</button>
+      </form>
+    </section>
+  </main>
+  <footer><p>© Example Payments</p><a href="/privacy">Privacy</a></footer>
+</body>
+</html>
