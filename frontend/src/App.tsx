@@ -154,7 +154,7 @@ export function App() {
       )}
       {onboarding === false && tab === 'history' && <HistoryScreen />}
       {onboarding === false && tab === 'market' && <MarketScreen onSaved={refresh} />}
-      {onboarding === false && tab === 'settings' && <SettingsScreen onSaved={refresh} sites={status?.sites ?? []} />}
+      {onboarding === false && tab === 'settings' && <SettingsScreen onSaved={refresh} sites={status?.sites ?? []} pauses={status?.pauses ?? {}} busy={!!status?.activeRun} />}
       <LogPanel />
     </div>
   );

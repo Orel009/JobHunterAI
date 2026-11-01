@@ -145,6 +145,8 @@ export const PrefsSchema = z.object({
     .object({
       /** chosen by the same language rule as cv.he / cv.en; a missing name means the application fails (no fallback) */
       cv: z.object({ he: z.string().default(''), en: z.string().default('') }).prefault({}),
+      /** the most JobKarov pages one session loads (a Run & send, or one task on its own); the rest waits */
+      maxPageLoads: z.number().int().min(3).max(200).default(10),
     })
     .prefault({}),
   standardAnswers: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),

@@ -25,6 +25,9 @@ import { scheduleSettings } from './schedule.js';
 import { config } from '../config.js';
 import { autoSubmitSettings } from '../apply/auto-submit.js';
 import { adapters, SITES } from '../sites/registry.js';
+import { isPaused, pauseExpired, pauseOf, sitePauses } from '../core/site-pause.js';
+import { beginBudgetSession, budgetSummary, endBudgetSession } from '../core/site-budget.js';
+import { resumeCheck } from './site-resume.js';
 
 export type HuntTrigger = 'manual' | 'schedule' | 'task' | 'cli';
 
@@ -50,6 +53,12 @@ export interface HuntSummary {
   note: string | null;
   /** per site: sends the site answered with a CAPTCHA (never attempted → assisted panel), out of all send attempts */
   captchas?: Record<string, { captcha: number; attempts: number }>;
+  /** sites paused when the hunt ended (left out of it): reason and when the resume check may run */
+  paused?: Record<string, { reason: string; until: string }>;
+  /** resume checks of sites whose pause had run out */
+  resumed?: Array<{ site: string; resumed: boolean; detail: string }>;
+  /** page loads per budgeted site (e.g. JobKarov) */
+  pageLoads?: Record<string, { used: number; max: number }>;
 }
 
 export interface HuntResult extends HuntSummary {
@@ -126,6 +135,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     p.steps.push({ name, state: 'running' });
     return (state: 'done' | 'skipped' | 'failed' = 'done', detail?: string) => Object.assign(p.steps[p.steps.length - 1]!, { state, detail });
   };
+  beginBudgetSession('hunt'); // one page-load budget for the whole Run & send
   try {
     const repo = new Repo(db);
     const before = repo.statusCounts();
@@ -134,12 +144,28 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       return { site: r?.site ?? '?', status: r?.status, reason: r?.reason ?? null, inserted: r?.stats?.inserted ?? 0, scored: r?.stats?.scored ?? 0 };
     };
 
-    // the sites this hunt can apply on (an adapter and an apply flow), each with its own login
-    const applySites = SITES.filter((x) => x.enabled && adapters[x.id] && hasApplyFlow(x.id));
+    // paused sites whose pause ran out: one session check each; resumed only if the site serves its real page
+    const resumed: NonNullable<HuntSummary['resumed']> = [];
+    for (const site of SITES.filter((x) => x.enabled && adapters[x.id])) {
+      const pz = pauseOf(site.id);
+      if (!pz || !pauseExpired(pz)) continue;
+      const endR = step(`checking whether ${site.displayName} serves its page again (paused: ${pz.reason})`);
+      const r = await resumeCheck(site.id, opts.checkSiteSession ?? checkSiteSession);
+      resumed.push({ site: site.id, resumed: r.resumed, detail: r.detail });
+      endR(r.resumed ? 'done' : 'failed', r.detail);
+    }
+    const pausedNow = (id: string) => isPaused(id);
+    for (const site of SITES.filter((x) => x.enabled && adapters[x.id] && pausedNow(x.id))) {
+      step(`${site.displayName}: paused — ${pauseOf(site.id)!.reason}`);
+      Object.assign(p.steps[p.steps.length - 1]!, { state: 'skipped', detail: `left out of this run; resume check from ${pauseOf(site.id)!.until.slice(0, 16).replace('T', ' ')} UTC (or Settings → Resume)` });
+    }
+
+    // the sites this hunt can apply on (an adapter and an apply flow), each with its own login; paused ones are left out
+    const applySites = SITES.filter((x) => x.enabled && adapters[x.id] && hasApplyFlow(x.id) && !pausedNow(x.id));
     const sessions = new Map<string, SessionInfo>();
-    let end = step('checking the Drushim login');
+    let end!: ReturnType<typeof step>;
     for (const site of applySites) {
-      if (site.id !== 'drushim') end = step(`checking the ${site.displayName} login`);
+      end = step(`checking the ${site.displayName} login`);
       const check = site.id === 'drushim' ? (opts.checkSession ?? checkDrushimSession) : () => (opts.checkSiteSession ?? checkSiteSession)(site.id);
       const session = await check().catch((e: unknown): SessionInfo => ({ state: 'unknown', checkedAt: nowIso(), detail: String(e) }));
       sessions.set(site.id, session);
@@ -149,7 +175,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       }
       end(session.state === 'logged_out' ? 'failed' : 'done', session.state === 'logged_in' ? 'logged in' : session.state === 'logged_out' ? 'NOT logged in — discovery only' : `unknown (${session.detail})`);
     }
-    if (!applySites.length) end('skipped', 'no site with an apply flow is enabled');
+    if (!applySites.length) step('checking the logins')('skipped', 'no site with an apply flow is enabled (or every one is paused)');
     const loginNeeded = sessions.get('drushim')?.state === 'logged_out';
     L.info({ sessions: Object.fromEntries([...sessions].map(([k, v]) => [k, v.state])) }, 'hunt started');
 
@@ -166,6 +192,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     }
     // discovery on every enabled site that has an adapter (Drushim, JobMaster)
     for (const site of SITES.filter((x) => x.enabled && adapters[x.id])) {
+      if (pausedNow(site.id)) continue; // paused (also when a block during this run paused it)
       end = step(`discovering on ${site.displayName} → scoring`);
       await runToCompletion(db, site.id, 'full');
       const r = lastRun();
@@ -189,6 +216,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     const waiting: string[] = [];
     const candidates: Array<(typeof pool)[number]> = [];
     for (const site of applySites) {
+      if (pausedNow(site.id)) continue; // paused by a block during discovery
       const mine = pool
         .filter((j) => j.site === site.id)
         .map((j) => ({ ...j, r: rankStoredJob(j, j.score, prefs).rank ?? -Infinity }))
@@ -244,6 +272,11 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     };
     const captchas = captchaCounts(db, startedAt);
     if (Object.keys(captchas).length) summary.captchas = captchas;
+    const pz = sitePauses();
+    if (Object.keys(pz).length) summary.paused = Object.fromEntries(Object.entries(pz).map(([k, v]) => [k, { reason: v.reason, until: v.until }]));
+    if (resumed.length) summary.resumed = resumed;
+    const loads = budgetSummary();
+    if (Object.keys(loads).length) summary.pageLoads = loads;
     Object.assign(p.counts, { sent: summary.sent, review: summary.waitingForReview, failed: summary.failed });
     db.prepare('UPDATE hunts SET finished_at = ?, summary_json = ? WHERE id = ?').run(summary.finishedAt, JSON.stringify(summary), huntId);
     L.info(summary, 'hunt finished');
@@ -264,6 +297,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     db.prepare('UPDATE hunts SET finished_at = ?, summary_json = ? WHERE id = ?').run(nowIso(), JSON.stringify({ trigger, startedAt, error: e instanceof Error ? e.message : String(e) }), huntId);
     throw e;
   } finally {
+    endBudgetSession('hunt');
     p.finished = true;
     running = false;
   }
@@ -297,6 +331,13 @@ export function doneReport(h: HuntSummary & { error?: string }, still: string[])
     out.push(`waiting for your review ${h.waitingForReview ?? h.readyForReview}`);
     out.push(`failed ${h.failed}`);
     if (h.loginNeeded) out.push('Drushim login expired — log in again (dashboard button or npm run login -- drushim); this run was discovery-only.');
+    for (const r of h.resumed ?? []) out.push(`${SITES.find((x) => x.id === r.site)?.displayName ?? r.site}: ${r.detail}`);
+    for (const [site, v] of Object.entries(h.paused ?? {})) {
+      out.push(`${SITES.find((x) => x.id === site)?.displayName ?? site} paused: ${v.reason} — left out; resume check from ${v.until.slice(0, 16).replace('T', ' ')} UTC (or Settings → Resume)`);
+    }
+    for (const [site, c] of Object.entries(h.pageLoads ?? {})) {
+      if (Number.isFinite(c.max)) out.push(`${SITES.find((x) => x.id === site)?.displayName ?? site}: ${c.used} of ${c.max} page loads used this session`);
+    }
     for (const [site, c] of Object.entries(h.captchas ?? {})) {
       out.push(`${SITES.find((x) => x.id === site)?.displayName ?? site}: CAPTCHA on ${c.captcha} of ${c.attempts} send attempt(s) — never attempted; those jobs are in the assisted panel (apply by hand)`);
     }

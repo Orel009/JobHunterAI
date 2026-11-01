@@ -18,6 +18,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import { config } from '../src/config.js';
 import { ApplyError } from '../src/sites/apply-error.js';
 import { fillPanel, installDryRunGuard, openPanel, screenshotPanel, submitPanel } from '../src/sites/jobkarov/apply.js';
+import { beginBudgetSession, endBudgetSession } from '../src/core/site-budget.js';
 import type { JkPreview } from '../src/sites/jobkarov/parse.js';
 import type { ApplyPlan, ResolvedField } from '../src/apply/types.js';
 
@@ -151,6 +152,8 @@ const fieldOf = (body: string, name: string) => new RegExp(`name="${name}"\\r\\n
 
 beforeEach(async () => {
   fs.mkdirSync(config.paths.screenshots, { recursive: true });
+  endBudgetSession('task');
+  beginBudgetSession('task'); // each test is its own session (10 JobKarov page loads)
   await page?.close().catch(() => undefined);
 });
 afterAll(async () => {

@@ -78,6 +78,8 @@ export interface SiteAdapter {
   search(query: SearchQuery, ctx: SiteContext): AsyncIterable<RawJob>;
   /** Fetch full details for a job found via search. Returns the enriched RawJob. */
   getDetails(job: Pick<Job, 'url' | 'externalId'>, ctx: SiteContext): Promise<RawJob | null>;
+  /** Optional: the order to run the search terms in (e.g. least recently searched first, under a page budget). */
+  orderQueries?<T extends { query: string }>(plan: T[]): T[];
   /** Job ids (externalId) this account already applied to on the site, with the sent date when known. */
   appliedJobs?(ctx: SiteContext): Promise<Map<string, string | null>>;
   /** Phase 2. */

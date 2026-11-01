@@ -3,6 +3,8 @@ import { llm, type LlmSettings, type TaskCfg, type UsageReport } from './api';
 import { Field, Num } from './forms';
 import { LinkedInSettingsCard } from './LinkedInScreen';
 import { AutoSubmitCard } from './AutoSubmit';
+import { SitePausesCard } from './SitePauses';
+import type { SitePause } from './api';
 import { ScheduleCard } from './Schedule';
 import type { Status } from './api';
 
@@ -150,7 +152,7 @@ export function KeyInputs({ settings, only, onSaved }: { settings: LlmSettings; 
   );
 }
 
-export function SettingsScreen({ onSaved, sites = [] }: { onSaved?: () => void; sites?: Status['sites'] }) {
+export function SettingsScreen({ onSaved, sites = [], pauses = {}, busy = false }: { onSaved?: () => void; sites?: Status['sites']; pauses?: Record<string, SitePause>; busy?: boolean }) {
   const [s, setS] = useState<LlmSettings | null>(null);
   const [tasks, setTasks] = useState<Record<string, TaskCfg>>({});
   const [limit, setLimit] = useState<number | undefined>(undefined);
@@ -301,6 +303,7 @@ export function SettingsScreen({ onSaved, sites = [] }: { onSaved?: () => void; 
           </table>
         </fieldset>
       )}
+      <SitePausesCard pauses={pauses} sites={sites} busy={busy} onChanged={onSaved} />
       <AutoSubmitCard sites={sites} onSaved={onSaved} />
       <ScheduleCard onSaved={onSaved} />
       <LinkedInSettingsCard onSaved={onSaved} />

@@ -131,6 +131,8 @@ jobkarov:
   cv:
     he: ""
     en: ""
+  # the most JobKarov pages one session loads (a Run & send, or one task on its own); discovery keeps 4 for applying
+  maxPageLoads: 10
 
 thresholds:
   autoSubmitMinScore: 80

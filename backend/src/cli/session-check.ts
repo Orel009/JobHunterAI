@@ -3,6 +3,7 @@
  * restart? (cookie names and expiry only, never values)
  */
 import { config } from '../config.js';
+import { pausedText } from '../core/site-pause.js';
 import { profileInUse, PROFILE_IN_USE } from '../browser/chrome.js';
 import { siteBrowser } from '../browser/session.js';
 import { formatSessionReport, sessionReport } from '../browser/session-report.js';
@@ -11,6 +12,11 @@ const site = process.argv[2] ?? 'drushim';
 if (site !== 'drushim' && site !== 'alljobs' && site !== 'jobmaster' && site !== 'jobnet' && site !== 'jobkarov') {
   console.error('session checks exist for drushim, alljobs, jobmaster, jobnet and jobkarov');
   process.exit(1);
+}
+const paused = pausedText(site);
+if (paused && !process.argv.includes('--anyway')) {
+  console.error(`${paused}. Not checking it (Settings → Resume runs the one check that can resume it; --anyway checks regardless).`);
+  process.exit(2);
 }
 if (profileInUse(config.paths.browserProfile)) {
   console.error(PROFILE_IN_USE);

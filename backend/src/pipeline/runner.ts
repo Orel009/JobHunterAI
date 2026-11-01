@@ -2,7 +2,9 @@ import { config } from '../config.js';
 import { log } from '../log.js';
 import type { DB } from '../db/index.js';
 import { Repo, type StoredJob } from '../db/repo.js';
-import { getAdapter } from '../sites/registry.js';
+import { SITES, getAdapter } from '../sites/registry.js';
+import { pauseSite, pausedText } from '../core/site-pause.js';
+import { beginBudgetSession, endBudgetSession } from '../core/site-budget.js';
 import type { SiteContext } from '../sites/types.js';
 import { BlockedError, closeContext, getPage } from '../browser/session.js';
 import { toJob } from '../core/job.js';
@@ -70,6 +72,9 @@ export function stopRun(): boolean {
 /** Starts a discovery/scoring run in the background. */
 export function startRun(db: DB, site: string, kind: RunKind): number {
   getAdapter(site); // validates site
+  // a paused site is not loaded at all (scoring alone needs no browser)
+  const paused = kind !== 'score' ? pausedText(site, SITES.find((s) => s.id === site)?.displayName ?? site) : null;
+  if (paused) throw new Error(paused);
   return startTask(db, site, kind, async (run, repo, L) => {
     if (kind === 'discover' || kind === 'full') await discover(repo, run, L);
     if (kind === 'enrich') {
@@ -121,6 +126,7 @@ export async function waitIdle(): Promise<void> {
 
 async function execute(repo: Repo, run: ActiveRun, fn: TaskFn): Promise<void> {
   const L = log.child({ runId: run.id, site: run.site, kind: run.kind });
+  const ownBudget = beginBudgetSession('task'); // inside a Run & send, the hunt's session holds the budget
   try {
     await fn(run, repo, L);
     const status = run.controller.signal.aborted ? 'stopped' : 'done';
@@ -130,12 +136,15 @@ async function execute(repo: Repo, run: ActiveRun, fn: TaskFn): Promise<void> {
     if (e instanceof BlockedError) {
       repo.finishRun(run.id, 'blocked', run.stats, e.reason);
       L.error({ reason: e.reason }, 'run BLOCKED — not retrying; check the site manually');
+      // any block pauses the site for 48 hours (a multi-site task pauses the site itself, where it happened)
+      if (SITES.some((s) => s.id === run.site)) pauseSite(run.site, e.reason);
     } else {
       const msg = e instanceof Error ? e.message : String(e);
       repo.finishRun(run.id, 'failed', run.stats, msg);
       L.error({ err: msg }, 'run failed');
     }
   } finally {
+    if (ownBudget) endBudgetSession('task');
     await closeContext();
   }
 }
@@ -144,7 +153,7 @@ async function discover(repo: Repo, run: ActiveRun, L: typeof log): Promise<void
   const prefs = loadPrefs();
   const limits = effectiveLimits(prefs);
   const adapter = getAdapter(run.site);
-  const plan = searchPlan(prefs);
+  const plan = adapter.orderQueries ? adapter.orderQueries(searchPlan(prefs)) : searchPlan(prefs);
   if (plan.length === 0) throw new Error('No search queries: add enabled roleTypes (with queries) to preferences.yaml');
 
   const page = await getPage();

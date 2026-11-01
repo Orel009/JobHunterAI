@@ -127,6 +127,8 @@ export interface Status {
   emailAlerts: { enabled: boolean; sources: string[] };
   /** jobs a site's send left for you to apply by hand (e.g. a JobKarov CAPTCHA): the assisted panel lists them */
   needsManual: number;
+  /** paused sites: not loaded at all until a resume check passes */
+  pauses: Record<string, SitePause>;
   autoSubmit: { sites: Record<string, boolean>; minRank: number | null; minRankEffective: number; paused: boolean; pausedAt: string | null };
   lastHunt: import('./Schedule').HuntSummary | null;
   huntRunning: boolean;
@@ -176,6 +178,15 @@ async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   return json;
 }
 
+export interface SitePause {
+  reason: string;
+  detail: string;
+  since: string;
+  until: string;
+  source: 'block' | 'manual';
+  expired: boolean;
+}
+
 export const api = {
   status: () => req<Status>('GET', '/api/status'),
   jobs: (q: Record<string, string | number | undefined>) => {
@@ -190,6 +201,7 @@ export const api = {
   stopRun: () => req('POST', '/api/runs/stop'),
   runs: () => req<RunRow[]>('GET', '/api/runs'),
   checkSiteSession: (site: string) => req<{ runId: number }>('POST', '/api/session/check', { site }),
+  resumeSite: (site: string) => req<{ site: string; resumed: boolean; detail: string }>('POST', `/api/sites/${site}/resume`),
   checkSession: () => req<{ runId: number }>('POST', '/api/session/check'),
 };
 

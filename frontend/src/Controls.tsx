@@ -42,6 +42,15 @@ export function Controls({ status, onChange, profileReady = true }: { status: St
           .filter((s) => s.enabled && s.id !== 'drushim')
           .map((s) => {
             const st = status.sessions[s.id]?.state;
+            const pz = status.pauses?.[s.id];
+            if (pz)
+              return (
+                <span key={s.id} className="site-session">
+                  <span className="badge warn" title={`${pz.detail} — since ${new Date(pz.since).toLocaleString('he-IL')}; resume: Settings → Paused sites`}>
+                    {s.displayName}: paused: {pz.reason}
+                  </span>
+                </span>
+              );
             return (
               <span key={s.id} className="site-session">
                 <span className={st === 'logged_in' ? 'badge ok' : st === 'logged_out' ? 'badge warn' : 'badge'} title={status.sessions[s.id]?.detail}>
@@ -72,11 +81,18 @@ export function Controls({ status, onChange, profileReady = true }: { status: St
         {status.sites.map((s) => (
           <span key={s.id} className="site-actions">
             <button
-              disabled={!s.enabled || !!run || busy}
+              disabled={!s.enabled || !!run || busy || !!status.pauses?.[s.id]}
               onClick={() => act(() => api.startRun(s.id, 'full'))}
-              title={profileReady ? 'search → prefilter → details → score' : 'search → prefilter → details; scoring is skipped until your profile is approved, then starts by itself'}
+              title={
+                status.pauses?.[s.id]
+                  ? `paused: ${status.pauses[s.id]!.reason} — resume in Settings → Paused sites`
+                  : profileReady
+                    ? 'search → prefilter → details → score'
+                    : 'search → prefilter → details; scoring is skipped until your profile is approved, then starts by itself'
+              }
             >
               Discover {s.displayName}
+              {status.pauses?.[s.id] && ` — paused: ${status.pauses[s.id]!.reason}`}
             </button>
             {s.enabled && (
               <button className="secondary" disabled={!!run || busy} onClick={() => act(() => api.startRun(s.id, 'score'))}>

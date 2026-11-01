@@ -48,6 +48,7 @@ vi.mock('../src/sites/drushim/apply.js', async (orig) => {
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { pauseOf, sitePauses, unpauseSite } from '../src/core/site-pause.js';
 import { config } from '../src/config.js';
 import { openDb, type DB } from '../src/db/index.js';
 import { Repo } from '../src/db/repo.js';
@@ -112,6 +113,7 @@ beforeEach(() => {
   (drushimApply as unknown as { __reset(): void }).__reset();
   saveAutoSubmitSettings({ sites: { drushim: false }, minRank: 90, paused: false, pausedAt: null });
   fs.writeFileSync(config.paths.preferences, PREFS);
+  for (const s of Object.keys(sitePauses())) unpauseSite(s); // a block in one test pauses the site for 48h
 });
 
 describe('approve selected → submit', () => {
@@ -145,17 +147,18 @@ describe('approve selected → submit', () => {
     expect(() => approveBatch(db, [draft])).toThrow(/nothing to approve/);
   });
 
-  it('a CAPTCHA stops the batch; the rest stay in the review queue', async () => {
+  it('a CAPTCHA stops the batch and pauses the site; that one and the rest stay in the review queue', async () => {
     h.failOn = { n: 2, kind: 'captcha' };
     const ids = [waiting('10', 99), waiting('11', 98), waiting('12', 97)];
     approveBatch(db, ids);
     await waitIdle();
     expect(h.sent).toEqual(['10']);
-    expect([status('10'), status('11'), status('12')]).toEqual(['submitted', 'failed', 'needs_review']);
+    expect([status('10'), status('11'), status('12')]).toEqual(['submitted', 'needs_review', 'needs_review']);
     const b = batchProgress()!;
     expect(b.stoppedReason).toMatch(/CAPTCHA/);
-    expect(b.results.map((x) => x.status)).toEqual(['submitted', 'failed', 'not_sent']);
+    expect(b.results.map((x) => x.status)).toEqual(['submitted', 'not_sent', 'not_sent']);
     expect(b.results[1]!.stop).toBe('captcha');
+    expect(pauseOf('drushim')).toMatchObject({ reason: 'CAPTCHA / bot check', source: 'block' });
   });
 
   it('a session problem stops the batch', async () => {

@@ -6,6 +6,8 @@ import type { DB } from '../db/index.js';
 import { Repo } from '../db/repo.js';
 import { SITES } from '../sites/registry.js';
 import { JOB_STATUSES } from '../sites/types.js';
+import { pauseExpired, pausedText, sitePauses } from '../core/site-pause.js';
+import { resumeSiteNow } from '../pipeline/site-resume.js';
 import { getActiveRun, refilterExisting, startRun, startTask, stopRun, syncSalaries } from '../pipeline/runner.js';
 import { scorePending } from '../pipeline/score-pending.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
@@ -90,6 +92,8 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
       emailAlerts: { enabled: emailAlertsEnabled(), sources: enabledSources() },
       /** jobs a site's send left for you to apply by hand (e.g. a JobKarov CAPTCHA): shown in the assisted panel */
       needsManual: (db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'needs_manual'").get() as { n: number }).n,
+      /** paused sites (not loaded at all): reason, since, until (the resume check may run from then), expired */
+      pauses: Object.fromEntries(Object.entries(sitePauses()).map(([k, v]) => [k, { ...v, expired: pauseExpired(v) }])),
       /** auto-submit (off by default): per-site toggles, the kill switch and the effective minimum rank */
       autoSubmit: { ...autoSubmitSettings(), minRankEffective: effectiveMinRank() },
       /** the latest hunt's summary, and the next in-app scheduled hunt (null = off) */
@@ -249,8 +253,21 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   /** Re-check the site login (e.g. after `npm run login -- drushim` in another terminal). Uses the browser, so it is a run. */
   app.post('/api/session/check', async (req, reply) => {
     const { site } = z.object({ site: z.enum(['drushim', 'jobmaster', 'jobnet', 'jobkarov', 'alljobs']).default('drushim') }).parse(req.body ?? {});
+    const paused = pausedText(site, SITES.find((s) => s.id === site)?.displayName ?? site);
+    if (paused) return reply.status(409).send({ error: `${paused} — no session checks while paused` });
     try {
       return { runId: startTask(db, site, 'session_check', async () => void (site === 'drushim' ? await checkDrushimSession() : await checkSiteSession(site))) };
+    } catch (e) {
+      return reply.status(409).send({ error: (e as Error).message });
+    }
+  });
+
+  /** Settings → Resume: one session check; the site resumes only if it serves its real page (a block re-pauses it). */
+  app.post<{ Params: { site: string } }>('/api/sites/:site/resume', async (req, reply) => {
+    const site = req.params.site;
+    if (!SITES.some((s) => s.id === site)) return reply.status(404).send({ error: `no such site: ${site}` });
+    try {
+      return await resumeSiteNow(db, site);
     } catch (e) {
       return reply.status(409).send({ error: (e as Error).message });
     }

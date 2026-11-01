@@ -12,6 +12,7 @@ import { SITES } from '../sites/registry.js';
 import { CHROME_MISSING_HELP, findChrome, profileInUse, PROFILE_IN_USE } from '../browser/chrome.js';
 import { formatSessionReport, sessionReport } from '../browser/session-report.js';
 import { checkLoginPage } from '../browser/login-page.js';
+import { pausedText } from '../core/site-pause.js';
 
 const site = process.argv[2];
 const entry = SITES.find((s) => s.id === site);
@@ -20,6 +21,11 @@ if (!entry) {
   process.exit(1);
 }
 const profile = config.paths.browserProfile;
+const paused = pausedText(entry.id, entry.displayName);
+if (paused && !process.argv.includes('--anyway')) {
+  console.error(`${paused}. Not opening it (npm run login -- ${entry.id} --anyway to open it regardless).`);
+  process.exit(2);
+}
 if (profileInUse(profile)) {
   console.error(PROFILE_IN_USE);
   process.exit(1);

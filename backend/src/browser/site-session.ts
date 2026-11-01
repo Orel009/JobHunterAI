@@ -10,6 +10,8 @@ import { JM_BASE, loginState as jmLoginState } from '../sites/jobmaster/parse.js
 import { JN_BASE, sendFormUrl as jnSendFormUrl } from '../sites/jobnet/parse.js';
 import { sendFormLoginState as jnLoginState } from '../sites/jobnet/apply.js';
 import { JK_BASE } from '../sites/jobkarov/parse.js';
+import { pauseSite } from '../core/site-pause.js';
+import { useLoad } from '../core/site-budget.js';
 import { jkSessionVerdict, readLogin as jkReadLogin, type JkSessionEvidence } from '../sites/jobkarov/apply.js';
 
 export type LoginState = 'logged_in' | 'logged_out' | 'unknown';
@@ -18,6 +20,10 @@ export interface SessionInfo {
   state: LoginState;
   checkedAt: string | null;
   detail: string;
+  /** the check hit a block (bot protection, a refusal page): the site pauses for 48 hours */
+  blocked?: string;
+  /** the site served its normal page (a paused site resumes only on this) */
+  realPage?: boolean;
 }
 
 const states: Record<string, SessionInfo> = {
@@ -85,7 +91,7 @@ export async function checkAllJobsSession(onContext?: (ctx: BrowserContext) => P
     await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => undefined);
     const now = new Date().toISOString();
     const blocked = await detectBlock(page, res?.status());
-    if (blocked) info = { state: 'unknown', checkedAt: now, detail: `alljobs: ${blocked} — not bypassed; try again later` };
+    if (blocked) info = { state: 'unknown', checkedAt: now, detail: `alljobs: ${blocked} — not bypassed; try again later`, blocked };
     else {
       const links = await page.evaluate(() => {
         const items = Array.from(document.querySelectorAll('a, button'));
@@ -120,7 +126,7 @@ export async function checkJobMasterSession(onContext?: (ctx: BrowserContext) =>
     await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => undefined);
     const now = new Date().toISOString();
     const blocked = await detectBlock(page, res?.status());
-    if (blocked) info = { state: 'unknown', checkedAt: now, detail: `jobmaster: ${blocked} — not bypassed; try again later` };
+    if (blocked) info = { state: 'unknown', checkedAt: now, detail: `jobmaster: ${blocked} — not bypassed; try again later`, blocked };
     else {
       const state = jmLoginState(await page.content());
       info = { state, checkedAt: now, detail: state === 'logged_in' ? 'jobmaster: logoff link shown' : state === 'logged_out' ? 'jobmaster: login link shown' : 'jobmaster: neither login nor logoff link found' };
@@ -153,7 +159,7 @@ export async function checkJobnetSession(onContext?: (ctx: BrowserContext) => Pr
       blocked = await detectBlock(page, res?.status());
     }
     const now = new Date().toISOString();
-    if (blocked) info = { state: 'unknown', checkedAt: now, detail: `jobnet: ${blocked} — not bypassed; try again later` };
+    if (blocked) info = { state: 'unknown', checkedAt: now, detail: `jobnet: ${blocked} — not bypassed; try again later`, blocked };
     else if (!id) info = { state: 'unknown', checkedAt: now, detail: 'jobnet: no job found to check the session with' };
     else {
       const state = jnLoginState(await page.content());
@@ -193,13 +199,14 @@ export async function checkJobKarovSession(onContext?: (ctx: BrowserContext) => 
         })
         .catch(() => undefined);
     });
+    useLoad('jobkarov');
     const res = await page.goto(`${JK_BASE}/`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
     await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => undefined);
     const blocked = await detectBlock(page, res?.status());
     const login = blocked ? 'unknown' : await jkReadLogin(page);
     const bootstrap = await page.evaluate(() => 'UserFromJS' in window).catch(() => false);
     const v = jkSessionVerdict({ status: res?.status() ?? null, blocked, finalUrl: page.url(), loginCookie, bootstrap, userInfo, userId: login === 'logged_in' });
-    info = { ...v, checkedAt: new Date().toISOString() };
+    info = { ...v, checkedAt: new Date().toISOString(), ...(blocked ? { blocked } : {}), realPage: !blocked && bootstrap && /(^|\.)jobkarov\.com$/.test(new URL(page.url()).hostname) };
   } catch (e) {
     info = { state: 'unknown', checkedAt: new Date().toISOString(), detail: `jobkarov: ${e instanceof Error ? e.message.split('\n')[0]! : String(e)}` };
   } finally {
@@ -209,8 +216,16 @@ export async function checkJobKarovSession(onContext?: (ctx: BrowserContext) => 
   return info;
 }
 
-/** The session check of a site (sites without one answer "unknown"). */
-export function checkSiteSession(site: string, onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
+/** The session check of a site (sites without one answer "unknown"). A check that hits a block pauses the site for 48h. */
+export async function checkSiteSession(site: string, onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
+  const info = await runSiteCheck(site, onContext);
+  if (info.blocked) pauseSite(site, info.blocked);
+  // the site's normal page = the check could tell logged in / out (JobKarov tells it apart itself); unknown = not shown
+  else if (info.realPage === undefined) info.realPage = info.state !== 'unknown';
+  return info;
+}
+
+function runSiteCheck(site: string, onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
   if (site === 'drushim') return checkDrushimSession(onContext);
   if (site === 'alljobs') return checkAllJobsSession(onContext);
   if (site === 'jobmaster') return checkJobMasterSession(onContext);

@@ -29,6 +29,11 @@ import { getSession, setSession } from '../browser/site-session.js';
 import { excludedCompanyMatch } from '../core/prefilter.js';
 import type { ApplyPlan, ResolvedField } from './types.js';
 import { isAssistedSite } from '../alerts/assisted.js';
+import { isPaused, pauseSite, pausedText } from '../core/site-pause.js';
+import { BudgetError } from '../core/site-budget.js';
+import { SITES } from '../sites/registry.js';
+
+const siteName = (site: string) => SITES.find((s) => s.id === site)?.displayName ?? site;
 
 export class ServiceError extends Error {
   constructor(public status: number, message: string) {
@@ -117,13 +122,18 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
   const apps = new Applications(db);
   const prefsNow = loadPrefs();
   // highest rank first, so the daily limit is spent on the best jobs
-  const jobs = jobIds
+  let jobs = jobIds
     .map((id) => repo.getJob(id))
     .filter((j): j is StoredJob => !!j)
     .map((j) => ({ j, r: rankStoredJob(j, repo.getScore(j.id), prefsNow).rank ?? -Infinity }))
     .sort((a, b) => b.r - a.r)
     .map((x) => x.j);
   if (jobs.length === 0) throw new ServiceError(404, 'no such jobs');
+  // a paused site is not loaded at all: its jobs stay where they are (company-site / email jobs need no site load)
+  const loadsSite = (j: StoredJob) => j.applyType !== 'external' && j.applyType !== 'email';
+  const pausedJobs = jobs.filter((j) => loadsSite(j) && isPaused(j.site));
+  if (pausedJobs.length === jobs.length) throw new ServiceError(409, pausedText(pausedJobs[0]!.site, siteName(pausedJobs[0]!.site))!);
+  jobs = jobs.filter((j) => !pausedJobs.includes(j));
   // LinkedIn / Indeed are assisted-only: their jobs reach the review queue only with a company / ATS link
   if (jobs.some((j) => isAssistedSite(j.site) && !(j.applyType === 'external' && j.applyTarget))) {
     throw new ServiceError(400, 'LinkedIn / Indeed jobs are applied to by hand: use the Email alerts screen (Open in my browser)');
@@ -157,6 +167,11 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
       const driver = driverFor(job.site);
       if (!driver) {
         repo.setStatus(job.id, 'failed', `no apply flow for ${job.site} yet`);
+        continue;
+      }
+      if (isPaused(job.site)) {
+        // paused during this run (a block on an earlier job): back in the queue for after the pause
+        repo.setStatus(job.id, 'queued', `${siteName(job.site)} paused — prepared after the pause`);
         continue;
       }
       const page = await getPage();
@@ -210,6 +225,18 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
         const closed = closeOnApplyError(apps, repo, job, null, e);
         if (closed) {
           L.info({ job: job.title }, closed.detail);
+          continue;
+        }
+        if (e instanceof BlockedError) {
+          // any block pauses the site for 48 hours; this job and the rest of that site wait (never failed for it)
+          pauseSite(job.site, e.reason);
+          repo.setStatus(job.id, 'queued', `${siteName(job.site)} blocked the page (${e.reason}) — paused; prepared after the pause`);
+          L.error({ job: job.title, site: job.site, reason: e.reason }, 'BLOCKED — site paused for 48h, not retried');
+          continue;
+        }
+        if (e instanceof BudgetError) {
+          repo.setStatus(job.id, 'queued', e.message);
+          L.info({ job: job.title }, e.message);
           continue;
         }
         repo.setStatus(job.id, 'failed', err);
@@ -493,6 +520,7 @@ export function approveBlock(db: DB, app: ApplicationRow): string | null {
   if (!app.plan.cv) return 'no CV chosen (Preferences)';
   const job = new Repo(db).getJob(app.jobId);
   if (job && !driverFor(job.site)) return `no automated apply flow for ${job.site}`;
+  if (job && isPaused(job.site)) return pausedText(job.site, siteName(job.site));
   return null;
 }
 
@@ -525,6 +553,11 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
   const repo = new Repo(db);
   const app = apps.get(appId)!;
   const done = (status: string, detail: string, stop?: SendStop): SendResult => ({ appId, title: job.title, company: job.company, status, detail, stop });
+  const paused = pausedText(job.site, siteName(job.site));
+  if (paused) {
+    apps.update(appId, { status: 'needs_review', error: `not sent: ${paused}` });
+    return done('not_sent', paused);
+  }
   if (!dryRun && dailyLimitReached(repo, job.site)) {
     apps.update(appId, { status: 'needs_review', error: 'not sent: the daily limit was reached' });
     return done('not_sent', `daily apply limit reached (${effectiveLimits(loadPrefs()).dailyApplyLimit})`, 'daily_cap');
@@ -596,6 +629,18 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
     const err = e instanceof Error ? e.message : String(e);
     const closed = closeOnApplyError(apps, repo, job, appId, e);
     if (closed) return done(closed.status, closed.detail);
+    if (e instanceof BlockedError) {
+      // the page was refused before anything was sent: back to review, and the site pauses for 48 hours
+      pauseSite(job.site, e.reason);
+      apps.update(appId, { status: 'needs_review', error: `not sent: ${siteName(job.site)} blocked the page (${e.reason}) — site paused` });
+      repo.setStatus(job.id, 'needs_review', `${siteName(job.site)} paused after a block`);
+      L.error({ job: job.title, reason: e.reason }, 'BLOCKED — site paused for 48h, not sent');
+      return done('not_sent', `${siteName(job.site)} blocked the page — paused for 48 hours`, 'captcha');
+    }
+    if (e instanceof BudgetError) {
+      apps.update(appId, { status: 'needs_review', error: `not sent: ${e.message}` });
+      return done('not_sent', e.message);
+    }
     if (apps.get(appId)?.status === 'approved') {
       apps.update(appId, { status: 'failed', error: err });
       repo.setStatus(job.id, 'failed', err);
@@ -678,7 +723,8 @@ export function approveBatch(db: DB, appIds: number[]): { runId: number; dryRun:
     const block = app ? batchBlock(app) : 'not found';
     const job = app ? repo.getJob(app.jobId) : null;
     const sent = job ? alreadySent(db, job.id) : null;
-    if (block || sent || !app || !job || !driverFor(job.site)) refused.push({ appId: id, reason: block ?? sent ?? (job ? `no automated apply flow for ${job.site}` : 'job not found') });
+    const paused = job ? pausedText(job.site, siteName(job.site)) : null;
+    if (block || sent || paused || !app || !job || !driverFor(job.site)) refused.push({ appId: id, reason: block ?? sent ?? paused ?? (job ? `no automated apply flow for ${job.site}` : 'job not found') });
     else accepted.push({ app, job, rank: rankStoredJob(job, repo.getScore(job.id), prefs).rank ?? -Infinity });
   }
   if (!accepted.length) throw new ServiceError(409, `nothing to approve: ${refused.map((r) => `#${r.appId} ${r.reason}`).join('; ')}`);

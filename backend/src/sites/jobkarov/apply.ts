@@ -26,6 +26,7 @@ import { log } from '../../log.js';
 import type { ApplyPlan } from '../../apply/types.js';
 import { ApplyError, clean, type PanelState } from '../apply-error.js';
 import { jobkarovAppliedSeen } from './adapter.js';
+import { useLoad } from '../../core/site-budget.js';
 import {
   ANY_SEND_PATTERN,
   SEND_PATTERN,
@@ -121,6 +122,7 @@ async function fetchPreview(page: Page, id: string): Promise<JkPreview | null> {
 /** Opens the job and its send form; reads the CVs and the questions. Throws ApplyError on login/form problems. */
 export async function openPanel(page: Page, job: { externalId: string; url?: string; raw?: unknown }): Promise<PanelState> {
   const id = job.externalId;
+  useLoad('jobkarov', 2); // the job page and the apply preview (throws BudgetError before loading anything)
   const res = await page.goto(job.url || jobUrl(id, (job.raw as { addressId?: number } | null)?.addressId), { waitUntil: 'domcontentloaded', timeout: 45_000 });
   await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => undefined);
   await assertNotBlocked(page, res?.status());

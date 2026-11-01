@@ -14,6 +14,7 @@ import { loadPrefs } from '../core/prefs.js';
 import { AnswersBank, SEED_QUESTIONS } from '../apply/bank.js';
 import { closeContext } from '../browser/session.js';
 import { checkSiteSession, setSession, type SessionInfo } from '../browser/site-session.js';
+import { pausedText } from '../core/site-pause.js';
 import { profileInUse, PROFILE_IN_USE } from '../browser/chrome.js';
 import { getActiveRun, startTask } from '../pipeline/runner.js';
 import { scorePending } from '../pipeline/score-pending.js';
@@ -132,6 +133,8 @@ export function registerOnboardingRoutes(app: FastifyInstance, db: DB) {
   app.post('/api/session/login', async (req, reply) => {
     const site = z.object({ site: z.string().default('drushim') }).parse(req.body ?? {}).site;
     if (loginChild) return reply.status(409).send({ error: 'the login window is already open' });
+    const paused = pausedText(site);
+    if (paused) return reply.status(409).send({ error: `${paused} — the login window stays closed while paused` });
     if (getActiveRun()) return reply.status(409).send({ error: 'a run is active — wait for it or stop it first' });
     await closeContext(); // the browser profile can only be open once
     if (profileInUse(config.paths.browserProfile)) return reply.status(409).send({ error: PROFILE_IN_USE });
