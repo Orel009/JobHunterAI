@@ -16,11 +16,11 @@ chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
   $('fill').hidden = false;
   $('go').onclick = () => {
     $('go').disabled = true;
-    $('msg').textContent = 'filling…';
+    $('msg').textContent = 'filling… (a cover-letter draft can take up to a minute)';
     chrome.runtime.sendMessage({ type: 'fill', tabId: tab.id, url: tab.url }, (r) => {
       $('go').disabled = false;
       if (!r) $('msg').textContent = 'no answer from the extension';
-      else if (r.ok) $('msg').textContent = r.summary ? `filled ${r.summary.filled}, ${r.summary.needYou} need you${r.summary.cv ? ` · CV: ${r.summary.cv}` : ''}` : 'done';
+      else if (r.ok) $('msg').textContent = r.summary ? `filled ${r.summary.filled}${r.summary.drafts ? `, AI drafts ${r.summary.drafts}` : ''}, ${r.summary.needYou} need you${r.summary.cv ? ` · CV: ${r.summary.cv}` : ''}` : 'done';
       else $('msg').textContent = r.error;
     });
   };

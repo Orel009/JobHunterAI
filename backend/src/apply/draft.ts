@@ -44,7 +44,8 @@ export function checkDraftCitations(d: z.infer<typeof DraftSchema>, known: Set<s
 }
 
 /** Draft-writing instructions; Hebrew grammatical gender comes from the profile. */
-export const writeSystem = (language: 'he' | 'en', gender: Gender): string => WRITE_SYSTEM[language].replace('{GENDER_RULE}', hebrewFirstPersonRule(gender));
+export const writeSystem = (language: 'he' | 'en', gender: Gender, sentences = '2-4'): string =>
+  WRITE_SYSTEM[language].replace('{GENDER_RULE}', hebrewFirstPersonRule(gender)).replace('2-4', sentences);
 
 const WRITE_SYSTEM: Record<'he' | 'en', string> = {
   he: [
@@ -62,7 +63,8 @@ const WRITE_SYSTEM: Record<'he' | 'en', string> = {
   ].join('\n'),
 };
 
-export function makeDrafter(profile: Profile | null, opts: { cache?: LlmCache; now?: Date } = {}) {
+/** sentences: the length asked for ("2-4" for form answers; "4-6" for a cover letter / message to the hiring team) */
+export function makeDrafter(profile: Profile | null, opts: { cache?: LlmCache; now?: Date; sentences?: string } = {}) {
   return async (field: FormField, ctx: { jobTitle: string; jobText: string; language: 'he' | 'en' }): Promise<DraftResult> => {
     if (!profile) return { text: null, usedFactIds: [], unanswerable: true, flaggedClaims: [], rejectedReason: 'no profile.json yet' };
     const all = listFacts(profile, opts.now);
@@ -74,7 +76,7 @@ export function makeDrafter(profile: Profile | null, opts: { cache?: LlmCache; n
       temperature: 0.2,
       cache: opts.cache,
       messages: [
-        { role: 'system', content: writeSystem(ctx.language, profile.gender) },
+        { role: 'system', content: writeSystem(ctx.language, profile.gender, opts.sentences) },
         { role: 'user', content: `Facts:\n${factBlock}\n\nJob: ${ctx.jobTitle}\n${ctx.jobText.slice(0, 2500)}\n\nQuestion: ${field.label}` },
       ],
     });

@@ -37,8 +37,20 @@ async function fillTab(tabId) {
   if (!tab.url || !/^https?:/.test(tab.url)) throw new Error('not a web page');
   if (F.manualOnlyHost(tab.url)) throw new Error(F.MANUAL_ONLY_MESSAGE);
   const { job } = await api(`/api/fill/match?url=${encodeURIComponent(tab.url)}`);
-  const data = await api(`/api/fill/data${job ? `?jobId=${encodeURIComponent(job.id)}` : ''}`);
   await chrome.scripting.executeScript({ target: { tabId }, files: ['fill-core.js'] });
+  // what the page asks for: labels the dictionary does not know, a cover-letter field, the page's title and language
+  const [scanned] = await chrome.scripting.executeScript({ target: { tabId }, func: () => globalThis.JobHunterFill.scan(document) });
+  const page = scanned?.result ?? { unknown: [], coverLetter: false, title: tab.title || '', lang: 'en' };
+  const data = await api(`/api/fill/data?lang=${page.lang}${job ? `&jobId=${encodeURIComponent(job.id)}` : ''}`);
+  // unknown labels → a field type (the model picks a type, never a value; cached by JobHunter)
+  if (page.unknown.length) data.labelTypes = (await api('/api/fill/classify', { method: 'POST', body: JSON.stringify({ labels: page.unknown }) }).catch(() => ({ types: {} }))).types;
+  // a cover letter / message to the hiring team: an AI draft from your profile, filled purple for you to review
+  if (page.coverLetter && data.fillCoverLetters) {
+    data.draft = await api('/api/fill/draft', {
+      method: 'POST',
+      body: JSON.stringify({ jobId: job ? job.id : undefined, title: page.title, company: page.company || '', label: 'Message to the hiring team', lang: page.lang }),
+    }).catch((e) => ({ text: null, error: e.message }));
+  }
   const [res] = await chrome.scripting.executeScript({
     target: { tabId },
     func: (d) =>
@@ -48,7 +60,7 @@ async function fillTab(tabId) {
           new Promise((resolve, reject) =>
             chrome.runtime.sendMessage({ type: 'applied', jobId }, (r) => (r && r.ok ? resolve(r) : reject(new Error((r && r.error) || 'no answer')))),
           ),
-      }).then((s) => ({ filled: s.filled, needYou: s.needYou, cv: s.cv, refused: s.refused || null })),
+      }).then((s) => ({ filled: s.filled, drafts: s.drafts, needYou: s.needYou, cv: s.cv, refused: s.refused || null })),
     args: [data],
   });
   if (res?.result?.refused) throw new Error(res.result.refused);

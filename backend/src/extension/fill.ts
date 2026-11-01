@@ -13,6 +13,35 @@ import { formAnswers, type FormAnswer } from '../companies/answers.js';
 import { loadProfile } from '../profile/facts.js';
 import { SITES } from '../sites/registry.js';
 import { COMPANY_SOURCE_LABEL, SITE_LABEL, isAssistedSite, isCompanySource } from '../alerts/assisted.js';
+import { extensionSettings } from './settings.js';
+import { makeDrafter } from '../apply/draft.js';
+import type { Profile } from '../profile/schema.js';
+
+const isCurrent = (end: string | null) => !end || /present|current|היום|כיום/i.test(end);
+/** current roles first, then by end and start date */
+const sortKey = (start: string | null, end: string | null) => `${isCurrent(end) ? '9999' : (end ?? '')}|${start ?? ''}`;
+
+/** Work roles (most recent first) in the given language; the description from the role's highlights, kept short. */
+export function experienceEntries(p: Profile | null, lang: 'he' | 'en'): FillData['experience'] {
+  if (!p) return [];
+  const pick = (b: { he: string | null; en: string | null }) => b[lang] ?? b[lang === 'he' ? 'en' : 'he'] ?? '';
+  return p.experience
+    .filter((e) => e.kind === 'work')
+    .sort((a, b) => sortKey(b.start, b.end).localeCompare(sortKey(a.start, a.end)))
+    .map((e) => {
+      const hl = (e.highlights[lang].length ? e.highlights[lang] : e.highlights[lang === 'he' ? 'en' : 'he']).slice(0, 3);
+      return { company: pick(e.company), title: pick(e.title), start: e.start, end: isCurrent(e.end) ? null : e.end, current: isCurrent(e.end), description: hl.map((h) => `• ${h}`).join('\n').slice(0, 600) };
+    })
+    .filter((e) => e.company && e.title);
+}
+
+export function educationEntries(p: Profile | null, lang: 'he' | 'en'): FillData['education'] {
+  if (!p) return [];
+  const pick = (b: { he: string | null; en: string | null }) => b[lang] ?? b[lang === 'he' ? 'en' : 'he'] ?? '';
+  return p.education
+    .map((e) => ({ institution: pick(e.institution), degree: pick(e.degree), field: pick(e.field), start: e.start, end: isCurrent(e.end) ? null : e.end }))
+    .filter((e) => e.institution);
+}
 
 export interface FillData {
   job: { id: string; title: string; company: string; site: string; siteLabel: string; status: string } | null;
@@ -33,6 +62,15 @@ export interface FillData {
   form: Array<FormAnswer & { name: string | null }>;
   /** your answers bank (question → answer), for questions matched by their label */
   bank: Array<{ question: string; answer: string; type: string; options: string[] | null }>;
+  /** the language the profile values are given in (the job's, else the page's, else English) */
+  lang: 'he' | 'en';
+  /** single values from the profile */
+  profile: { currentTitle: string | null; currentCompany: string | null; yearsExperience: number | null };
+  /** work roles (most recent first) and education, for Experience / Education entries on the form */
+  experience: Array<{ company: string; title: string; start: string | null; end: string | null; current: boolean; description: string }>;
+  education: Array<{ institution: string; degree: string; field: string; start: string | null; end: string | null }>;
+  /** Settings → JobHunter Fill: fill cover letters / messages to the hiring team with an AI draft (default on) */
+  fillCoverLetters: boolean;
 }
 
 const siteLabel = (site: string) => (isAssistedSite(site) ? SITE_LABEL[site] : isCompanySource(site) ? COMPANY_SOURCE_LABEL[site] : (SITES.find((s) => s.id === site)?.displayName ?? site));
@@ -93,10 +131,10 @@ export function matchJob(db: DB, pageUrl: string): StoredJob | null {
   return best ? repo.getJob(best.r.id) : null;
 }
 
-export async function fillData(db: DB, job: StoredJob | null): Promise<FillData> {
+export async function fillData(db: DB, job: StoredJob | null, pageLang?: 'he' | 'en'): Promise<FillData> {
   const profile = loadProfile();
   const helper = job ? applyHelper(db, job) : null;
-  const lang: 'he' | 'en' = helper?.cv.lang ?? 'en';
+  const lang: 'he' | 'en' = helper?.cv.lang ?? pageLang ?? 'en';
   const pick = (b: { he: string | null; en: string | null } | undefined) => (b ? (b[lang] ?? b[lang === 'he' ? 'en' : 'he'] ?? null) : null);
   const full = pick(profile?.contact.name);
   const [first, ...rest] = (full ?? '').split(/\s+/).filter(Boolean);
@@ -124,7 +162,39 @@ export async function fillData(db: DB, job: StoredJob | null): Promise<FillData>
       .active()
       .filter((e) => e.answer)
       .map((e) => ({ question: e.question, answer: e.answer!, type: e.type, options: e.options ?? null })),
+    lang,
+    profile: (() => {
+      const now = experienceEntries(profile, lang)[0];
+      return { currentTitle: now?.current ? now.title : null, currentCompany: now?.current ? now.company : null, yearsExperience: profile?.declaredExperience?.totalDevYears ?? null };
+    })(),
+    experience: experienceEntries(profile, lang),
+    education: educationEntries(profile, lang),
+    fillCoverLetters: extensionSettings().fillCoverLetters,
   };
+}
+
+/**
+ * A cover letter / message to the hiring team for the extension (you review it and submit yourself): the draft
+ * pipeline — your profile facts only (with fact ids), the unsupported-claim check, the right gender in Hebrew — at
+ * 4–6 sentences in the job's language. Without the job's text (a page JobHunter does not know), only the page's job
+ * title and company are given, so the draft stays general but true.
+ */
+export async function coverLetterDraft(
+  db: DB,
+  o: { job: StoredJob | null; title: string; company: string; label: string; lang: 'he' | 'en' },
+  drafter = makeDrafter(loadProfile(), { cache: new Repo(db), sentences: '4-6' }),
+): Promise<{ text: string | null; flaggedClaims: string[]; usedFactIds: string[]; error: string | null }> {
+  const title = o.job?.title || o.title || 'this role';
+  const company = o.job?.company || o.company || 'your company';
+  const language = o.job?.language ?? o.lang;
+  const jobText = o.job ? `${o.job.descriptionText}\n${o.job.requirementsText}`.trim() : '';
+  const question =
+    language === 'he'
+      ? `${o.label || 'מכתב לצוות הגיוס'}: מכתב קצר לצוות הגיוס על ההתאמה שלי לתפקיד ${title} ב-${company}`
+      : `${o.label || 'Message to the hiring team'}: a short note to the hiring team on why I fit the ${title} role at ${company}`;
+  const d = await drafter({ key: 'coverLetter', label: question, type: 'textarea', required: false }, { jobTitle: `${title} — ${company}`, jobText: jobText || `${title} at ${company}`, language });
+  if (!d.text || d.rejectedReason || d.unanswerable) return { text: null, flaggedClaims: [], usedFactIds: d.usedFactIds, error: d.rejectedReason ?? 'not answerable from your profile facts' };
+  return { text: d.text, flaggedClaims: d.flaggedClaims, usedFactIds: d.usedFactIds, error: null };
 }
 
 /** "I applied" from the extension: the job is marked applied by hand (once). */

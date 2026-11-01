@@ -11,7 +11,9 @@ import type { DB } from '../db/index.js';
 import { Repo } from '../db/repo.js';
 import { ServiceError } from '../apply/service.js';
 import { extensionToken, regenerateExtensionToken, tokenOk } from '../extension/token.js';
-import { fillData, markAppliedByHand, matchJob } from '../extension/fill.js';
+import { coverLetterDraft, fillData, markAppliedByHand, matchJob } from '../extension/fill.js';
+import { classifyLabels } from '../extension/labels.js';
+import { extensionSettings, saveExtensionSettings } from '../extension/settings.js';
 import { ROOT_DIR } from '../config.js';
 import { isIndeedHost } from '../alerts/assisted.js';
 import { isLinkedInHost } from '../linkedin/parse.js';
@@ -41,10 +43,26 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
   });
 
   app.get('/api/fill/data', async (req) => {
-    const { jobId } = z.object({ jobId: z.string().max(80).optional() }).parse(req.query);
+    const { jobId, lang } = z.object({ jobId: z.string().max(80).optional(), lang: z.enum(['he', 'en']).optional() }).parse(req.query);
     const job = jobId ? repo.getJob(jobId) : null;
     if (jobId && !job) throw new ServiceError(404, 'no such job');
-    return fillData(db, job);
+    return fillData(db, job, lang);
+  });
+
+  /** Labels the extension's dictionary does not know → a field type (the model picks a type, never a value; cached). */
+  app.post('/api/fill/classify', async (req) => {
+    const { labels } = z.object({ labels: z.array(z.string().max(300)).max(60) }).parse(req.body ?? {});
+    return { types: await classifyLabels(labels) };
+  });
+
+  /** A cover letter / message to the hiring team: an AI draft from your profile facts, for you to review on the form. */
+  app.post('/api/fill/draft', async (req) => {
+    const b = z
+      .object({ jobId: z.string().max(80).optional(), title: z.string().max(300).default(''), company: z.string().max(200).default(''), label: z.string().max(300).default(''), lang: z.enum(['he', 'en']).default('en') })
+      .parse(req.body ?? {});
+    if (!extensionSettings().fillCoverLetters) throw new ServiceError(409, 'cover letters are off (Settings → JobHunter Fill)');
+    const job = b.jobId ? repo.getJob(b.jobId) : null;
+    return coverLetterDraft(db, { job, title: b.title, company: b.company, label: b.label, lang: b.lang });
   });
 
   app.post<{ Params: { id: string } }>('/api/fill/jobs/:id/applied', async (req) => {
@@ -56,7 +74,12 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
   // ---------- dashboard (Settings) ----------
   app.get('/api/extension', async (req, reply) => {
     if (fromWebPage(req) && !String(req.headers.origin).startsWith(`http://127.0.0.1:`) && !String(req.headers.origin).startsWith('http://localhost:')) return reply.status(403).send({ error: 'dashboard only' });
-    return { token: extensionToken(), folder: path.join(ROOT_DIR, 'extension') };
+    return { token: extensionToken(), folder: path.join(ROOT_DIR, 'extension'), settings: extensionSettings() };
+  });
+  app.put('/api/extension/settings', async (req, reply) => {
+    if (fromWebPage(req) && !String(req.headers.origin).startsWith(`http://127.0.0.1:`) && !String(req.headers.origin).startsWith('http://localhost:')) return reply.status(403).send({ error: 'dashboard only' });
+    const patch = z.object({ fillCoverLetters: z.boolean().optional() }).parse(req.body ?? {});
+    return saveExtensionSettings(patch);
   });
   app.post('/api/extension/token', async (req, reply) => {
     if (fromWebPage(req) && !String(req.headers.origin).startsWith(`http://127.0.0.1:`) && !String(req.headers.origin).startsWith('http://localhost:')) return reply.status(403).send({ error: 'dashboard only' });

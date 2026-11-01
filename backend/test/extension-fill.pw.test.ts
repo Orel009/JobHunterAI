@@ -143,7 +143,7 @@ describe('Lever form (real markup)', () => {
     expect(await val(page, 'input[name="phone"]')).toBe('050-0000000');
     expect(await val(page, 'input[name="urls[LinkedIn]"]')).toBe('https://linkedin.com/in/test');
     expect(await val(page, 'input[name="urls[GitHub]"]')).toBe('https://github.com/test');
-    expect(await val(page, 'input[name="urls[Portfolio]"]')).toBe('');
+    expect(await val(page, 'input[name="urls[Portfolio]"]')).toBe('https://github.com/test'); // no website on file: GitHub
     expect(r.cvFields).toBe(1);
     await nothingSent(page);
   });
@@ -181,11 +181,12 @@ describe('a Hebrew form (generic label matching)', () => {
     expect(await marked(page, '#exp')).toBe('pending');
     expect(await val(page, '#why')).toBe('');
     expect(await marked(page, '#why')).toBe('pending');
-    expect(await val(page, '#cl')).toBe('');
+    expect(await val(page, '#cl')).toBe(''); // a cover letter: no draft here → left empty, yellow
+    expect(await marked(page, '#cl')).toBe('pending');
     expect(await page.locator('#agree').isChecked()).toBe(false);
     expect(await marked(page, '#agree')).toBe('pending');
     expect(await val(page, '#cap')).toBe('');
-    expect(r.needYou).toBe(3);
+    expect(r.needYou).toBe(4);
     await nothingSent(page);
   });
 

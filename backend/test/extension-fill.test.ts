@@ -25,6 +25,12 @@ import { profilePath } from '../src/profile/facts.js';
 
 await import(pathToFileURL(path.join(process.cwd(), '..', 'extension', 'fill-core.js')).href);
 type Fill = {
+  fieldType(f: Record<string, unknown>, d?: Record<string, unknown>): string | null;
+  localPhone(p: string): string;
+  exactPlace(o: string, v: string): boolean;
+  dateFor(el: Record<string, unknown>, d: string | null): string | null;
+  entryKey(section: string, label: string): string | null;
+  FORBIDDEN: RegExp;
   manualOnlyHost(u: string): boolean;
   MANUAL_ONLY_MESSAGE: string;
   classify(t: string): string | null;
@@ -77,10 +83,50 @@ describe('field mapping (extension/fill-core.js)', () => {
     expect(F.answerFor({ label: 'Expected salary', type: 'number' }, DATA)).toMatchObject({ value: '14000' });
     expect(F.answerFor({ label: 'ציפיות שכר', type: 'text' }, DATA)).toMatchObject({ value: '14,000–16,000 ₪ ברוטו' });
     expect(F.answerFor({ label: 'Resume/CV', type: 'file' }, DATA)).toEqual({ cv: true });
-    expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, DATA)).toMatchObject({ skip: expect.stringMatching(/cover letter/) });
+    // cover letters: the AI draft when there is one; yellow without; left alone when the setting is off
+    expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, { ...DATA, draft: { text: 'Hello.' } })).toEqual({ draft: 'Hello.' });
+    expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, DATA)).toMatchObject({ pending: 'cover letter: write it yourself' });
+    expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, { ...DATA, fillCoverLetters: false })).toMatchObject({ skip: expect.stringMatching(/off/) });
     expect(F.answerFor({ label: 'GitHub URL', type: 'url' }, DATA)).toMatchObject({ pending: 'no github in your profile' });
-    expect(F.answerFor({ label: 'Why us?', type: 'textarea', required: true }, DATA)).toMatchObject({ pending: 'no answer on file' });
+    expect(F.answerFor({ label: 'Why us?', type: 'textarea', required: true }, DATA)).toMatchObject({ pending: 'cover letter: write it yourself' });
+    expect(F.answerFor({ label: 'Describe a challenge you solved', type: 'textarea', required: true }, DATA)).toMatchObject({ pending: 'no answer on file' });
     expect(F.answerFor({ label: 'Favourite colour', type: 'text', required: false }, DATA)).toMatchObject({ skip: expect.any(String) });
+  });
+});
+
+describe('semantic field types (dictionary, autocomplete, form-control names)', () => {
+  it('Hebrew and English synonyms', () => {
+    expect(['Confirm your email', 'Re-enter email', 'אימות דוא"ל'].map(F.classify)).toEqual(['confirmEmail', 'confirmEmail', 'confirmEmail']);
+    expect(['Message to the Hiring Team', 'Let the company know about your interest working there', 'Why do you want to work here?', 'Tell us about yourself', 'ספר/י על עצמך', 'מכתב מקדים'].map(F.classify)).toEqual(Array(6).fill('coverLetter'));
+    expect(['Current job title', 'Current company', 'Notice period', 'When can you start?'].map(F.classify)).toEqual(['currentTitle', 'currentCompany', 'noticePeriod', 'noticePeriod']);
+    expect(['Facebook', 'X (fka Twitter)'].map(F.classify)).toEqual(['social', 'social']);
+  });
+  it('years of experience: general wording only — a question naming a technology is not "total years"', () => {
+    expect(['Years of experience', 'Total years of experience', 'How many years of professional experience do you have', 'שנות ניסיון'].map(F.classify)).toEqual(Array(4).fill('yearsExperience'));
+    expect(F.classify('How many years of work experience do you have with Node.js?')).toBeNull();
+  });
+  it('the page\'s autocomplete hint and the form-control name count; a confirmation is told apart', () => {
+    expect(F.fieldType({ label: '', autocomplete: 'given-name' })).toBe('firstName');
+    expect(F.fieldType({ label: 'Confirm your email', id: 'confirm-email-input', autocomplete: 'email' })).toBe('confirmEmail');
+    expect(F.fieldType({ label: 'x', controlName: 'firstName' })).toBe('firstName');
+    expect(F.fieldType({ label: 'Mystery field' }, { labelTypes: { 'mystery field': 'currentTitle' } })).toBe('currentTitle');
+    expect(F.fieldType({ label: 'Mystery field' }, { labelTypes: { 'mystery field': 'unknown' } })).toBeNull();
+  });
+  it('local phone next to a country selector; the exact city suggestion; date formats; entry fields; never Save / Submit / Next', () => {
+    expect(['+972-50-123-4567', '972501234567', '050-1234567'].map(F.localPhone)).toEqual(['0501234567', '0501234567', '0501234567']);
+    expect(F.answerFor({ label: 'Phone number', type: 'tel', hasCountry: true }, { ...DATA, contact: { phone: '+972 50 000 0000' } })).toMatchObject({ value: '0500000000' });
+    expect(F.exactPlace('Tel Aviv, Israel', 'Tel Aviv')).toBe(true);
+    expect(F.exactPlace('Tel Aviv-Yafo, Israel', 'Tel Aviv')).toBe(false);
+    const el = (type: string, placeholder = '') => ({ type, placeholder, getAttribute: () => '' });
+    expect([F.dateFor(el('month'), '2023-02'), F.dateFor(el('date'), '2023-02'), F.dateFor(el('text', 'MM/YYYY'), '2023-02'), F.dateFor(el('text', 'MM/YY'), '2023-02'), F.dateFor(el('text', 'YYYY'), '2023-02'), F.dateFor(el('text'), null)]).toEqual(['2023-02', '2023-02-01', '02/2023', '02/23', '2023', null]);
+    expect(['Company', 'Job title', 'From', 'To', 'I currently work here', 'Description'].map((l) => F.entryKey('experience', l))).toEqual(['company', 'title', 'start', 'end', 'current', 'description']);
+    expect(['School', 'Degree', 'Field of study'].map((l) => F.entryKey('education', l))).toEqual(['institution', 'degree', 'field']);
+    expect(['Submit', 'Next', 'Apply', 'Save', 'שלח', 'שמור', 'המשך'].every((t) => F.FORBIDDEN.test(t))).toBe(true);
+    expect(F.FORBIDDEN.test('+ Add')).toBe(false);
+  });
+  it('the very question in your answers bank wins over a profile value', () => {
+    expect(F.answerFor({ label: 'Years of experience', type: 'text' }, { ...DATA, profile: { yearsExperience: 2 }, bank: [{ question: 'Years of experience', answer: '3' }] })).toMatchObject({ value: '3', from: 'answers bank' });
+    expect(F.answerFor({ label: 'Years of experience', type: 'text' }, { ...DATA, profile: { yearsExperience: 2 }, bank: [] })).toMatchObject({ value: '2', from: 'profile' });
   });
 });
 
@@ -188,6 +234,31 @@ describe('the local backend (token, never from a web page)', () => {
     expect(await match('https://www.example.com/careers/123')).toBeNull();
   });
 
+  it('unknown labels → a field type (the model picks a type, never a value), cached', async () => {
+    const { classifyLabels } = await import('../src/extension/labels.js');
+    fs.rmSync(path.join(config.dataDir, 'fill-label-types.json'), { force: true });
+    let calls = 0;
+    const llm = (async () => (calls++, { data: { types: [{ label: 'Mystery field', type: 'currentTitle' }, { label: 'Shoe size', type: 'unknown' }] } })) as never;
+    expect(await classifyLabels(['Mystery field', 'Shoe size'], llm)).toEqual({ 'mystery field': 'currentTitle', 'shoe size': 'unknown' });
+    expect(await classifyLabels(['Mystery field'], llm)).toEqual({ 'mystery field': 'currentTitle' });
+    expect(calls).toBe(1); // the second time from the cache
+  });
+
+  it('the cover-letter draft: refused when the setting is off; a draft that cites no facts is not returned', async () => {
+    const app = buildApp(db);
+    const { saveExtensionSettings } = await import('../src/extension/settings.js');
+    saveExtensionSettings({ fillCoverLetters: false });
+    expect((await app.inject({ method: 'POST', url: '/api/fill/draft', headers: hdr(), payload: { title: 'Developer', company: 'Acme' } })).statusCode).toBe(409);
+    saveExtensionSettings({ fillCoverLetters: true });
+    const { coverLetterDraft } = await import('../src/extension/fill.js');
+    const asked: string[] = [];
+    const drafter = (async (f: { label: string }, ctx: { language: string; jobText: string }) => (asked.push(`${ctx.language}|${f.label}|${ctx.jobText}`), { text: 'I build APIs.', usedFactIds: ['exp.acme'], unanswerable: false, flaggedClaims: [] })) as never;
+    expect(await coverLetterDraft(db, { job: null, title: 'Support Lead', company: 'Base44', label: 'Message to the hiring team', lang: 'en' }, drafter)).toMatchObject({ text: 'I build APIs.', error: null });
+    expect(asked[0]).toBe('en|Message to the hiring team: a short note to the hiring team on why I fit the Support Lead role at Base44|Support Lead at Base44');
+    const none = (async () => ({ text: null, usedFactIds: [], unanswerable: false, flaggedClaims: [], rejectedReason: 'draft cites no facts' })) as never;
+    expect(await coverLetterDraft(db, { job: null, title: 'x', company: 'y', label: '', lang: 'he' }, none)).toMatchObject({ text: null, error: 'draft cites no facts' });
+  });
+
   it('fill data: your details, the CV to choose, the bank; then "I applied" marks it applied by hand (once)', async () => {
     fs.writeFileSync(profilePath(), JSON.stringify(ProfileSchema.parse({ contact: { name: { en: 'Test Person' }, email: 'test@example.com', phone: '050-0000000', city: { en: 'Tel Aviv' } }, links: [{ id: 'link.linkedin', label: 'LinkedIn', url: 'https://linkedin.com/in/test' }] })));
     try {
@@ -197,6 +268,7 @@ describe('the local backend (token, never from a web page)', () => {
       expect(d.job).toMatchObject({ id, siteLabel: 'LinkedIn' });
       expect(d.contact).toMatchObject({ firstName: 'Test', lastName: 'Person', email: 'test@example.com', city: 'Tel Aviv', linkedin: 'https://linkedin.com/in/test' });
       expect(d.cv.file).toMatch(/\.pdf$|cv/);
+      expect(d).toMatchObject({ lang: 'en', fillCoverLetters: true, experience: [], education: [], profile: { currentTitle: null, currentCompany: null, yearsExperience: null } });
       const a = (await app.inject({ method: 'POST', url: `/api/fill/jobs/${id}/applied`, headers: hdr(), payload: {} })).json();
       expect(a).toMatchObject({ ok: true, already: false });
       expect(repo.getJob(id)).toMatchObject({ status: 'submitted_manual', statusReason: expect.stringMatching(/^applied by hand on LinkedIn .*JobHunter Fill/) });
