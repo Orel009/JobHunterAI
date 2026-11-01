@@ -70,13 +70,14 @@ export function stopRun(): boolean {
 }
 
 /** Starts a discovery/scoring run in the background. */
-export function startRun(db: DB, site: string, kind: RunKind): number {
+/** onlyRoles: search only the queries of these role types (e.g. right after adding them) */
+export function startRun(db: DB, site: string, kind: RunKind, opts: { onlyRoles?: string[] } = {}): number {
   getAdapter(site); // validates site
   // a paused site is not loaded at all (scoring alone needs no browser)
   const paused = kind !== 'score' ? pausedText(site, SITES.find((s) => s.id === site)?.displayName ?? site) : null;
   if (paused) throw new Error(paused);
   return startTask(db, site, kind, async (run, repo, L) => {
-    if (kind === 'discover' || kind === 'full') await discover(repo, run, L);
+    if (kind === 'discover' || kind === 'full') await discover(repo, run, L, opts.onlyRoles);
     if (kind === 'enrich') {
       applyPrefilter(repo, run, loadPrefs()); // jobs added from alert-email links have not been through it yet
       await details(repo, run, L, loadPrefs());
@@ -115,8 +116,8 @@ export function startTask(db: DB, site: string, kind: string, fn: TaskFn): numbe
 }
 
 /** Same as startRun but awaits completion (CLI). */
-export async function runToCompletion(db: DB, site: string, kind: RunKind): Promise<void> {
-  startRun(db, site, kind);
+export async function runToCompletion(db: DB, site: string, kind: RunKind, opts: { onlyRoles?: string[] } = {}): Promise<void> {
+  startRun(db, site, kind, opts);
   await waitIdle();
 }
 
@@ -149,11 +150,12 @@ async function execute(repo: Repo, run: ActiveRun, fn: TaskFn): Promise<void> {
   }
 }
 
-async function discover(repo: Repo, run: ActiveRun, L: typeof log): Promise<void> {
+async function discover(repo: Repo, run: ActiveRun, L: typeof log, onlyRoles?: string[]): Promise<void> {
   const prefs = loadPrefs();
   const limits = effectiveLimits(prefs);
   const adapter = getAdapter(run.site);
-  const plan = adapter.orderQueries ? adapter.orderQueries(searchPlan(prefs)) : searchPlan(prefs);
+  const full = searchPlan(prefs).filter((q) => !onlyRoles?.length || q.roleIds.some((r) => onlyRoles.includes(r)));
+  const plan = adapter.orderQueries ? adapter.orderQueries(full) : full;
   if (plan.length === 0) throw new Error('No search queries: add enabled roleTypes (with queries) to preferences.yaml');
 
   const page = await getPage();
@@ -325,6 +327,12 @@ export async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<
       if (s.isTrainingProgram) {
         repo.setStatus(j.id, 'skipped_not_a_job', 'training program / course, not a job (scorer)');
         run.stats.notAJob = (run.stats.notAJob ?? 0) + 1;
+        continue;
+      }
+      // role types that want technical support only (app-support): phone / chat / first-line work is skipped
+      if (role?.skipFrontLineSupport && s.isFrontLineSupport) {
+        repo.setStatus(j.id, 'skipped', 'front-line support');
+        run.stats.frontLine = (run.stats.frontLine ?? 0) + 1;
         continue;
       }
       // LLM fallback only when the regex found nothing (regex wins when both exist)

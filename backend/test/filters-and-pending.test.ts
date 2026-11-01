@@ -42,7 +42,7 @@ vi.mock('../src/sites/registry.js', async (orig) => {
     loginUrl: 'https://www.drushim.co.il/',
     async *search() {
       yield card('1', 'Full Stack Developer');
-      yield card('2', 'איש/אשת תמיכה טכנית');
+      yield card('2', 'איש/אשת תמיכה אפליקטיבית');
     },
     async getDetails() {
       return null;
@@ -120,13 +120,13 @@ describe('discover without a profile, score after approval; refilter on save', (
 
   it('saving Preferences re-runs the prefilter over existing jobs (both ways), without searching again', async () => {
     const prefs = loadPrefs();
-    const support = prefs.roleTypes.find((x) => x.id === 'support')!;
+    const support = prefs.roleTypes.find((x) => x.id === 'app-support')!;
     expect(byTitle('תמיכה').status).not.toMatch(/^skipped/);
 
     support.enabled = false;
     const off = (await app.inject({ method: 'PUT', url: '/api/preferences', payload: { preferences: prefs } })).json();
     expect(off.refilter).toMatchObject({ newlySkipped: 1 });
-    expect(byTitle('תמיכה')).toMatchObject({ status: 'skipped', statusReason: 'prefilter: role type disabled: support' });
+    expect(byTitle('תמיכה')).toMatchObject({ status: 'skipped', statusReason: 'prefilter: role type disabled: app-support' });
     expect(repo.listJobs({ hideSkipped: true }).items.map((j) => j.title)).toEqual(['Full Stack Developer']);
 
     support.enabled = true;

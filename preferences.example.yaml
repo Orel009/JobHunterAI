@@ -38,13 +38,104 @@ roleTypes:
     tier: 2
     queries: [QA Automation, מפתח אוטומציה]
     titleKeywords: [automation, אוטומציה, SDET, QA automation]
+  - id: solutions-integration
+    label: Solutions / Integration Engineer
+    tier: 2
+    # (replaces the former "implementation" role type)
+    notes: >-
+      Solutions / integration / implementation engineering, not pure development. Judge fit for the ROLE: APIs and
+      integrations between systems, SQL and data, troubleshooting and debugging customer issues, configuring and rolling
+      out a product, and working with analysts, customers and internal teams. Coding depth matters less; a candidate who
+      builds and debugs API integrations and works well with people is a strong fit even without deep algorithms.
+    queries: [Technical Solutions Engineer, Solutions Engineer, Integration Engineer, Implementation Engineer, API Integration Specialist, מהנדס אינטגרציה, מהנדס פתרונות, מיישם מערכות]
+    titleKeywords: [solutions engineer, solution engineer, technical solutions, integration engineer, integrations engineer, integration specialist, API integration, integration, אינטגרציה, implementation engineer, implementation specialist, implementation, implementer, מהנדס אינטגרציה, מהנדסת אינטגרציה, מהנדס פתרונות, מהנדסת פתרונות, מהנדס/ת אינטגרציה, מהנדס/ת פתרונות, מיישם מערכות, מיישמת מערכות, מיישם/ת מערכות]
+    # ranked on the role fit itself, not on how much of the work is coding
+    devContentCap: false
   # ---------- tier 3 ----------
-  - id: support
-    label: Technical Support Engineer / Application Support
+  - id: app-support
+    label: Application / Production Support (technical, Tier 2/3)
     tier: 3
-    notes: development-oriented support only (code, SQL, APIs, debugging); tier 3 is ranked on min(score, devContentScore)
-    queries: [Application Support, Technical Support Engineer, תמיכה טכנית]
-    titleKeywords: [application support, technical support, support engineer, tier 1, tier 2, תמיכה טכנית, תמיכה אפליקטיבית, איש תמיכה, אשת תמיכה]
+    # (replaces the former "support" role type: technical application / production support only)
+    notes: >-
+      Technical application / production support ONLY: investigating production incidents and application issues with
+      logs, SQL, APIs and monitoring, Tier 2/3 escalations, on-call for production, working with developers on fixes.
+      Never phone, chat, helpdesk, IT / computer support or first-line customer handling.
+    queries: [Application Support, Application Support Engineer, Production Support, Production Support Engineer, Support Engineer, Tier 2 Support, Tier 3 Support, תמיכה אפליקטיבית]
+    titleKeywords: [application support, application support engineer, production support, תמיכה אפליקטיבית, tier 2, tier 3, support engineer]
+    # title OR description; "משמרות" is fine when the text is about on-call for production incidents
+    excludeKeywords: [טלפוני, טלפונית, תמיכה טלפונית, מוקד, שיחות, מענה טלפוני, call center, phone, tier 1, helpdesk, help desk, IT support, מחשוב, טכנאי, טכנאית, שירות לקוחות, נציג, נציגה, נציג/ה, משמרות]
+    excludeUnless:
+      משמרות: [כוננות, כוננויות, on-call, on call, תקלות פרודקשן, תקלות ייצור, production incident, production incidents, incident management]
+    # the scorer also flags phone / chat / first-line work → skipped "front-line support"
+    skipFrontLineSupport: true
+    # always to the review queue, whatever the rank
+    neverAutoSubmit: true
+
+  # ---------- opt-in (disabled until you enable them) ----------
+  # While disabled they are not searched and do not remove any job (excludeTitlesWhenDisabled: false).
+  - id: forward-deployed
+    label: Forward Deployed / Customer Engineer (software)
+    tier: 2
+    enabled: false
+    excludeTitlesWhenDisabled: false
+    notes: >-
+      Forward deployed / customer / field engineer for SOFTWARE: building and adapting the product at customer sites or
+      for specific customers, integrations, scripts and APIs, debugging in the customer's environment, turning customer
+      needs into working solutions. Hardware installation, telecom / electrical field technicians and pure sales are a
+      poor fit.
+    queries: [Forward Deployed Engineer, Customer Engineer, Field Engineer software, מהנדס לקוחות, מהנדס שטח תוכנה]
+    titleKeywords: [forward deployed, FDE, customer engineer, field engineer, deployment engineer, מהנדס לקוחות, מהנדסת לקוחות, מהנדס שטח, מהנדסת שטח]
+    devContentCap: false
+  - id: platform-implementer
+    label: Platform implementer / business automation (monday, Salesforce, Priority, n8n / Make / Zapier)
+    tier: 3
+    enabled: false
+    excludeTitlesWhenDisabled: false
+    notes: >-
+      Implementing and automating business platforms: monday.com, Salesforce, Priority and similar; low-code / no-code
+      automation with n8n, Make or Zapier; building business workflows and integrations, scripting and APIs, working with
+      business users to model their processes. Judge platform / automation and integration fit, not algorithmic coding.
+    queries: [מיישם monday, מיישם Salesforce, מיישם פריוריטי, monday.com Implementation, Salesforce Implementation, Low-code Developer, No-code Automation, n8n, Zapier, מפתח אוטומציות עסקיות, אוטומציות עסקיות]
+    titleKeywords: [monday, monday.com, מאנדיי, Salesforce, סיילספורס, Priority, פריוריטי, low-code, low code, no-code, no code, n8n, Make.com, Zapier, אוטומציות עסקיות, אוטומציה עסקית, מיישם, מיישמת]
+    devContentCap: false
+  - id: analyst
+    label: Systems / Technical Product Analyst (junior, technical)
+    tier: 3
+    enabled: false
+    excludeTitlesWhenDisabled: false
+    notes: >-
+      Technical systems / business / product analysis: writing specifications and user stories, data flows and APIs,
+      SQL, working between business users and developers, QA of what was specified. Technical analyst roles only; pure
+      financial, marketing or data-science analyst roles are a poor fit.
+    queries: [מנתח מערכות ג'וניור, מנתח מערכות, Technical Product Analyst, System Analyst, Business Analyst technical, מנתחת מערכות]
+    titleKeywords: [מנתח מערכות, מנתחת מערכות, system analyst, systems analyst, technical analyst, technical product analyst, product analyst, business analyst, אנליסט מערכות]
+    devContentCap: false
+  - id: tech-writer
+    label: Technical / API Writer, Developer Documentation
+    tier: 3
+    enabled: false
+    excludeTitlesWhenDisabled: false
+    notes: >-
+      Technical writing for developers: API references, developer guides and tutorials, reading code and running the
+      product to document it, working with engineers. Judge technical understanding and writing (English and Hebrew), not
+      coding depth. Marketing copywriting is a poor fit.
+    queries: [Technical Writer, API Writer, API Technical Writer, Developer Documentation, כותב טכני, כתיבה טכנית]
+    titleKeywords: [technical writer, API writer, documentation, docs engineer, developer documentation, כותב טכני, כותבת טכנית, כתיבה טכנית]
+    devContentCap: false
+  - id: customer-success-tech
+    label: Customer Success Engineer / Technical Account Manager
+    tier: 3
+    enabled: false
+    excludeTitlesWhenDisabled: false
+    notes: >-
+      Technical customer success: onboarding customers onto a technical product, integrations and APIs, troubleshooting
+      escalations, being the technical point of contact. Sales quotas and non-technical account management are a poor
+      fit.
+    queries: [Customer Success Engineer, Technical Account Manager, Technical Customer Success, מהנדס הצלחת לקוח]
+    titleKeywords: [customer success engineer, technical customer success, technical account manager, TAM, הצלחת לקוח, הצלחת לקוחות]
+    # "Manager" is a seniority word everywhere else; here it is the role's name
+    allowSeniorityWords: [Technical Account Manager]
+    devContentCap: false
 
 # Jobs that REQUIRE more years than this are skipped (status skipped_experience).
 maxRequiredYears: 5

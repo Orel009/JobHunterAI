@@ -60,7 +60,7 @@ describe('auto-submit gate', () => {
   it('passes only when every condition holds, and records each one', () => {
     const g = autoSubmitGate(ok);
     expect(g.auto).toBe(true);
-    expect(g.conditions).toHaveLength(10);
+    expect(g.conditions).toHaveLength(11);
     expect(g.conditions.every((c) => c.ok && c.detail)).toBe(true);
   });
 

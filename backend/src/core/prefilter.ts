@@ -12,6 +12,9 @@ export interface PrefilterResult {
 }
 
 type PrefilterInput = Pick<Job, 'title' | 'company' | 'location'> & {
+  /** read for role type excludes (title OR description) */
+  descriptionText?: string;
+  requirementsText?: string;
   regions?: string[];
   roleTypes?: string[];
   salaryMin?: number | null;
@@ -43,7 +46,7 @@ export function expandWithAliases(keywords: string[], aliasGroups: string[][]): 
  */
 export function disabledRoleKeywords(roles: RoleType[], extraInclude: string[] = []): Array<[string, string]> {
   const keep = new Set([...roles.filter((r) => r.enabled).flatMap((r) => r.titleKeywords), ...extraInclude].map((k) => normalizeText(k)));
-  return roles.filter((r) => !r.enabled && !r.searchOnly).flatMap((r) => r.titleKeywords.filter((k) => !keep.has(normalizeText(k))).map((k): [string, string] => [k, r.id]));
+  return roles.filter((r) => !r.enabled && !r.searchOnly && r.excludeTitlesWhenDisabled !== false).flatMap((r) => r.titleKeywords.filter((k) => !keep.has(normalizeText(k))).map((k): [string, string] => [k, r.id]));
 }
 
 /**
@@ -134,6 +137,11 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
     return { pass: false, reason: 'no include keyword in title' };
   }
 
+  // the role type the job counts as may exclude words in its title or description (e.g. phone support for app-support)
+  const role = primaryRole({ title: job.title, roleTypes: job.roleTypes ?? [] }, { roleTypes: prefs.roleTypes ?? [], queries: prefs.queries ?? { titles: [], keywords: [] } });
+  const roleExcluded = role ? roleExclude(role, job) : null;
+  if (roleExcluded) return { pass: false, reason: `${role!.id}: excluded "${roleExcluded.word}" in the ${roleExcluded.where}` };
+
   const places = [job.location, ...(job.regions ?? [])].map((p) => p.trim()).filter(Boolean);
   if (prefs.locations.length > 0 && places.length > 0) {
     // city OR the site's region field; both directions so "השרון" matches "שרון" and "תל אביב" matches "תל אביב יפו"
@@ -155,6 +163,22 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
   }
 
   return { pass: true, reason: 'ok' };
+}
+
+/** A role type's own exclude word in the title or description (none when an "unless" phrase is also there). */
+export function roleExclude(role: RoleType, job: { title: string; descriptionText?: string; requirementsText?: string }): { word: string; where: 'title' | 'description' } | null {
+  if (!role.excludeKeywords?.length) return null;
+  const title = normalizeText(job.title);
+  const body = normalizeText(`${job.descriptionText ?? ''}\n${job.requirementsText ?? ''}`);
+  const all = `${title} ${body}`;
+  for (const word of role.excludeKeywords) {
+    const where = containsKeyword(title, word) ? 'title' : containsKeyword(body, word) ? 'description' : null;
+    if (!where) continue;
+    const unless = role.excludeUnless?.[word] ?? [];
+    if (unless.some((u) => containsKeyword(all, u))) continue;
+    return { word, where };
+  }
+  return null;
 }
 
 /** Enabled role types whose titleKeywords match the title (whole words). */

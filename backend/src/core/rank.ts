@@ -13,6 +13,8 @@ export interface RankInput {
   score: number | null;
   /** tier 3 ranks on min(score, devContentScore) */
   devContentScore?: number | null;
+  /** the role type's devContentCap (empty = tier 3 only) */
+  devContentCap?: boolean;
   requiredYears: number | null;
   juniorText: string | null;
   seniority?: string | null;
@@ -50,7 +52,8 @@ export function rankJob(i: RankInput, ranking: Prefs['ranking']): RankBreakdown 
   const category = experienceCategory(i);
   const experience = ranking.experienceBoost[category];
   const tier = i.tier === 1 ? ranking.tierBoost.tier1 : i.tier === 2 ? ranking.tierBoost.tier2 : i.tier === 3 ? ranking.tierBoost.tier3 : 0;
-  const base = i.score !== null && i.tier === 3 && i.devContentScore !== null && i.devContentScore !== undefined ? Math.min(i.score, i.devContentScore) : i.score;
+  const cap = i.devContentCap ?? i.tier === 3;
+  const base = i.score !== null && cap && i.devContentScore !== null && i.devContentScore !== undefined ? Math.min(i.score, i.devContentScore) : i.score;
   const salary = i.salaryOk ? ranking.salaryBoost : 0;
   return { rank: base === null ? null : base + experience + tier + salary, score: base, rawScore: i.score, experience, tier, salary, category };
 }
@@ -74,7 +77,7 @@ export function rankStoredJob(
   const floor = salarySettings(prefs, role).floor;
   const salaryOk = floor !== null && job.salaryUnit === 'month' && job.salaryMax !== null && job.salaryMax !== undefined && job.salaryMax >= floor;
   const r = rankJob(
-    { score: score?.score ?? null, devContentScore: score?.devContentScore ?? null, requiredYears: job.requiredYears, juniorText: job.juniorText, seniority: score?.seniority ?? null, tier, salaryOk },
+    { score: score?.score ?? null, devContentScore: score?.devContentScore ?? null, devContentCap: role?.devContentCap, requiredYears: job.requiredYears, juniorText: job.juniorText, seniority: score?.seniority ?? null, tier, salaryOk },
     prefs.ranking,
   );
   return { ...r, roleType: role?.id ?? null, roleTier: tier };

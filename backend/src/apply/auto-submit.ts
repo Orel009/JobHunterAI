@@ -11,7 +11,7 @@ import { nowIso } from '../db/index.js';
 import type { Repo, StoredJob } from '../db/repo.js';
 import { readSettingsFile, writeSettingsFile } from '../llm/settings.js';
 import { effectiveLimits, type Prefs } from '../core/prefs.js';
-import { excludedCompanyMatch } from '../core/prefilter.js';
+import { excludedCompanyMatch, rolesMatchingTitle, scoringRole } from '../core/prefilter.js';
 import { rankStoredJob } from '../core/rank.js';
 import { isAnonymousCompany } from '../core/text.js';
 import type { ApplyPlan } from './types.js';
@@ -66,6 +66,8 @@ export interface GateResult {
 
 export interface GateInput {
   dryRun: boolean;
+  /** role types of this job set to "never auto-submit" (Preferences); any → the job waits for your approval */
+  neverAutoRoles?: string[];
   site: string;
   siteEnabled: boolean;
   paused: boolean;
@@ -98,6 +100,11 @@ export function autoSubmitGate(i: GateInput, now = new Date()): GateResult {
     { name: `auto-submit is on for ${i.site}`, ok: i.siteEnabled, detail: i.siteEnabled ? 'on (Settings)' : 'off (Settings)' },
     { name: 'not paused', ok: !i.paused, detail: i.paused ? 'paused with "Pause auto-submit"' : 'running' },
     { name: 'the site has an automated apply flow', ok: i.automatedFlow, detail: i.automatedFlow ? i.site : `${i.site}: applied to by hand or via an external link` },
+    {
+      name: 'its role type allows auto-submit',
+      ok: !i.neverAutoRoles?.length,
+      detail: i.neverAutoRoles?.length ? `role type ${i.neverAutoRoles.join(', ')}: never auto-submitted (Preferences) — waits for your approval` : 'allowed',
+    },
     { name: `rank ≥ ${i.minRank}`, ok: i.rank !== null && i.rank >= i.minRank, detail: `rank ${i.rank ?? 'none (not scored)'}` },
     {
       name: 'every answer from your profile / answers bank (no drafts, nothing pending, nothing written by the model)',
@@ -135,8 +142,11 @@ export function evaluateAutoSubmit(db: DB, repo: Repo, job: StoredJob, plan: App
        UNION SELECT 1 FROM jobs WHERE company_norm = ? AND status = 'submitted_manual' AND applied_manually_at >= ? LIMIT 1`,
     )
     .get(job.companyNorm, since, job.companyNorm, since);
+  // the role type it is judged as, and every role type its title matches: any "never auto-submit" one keeps it in review
+  const roles = [scoringRole(job, prefs), ...rolesMatchingTitle(job.title, prefs.roleTypes)].filter((r) => r?.neverAutoSubmit);
   return autoSubmitGate({
     dryRun: config.DRY_RUN,
+    neverAutoRoles: [...new Set(roles.map((r) => r!.id))],
     site: job.site,
     siteEnabled: s.sites[job.site] === true,
     paused: s.paused,

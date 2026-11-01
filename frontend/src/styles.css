@@ -131,6 +131,9 @@ tr.pending-row { background: #fff8e1; }
 .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 16px; }
 .edit-table td { vertical-align: top; }
 .edit-table input, .edit-table textarea, .edit-table select { width: 100%; margin-bottom: 2px; }
+.edit-table .role-rules label { display: block; white-space: nowrap; font-size: 0.9em; }
+.edit-table .role-rules input[type="checkbox"] { width: auto; }
+.edit-table .role-rules select { width: auto; }
 .edit-table input.date { width: 120px; }
 .role-links { display: flex; flex-wrap: wrap; gap: 2px 10px; max-width: 420px; font-size: 12px; }
 .role-links label { display: inline-flex; gap: 3px; align-items: center; }

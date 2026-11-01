@@ -46,6 +46,27 @@ export const RoleTypeSchema = z.object({
   allowSeniorityWords: strList,
   /** salary settings for this role type (empty values fall back to the tier, then the default) */
   salary: SalarySettingsSchema.optional(),
+  /** never auto-submitted, whatever the rank: its jobs always wait for your approval in the review queue */
+  neverAutoSubmit: z.boolean().default(false),
+  /**
+   * rank on min(score, devContentScore) — "how much of the work is real development". Empty = tier 3 only. Off for role
+   * types scored on fit for the role itself (integration, support, AI adoption), not on coding depth.
+   */
+  devContentCap: z.boolean().optional(),
+  /**
+   * words that skip a job of this role type when they appear in its title OR description (whole words), e.g. phone /
+   * front-line support words for app-support. Only for jobs ranked as this role type.
+   */
+  excludeKeywords: strList,
+  /** an exclude word that is fine when the text also has one of these, e.g. משמרות → [כוננות, on-call] */
+  excludeUnless: z.record(z.string(), z.array(z.string())).default({}),
+  /**
+   * while this role type is disabled, its title keywords skip jobs (default) — off for opt-in role types that, when
+   * disabled, should simply not be searched rather than remove jobs another role type accepts
+   */
+  excludeTitlesWhenDisabled: z.boolean().default(true),
+  /** the scorer also judges front-line support (phone / chat / first-line customer handling): such jobs are skipped */
+  skipFrontLineSupport: z.boolean().default(false),
 });
 export type RoleType = z.infer<typeof RoleTypeSchema>;
 
@@ -165,7 +186,7 @@ export function loadPrefs(file = config.paths.preferences): Prefs {
 export function activeRoleTypes(p: Pick<Prefs, 'roleTypes' | 'queries'>): RoleType[] {
   if (p.roleTypes.length > 0) return p.roleTypes.filter((r) => r.enabled);
   const legacy = [...p.queries.titles, ...p.queries.keywords];
-  return legacy.length ? [{ id: 'default', tier: 1, enabled: true, searchOnly: false, queries: legacy, titleKeywords: [], allowSeniorityWords: [] }] : [];
+  return legacy.length ? [{ id: 'default', tier: 1, enabled: true, searchOnly: false, queries: legacy, titleKeywords: [], allowSeniorityWords: [], neverAutoSubmit: false, excludeKeywords: [], excludeUnless: {}, excludeTitlesWhenDisabled: true, skipFrontLineSupport: false }] : [];
 }
 
 /** Unique search terms with the role types that asked for them (a term shared by two roles is searched once). */

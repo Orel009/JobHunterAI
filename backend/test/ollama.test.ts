@@ -14,6 +14,7 @@ const valid = {
   seniority: 'mid',
   devContentScore: 80,
   isTrainingProgram: false,
+  isFrontLineSupport: false,
 };
 const msgs = [{ role: 'user' as const, content: 'x' }];
 

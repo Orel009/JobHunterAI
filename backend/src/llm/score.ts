@@ -23,6 +23,8 @@ export const ScoreSchema = z.object({
   devContentScore: z.number().int().min(0).max(100),
   /** true when the post is a course / bootcamp / training program ("הכשרה והשמה"), not a job */
   isTrainingProgram: z.boolean(),
+  /** true when the job is front-line support: phone / chat / first-line customer handling (skipped for role types that ask) */
+  isFrontLineSupport: z.boolean(),
 });
 
 export interface ScoreRole {
@@ -80,6 +82,7 @@ export function buildScoreMessages(
         'seniority: how the POST describes the role — junior (entry level, students, graduates, 0-1 years), mid, senior, or unknown.',
         'devContentScore: 0-100, how much of the daily work is real software development (writing code, APIs, databases, debugging). Call-center / customer service / IT helpdesk / hardware support ≈ 0-20.',
         'isTrainingProgram: true if the post is a course, bootcamp, "הכשרה והשמה" or any training program the candidate would join as a student, not a job.',
+        'isFrontLineSupport: true if the daily work is front-line support — answering phone calls or chats, first-line / Tier 1 customer or end-user handling, a call center or helpdesk, IT / computer support, technician work, or customer service shifts. false for technical application / production support (Tier 2/3: investigating incidents with logs, SQL and APIs, on-call for production) and for any non-support job.',
         job.descriptionText
           ? ''
           : 'The description is NOT available: judge from the title, company and location alone, score conservatively (never above 75), say in reasoningHe that the description was missing, and use null / unknown for anything the title does not state.',

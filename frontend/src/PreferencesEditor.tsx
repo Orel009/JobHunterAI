@@ -20,6 +20,12 @@ interface RoleType {
   notes?: string;
   salary?: SalarySettings;
   allowSeniorityWords?: string[];
+  neverAutoSubmit?: boolean;
+  devContentCap?: boolean;
+  excludeKeywords?: string[];
+  excludeUnless?: Record<string, string[]>;
+  excludeTitlesWhenDisabled?: boolean;
+  skipFrontLineSupport?: boolean;
 }
 export interface Prefs {
   roleTypes: RoleType[];
@@ -110,6 +116,8 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
                 <th>Queries (one per line)</th>
                 <th>Title keywords (one per line)</th>
                 <th title="seniority words that do not skip a job whose title matches this role type (e.g. מוביל, AI Lead); never a team lead">Allowed seniority words</th>
+                <th title="words that skip a job of this role type when they appear in its title OR description">Exclude words (title / description)</th>
+                <th>Rules</th>
                 <th />
               </tr>
             </thead>
@@ -142,6 +150,36 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
                   </td>
                   <td>
                     <TextList value={r.allowSeniorityWords ?? []} rows={4} placeholder="e.g. מוביל / AI Lead" onChange={(v) => up((d) => void (d.roleTypes[i]!.allowSeniorityWords = v))} />
+                  </td>
+                  <td>
+                    <TextList value={r.excludeKeywords ?? []} rows={4} placeholder="e.g. טלפוני / call center" onChange={(v) => up((d) => void (d.roleTypes[i]!.excludeKeywords = v))} />
+                    {Object.keys(r.excludeUnless ?? {}).length > 0 && (
+                      <span className="muted" title={Object.entries(r.excludeUnless!).map(([k, v]) => `${k} is fine with: ${v.join(', ')}`).join('; ')}>
+                        exceptions: {Object.keys(r.excludeUnless!).join(', ')} (preferences.yaml)
+                      </span>
+                    )}
+                  </td>
+                  <td className="role-rules">
+                    <label title="its jobs always wait for your approval in the review queue, whatever the rank">
+                      <input type="checkbox" checked={!!r.neverAutoSubmit} onChange={(e) => up((d) => void (d.roleTypes[i]!.neverAutoSubmit = e.target.checked))} /> never auto-submit
+                    </label>
+                    <label title="rank on min(score, how much of the work is real development); default: tier 3 only">
+                      dev-content cap{' '}
+                      <select
+                        value={r.devContentCap === undefined ? 'default' : r.devContentCap ? 'on' : 'off'}
+                        onChange={(e) => up((d) => void (d.roleTypes[i]!.devContentCap = e.target.value === 'default' ? undefined : e.target.value === 'on'))}
+                      >
+                        <option value="default">default (tier 3)</option>
+                        <option value="on">on</option>
+                        <option value="off">off</option>
+                      </select>
+                    </label>
+                    <label title="the scorer flags phone / chat / first-line support; such jobs are skipped">
+                      <input type="checkbox" checked={!!r.skipFrontLineSupport} onChange={(e) => up((d) => void (d.roleTypes[i]!.skipFrontLineSupport = e.target.checked))} /> skip front-line support
+                    </label>
+                    <label title="while disabled, its title keywords skip jobs (off = a disabled role type is just not searched)">
+                      <input type="checkbox" checked={r.excludeTitlesWhenDisabled !== false} onChange={(e) => up((d) => void (d.roleTypes[i]!.excludeTitlesWhenDisabled = e.target.checked))} /> when off, exclude its titles
+                    </label>
                   </td>
                   <td>
                     <button className="link" onClick={() => up((d) => void d.roleTypes.splice(i, 1))}>
