@@ -17,6 +17,8 @@ import { extensionSettings, saveExtensionSettings } from '../extension/settings.
 import { ROOT_DIR } from '../config.js';
 import { isIndeedHost } from '../alerts/assisted.js';
 import { isLinkedInHost } from '../linkedin/parse.js';
+import { llmReachable } from '../llm/reachable.js';
+import { log } from '../log.js';
 import path from 'node:path';
 
 /** A browser page's request (any http/https origin) — the dashboard is same-origin and sends none for GET. */
@@ -52,7 +54,12 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
   /** Labels the extension's dictionary does not know → a field type (the model picks a type, never a value; cached). */
   app.post('/api/fill/classify', async (req) => {
     const { labels } = z.object({ labels: z.array(z.string().max(300)).max(60) }).parse(req.body ?? {});
-    return { types: await classifyLabels(labels) };
+    try {
+      return { types: await classifyLabels(labels) };
+    } catch (e) {
+      log.warn({ labels: labels.length, err: e instanceof Error ? e.message : String(e) }, 'extension: labels not classified');
+      throw e;
+    }
   });
 
   /** A cover letter / message to the hiring team: an AI draft from your profile facts, for you to review on the form. */
@@ -62,7 +69,14 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
       .parse(req.body ?? {});
     if (!extensionSettings().fillCoverLetters) throw new ServiceError(409, 'cover letters are off (Settings → JobHunter Fill)');
     const job = b.jobId ? repo.getJob(b.jobId) : null;
-    return coverLetterDraft(db, { job, title: b.title, company: b.company, label: b.label, lang: b.lang });
+    const t0 = Date.now();
+    // the model not there: said in the overlay ("no draft: …"), not an error deep in the call
+    const reach = await llmReachable();
+    const d = reach.ok
+      ? await coverLetterDraft(db, { job, title: b.title, company: b.company, label: b.label, lang: b.lang }).catch((e: unknown) => ({ text: null, flaggedClaims: [], usedFactIds: [], error: `the model failed: ${e instanceof Error ? e.message : String(e)}` }))
+      : { text: null, flaggedClaims: [], usedFactIds: [], error: `${reach.reason}: start it (JobHunter → the LLM badge → Start Ollama), then fill again` };
+    log.info({ job: job ? `${job.title} — ${job.company}` : `(not linked) ${b.title} — ${b.company}`, ms: Date.now() - t0, ok: !!d.text, error: d.error, flaggedClaims: d.flaggedClaims.length }, 'extension: cover-letter draft');
+    return d;
   });
 
   app.post<{ Params: { id: string } }>('/api/fill/jobs/:id/applied', async (req) => {
@@ -78,7 +92,7 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
   });
   app.put('/api/extension/settings', async (req, reply) => {
     if (fromWebPage(req) && !String(req.headers.origin).startsWith(`http://127.0.0.1:`) && !String(req.headers.origin).startsWith('http://localhost:')) return reply.status(403).send({ error: 'dashboard only' });
-    const patch = z.object({ fillCoverLetters: z.boolean().optional() }).parse(req.body ?? {});
+    const patch = z.object({ fillCoverLetters: z.boolean().optional(), styleSample: z.string().max(4000).optional() }).parse(req.body ?? {});
     return saveExtensionSettings(patch);
   });
   app.post('/api/extension/token', async (req, reply) => {

@@ -12,7 +12,8 @@ const Src = z.array(z.enum(['he', 'en']));
 /**
  * USER-OWNED fields are never changed by a CV update (profile:init / CV upload diff):
  * gender, blockedSkills, declaredExperience, skills[].level, skills[].aliases, experience[].skills (skill links),
- * experience[]/education[].datesLocked dates (and any month-precise date you added).
+ * experience[]/education[].datesLocked dates (and any month-precise date you added), forms (the city for application
+ * forms), education[].kind / order / city.
  */
 export const USER_OWNED_FIELDS = [
   'gender',
@@ -23,6 +24,10 @@ export const USER_OWNED_FIELDS = [
   'experience[].skills',
   'experience[].datesLocked',
   'education[].datesLocked',
+  'education[].kind',
+  'education[].order',
+  'education[].city',
+  'forms',
 ] as const;
 
 export const ProfileSchema = z.object({
@@ -37,6 +42,11 @@ export const ProfileSchema = z.object({
     phone: z.string().nullable().default(null),
     city: Bi,
   }),
+  /**
+   * USER-OWNED: values for application forms only (JobHunter Fill and form filling) — never a profile fact, never in a
+   * CV or a draft. city: the city forms ask for (your CV may leave it out on purpose).
+   */
+  forms: z.object({ city: Bi.default({ he: null, en: null }) }).default({ city: { he: null, en: null } }),
   links: z.array(z.object({ id: z.string(), label: z.string(), url: z.string() })).default([]),
   summary: Bi.default({ he: null, en: null }),
   experience: z
@@ -69,6 +79,12 @@ export const ProfileSchema = z.object({
         sources: Src.default([]),
         /** USER-OWNED: see experience[].datesLocked */
         datesLocked: z.boolean().default(false),
+        /** USER-OWNED: a degree or a course (null = from the degree's name: "course", "bootcamp", "קורס"… = a course) */
+        kind: z.enum(['degree', 'course']).nullable().default(null),
+        /** USER-OWNED: the order on application forms (1 = first); null = degrees before courses, newest first */
+        order: z.number().int().min(1).max(99).nullable().default(null),
+        /** USER-OWNED: the institution's city (forms' "school location"); null = left empty there */
+        city: Bi.default({ he: null, en: null }),
       }),
     )
     .default([]),

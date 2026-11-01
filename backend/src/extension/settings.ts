@@ -7,12 +7,14 @@ import { readSettingsFile, writeSettingsFile } from '../llm/settings.js';
 
 export interface ExtensionSettings {
   fillCoverLetters: boolean;
+  /** 2–3 messages you wrote yourself: the style reference for the drafts ('' = none) */
+  styleSample: string;
 }
 type WithExt = { extension?: Partial<ExtensionSettings> };
 
 export function extensionSettings(): ExtensionSettings {
   const s = (readSettingsFile() as WithExt).extension ?? {};
-  return { fillCoverLetters: s.fillCoverLetters !== false };
+  return { fillCoverLetters: s.fillCoverLetters !== false, styleSample: typeof s.styleSample === 'string' ? s.styleSample : '' };
 }
 
 export function saveExtensionSettings(patch: Partial<ExtensionSettings>): ExtensionSettings {

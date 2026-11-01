@@ -35,11 +35,28 @@ export function experienceEntries(p: Profile | null, lang: 'he' | 'en'): FillDat
     .filter((e) => e.company && e.title);
 }
 
+type Edu = Profile['education'][number];
+/** a course (not a degree): set in the profile, else from its name */
+export const isCourse = (e: Pick<Edu, 'kind' | 'degree'>): boolean =>
+  e.kind ? e.kind === 'course' : /\b(course|bootcamp|certificat\w*|workshop|training)\b|קורס|סדנ|הכשרה|בוטקמפ/i.test(`${e.degree.en ?? ''} ${e.degree.he ?? ''}`);
+const newest = (e: Pick<Edu, 'start' | 'end'>) => (isCurrent(e.end) ? '9999' : (e.end ?? e.start ?? ''));
+
+/** Your order (education[].order, 1 = first) where set; otherwise degrees before courses, newest first within each. */
+export function orderEducation<T extends Pick<Edu, 'kind' | 'degree' | 'order' | 'start' | 'end'>>(list: T[]): T[] {
+  return [...list].sort(
+    (a, b) =>
+      (a.order ?? 100) - (b.order ?? 100) ||
+      Number(isCourse(a)) - Number(isCourse(b)) ||
+      newest(b).localeCompare(newest(a)) ||
+      String(b.start ?? '').localeCompare(String(a.start ?? '')),
+  );
+}
+
 export function educationEntries(p: Profile | null, lang: 'he' | 'en'): FillData['education'] {
   if (!p) return [];
-  const pick = (b: { he: string | null; en: string | null }) => b[lang] ?? b[lang === 'he' ? 'en' : 'he'] ?? '';
-  return p.education
-    .map((e) => ({ institution: pick(e.institution), degree: pick(e.degree), field: pick(e.field), start: e.start, end: isCurrent(e.end) ? null : e.end }))
+  const pick = (b: { he: string | null; en: string | null } | undefined) => (b ? (b[lang] ?? b[lang === 'he' ? 'en' : 'he'] ?? '') : '');
+  return orderEducation(p.education)
+    .map((e) => ({ institution: pick(e.institution), degree: pick(e.degree), field: pick(e.field), city: pick(e.city), start: e.start, end: isCurrent(e.end) ? null : e.end }))
     .filter((e) => e.institution);
 }
 
@@ -68,7 +85,8 @@ export interface FillData {
   profile: { currentTitle: string | null; currentCompany: string | null; yearsExperience: number | null };
   /** work roles (most recent first) and education, for Experience / Education entries on the form */
   experience: Array<{ company: string; title: string; start: string | null; end: string | null; current: boolean; description: string }>;
-  education: Array<{ institution: string; degree: string; field: string; start: string | null; end: string | null }>;
+  /** in your order (degrees before courses, newest first, unless you set one); city: the institution's ("school location") */
+  education: Array<{ institution: string; degree: string; field: string; city: string; start: string | null; end: string | null }>;
   /** Settings → JobHunter Fill: fill cover letters / messages to the hiring team with an AI draft (default on) */
   fillCoverLetters: boolean;
 }
@@ -152,7 +170,8 @@ export async function fillData(db: DB, job: StoredJob | null, pageLang?: 'he' | 
       lastName: rest.join(' ') || null,
       email: profile?.contact.email ?? null,
       phone: profile?.contact.phone ?? null,
-      city: pick(profile?.contact.city),
+      // the city for application forms (Profile → Contact), else the CV's
+      city: pick(profile?.forms?.city) ?? pick(profile?.contact.city),
       linkedin: link(/linkedin/i),
       github: link(/github/i),
       website: link(/portfolio|website|site|homepage/i),
@@ -177,14 +196,14 @@ export async function fillData(db: DB, job: StoredJob | null, pageLang?: 'he' | 
 
 /**
  * A cover letter / message to the hiring team for the extension (you review it and submit yourself): the draft
- * pipeline — your profile facts only (with fact ids), the unsupported-claim check, the right gender in Hebrew — at
- * 4–6 sentences in the job's language. Without the job's text (a page JobHunter does not know), only the page's job
+ * pipeline (your profile facts only, with fact ids; the unsupported-claim check; the right gender in Hebrew) with the
+ * cover-letter rules: 2–4 plain sentences in the job's language, no AI clichés, your writing sample as the style. Without the job's text (a page JobHunter does not know), only the page's job
  * title and company are given, so the draft stays general but true.
  */
 export async function coverLetterDraft(
   db: DB,
   o: { job: StoredJob | null; title: string; company: string; label: string; lang: 'he' | 'en' },
-  drafter = makeDrafter(loadProfile(), { cache: new Repo(db), sentences: '4-6' }),
+  drafter = makeDrafter(loadProfile(), { cache: new Repo(db), mode: 'coverLetter', styleSample: extensionSettings().styleSample }),
 ): Promise<{ text: string | null; flaggedClaims: string[]; usedFactIds: string[]; error: string | null }> {
   const title = o.job?.title || o.title || 'this role';
   const company = o.job?.company || o.company || 'your company';

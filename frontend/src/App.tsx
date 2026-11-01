@@ -38,6 +38,8 @@ export function App() {
   const [cvInfo, setCvInfo] = useState<{ state: Record<string, { needsDrushimUpdate: boolean }>; drushimCvNames: { he: string; en: string } } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<string>('jobs');
+  /** a company job to open in Assisted apply (from the Jobs list) */
+  const [assistedJob, setAssistedJob] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [onboarding, setOnboarding] = useState<boolean | null>(null);
   const checkOnboarding = useCallback(async () => {
@@ -148,7 +150,20 @@ export function App() {
         />
       )}
       {onboarding === false && status && <Controls status={status} onChange={refresh} profileReady={profile?.valid ?? true} />}
-      {onboarding === false && tab === 'jobs' && <JobsScreen refreshKey={status?.activeRun ? tick : 0} sites={status?.sites ?? []} alertSources={status?.emailAlerts.enabled ? status.emailAlerts.sources : []} roleTypes={status?.roleTypes ?? []} applyDisabled={status?.sessions.drushim?.state === 'logged_out'} />}
+      {onboarding === false && tab === 'jobs' && (
+        <JobsScreen
+          refreshKey={status?.activeRun ? tick : 0}
+          sites={status?.sites ?? []}
+          alertSources={status?.emailAlerts.enabled ? status.emailAlerts.sources : []}
+          roleTypes={status?.roleTypes ?? []}
+          applyDisabled={status?.sessions.drushim?.state === 'logged_out'}
+          companiesListed={!!status?.companies?.listed}
+          onOpenAssisted={(id) => {
+            setAssistedJob(id);
+            setTab('linkedin');
+          }}
+        />
+      )}
       {onboarding === false && tab === 'review' && <ReviewQueue dryRun={status?.dryRun ?? true} busy={!!status?.activeRun} runLabel={status?.activeRun ? `${status.activeRun.site}/${status.activeRun.kind}: ${status.activeRun.stage}` : null} loggedOut={Object.entries(status?.sessions ?? {}).filter(([, v]) => v.state === 'logged_out').map(([k]) => k)} onChanged={refresh} />}
       {onboarding === false && tab === 'answers' && <AnswersBank onChanged={refresh} />}
       {onboarding === false && tab === 'profile' && <ProfileScreen onChanged={refresh} />}
@@ -157,6 +172,8 @@ export function App() {
         <LinkedInScreen
           sources={[...(status.emailAlerts.enabled ? status.emailAlerts.sources : []), ...(status.companies?.listed ? ['greenhouse', 'comeet', 'smartrecruiters'] : [])]}
           alertsOn={status.emailAlerts.enabled}
+          openJobId={assistedJob}
+          onOpened={() => setAssistedJob(null)}
           busy={!!status.activeRun}
           onChanged={refresh}
         />

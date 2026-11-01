@@ -48,7 +48,7 @@ const PROFILE_MAP: Array<[RegExp, (p: Profile) => { value: string | null; ref: s
   [/^(שם משפחה|last name|surname)$/, (p) => ({ value: (p.contact.name.he ?? p.contact.name.en)?.split(' ').slice(1).join(' ') || null, ref: 'contact.name' })],
   [/(דואל|דוא ל|אימייל|מייל|e ?mail)/, (p) => ({ value: p.contact.email, ref: 'contact.email' })],
   [/(טלפון|נייד|phone|mobile)/, (p) => ({ value: p.contact.phone, ref: 'contact.phone' })],
-  [/^(עיר|עיר מגורים|מקום מגורים|city|city of residence|location)$/, (p) => ({ value: p.contact.city.he ?? p.contact.city.en, ref: 'contact.city' })],
+  [/^(עיר|עיר מגורים|מקום מגורים|city|city of residence|location)$/, (p) => (p.forms?.city.he ?? p.forms?.city.en ? { value: p.forms.city.he ?? p.forms.city.en, ref: 'forms.city' } : { value: p.contact.city.he ?? p.contact.city.en, ref: 'contact.city' })],
   [/linkedin/, (p) => ({ value: p.links.find((l) => l.id.startsWith('link.linkedin'))?.url ?? null, ref: 'link.linkedin' })],
   [/github/, (p) => ({ value: p.links.find((l) => l.id.startsWith('link.github'))?.url ?? null, ref: 'link.github' })],
 ];

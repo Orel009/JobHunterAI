@@ -266,6 +266,19 @@ describe('the companies run', () => {
     expect(c.answersPrepared).toBe(0);
   });
 
+  it('Score only (no list read): the summary shows the totals of the last read, not "—"; the Jobs list can show company jobs only', async () => {
+    saveCompanies([company({ ats: 'greenhouse', board: 'similarweb', name: 'Similarweb' })]);
+    await runCompaniesToCompletion(db, { fetchImpl: ghFetch().f });
+    const again = ghFetch();
+    const p = (await runCompaniesToCompletion(db, { fetch: false, fetchImpl: again.f }))!;
+    expect(again.calls).toEqual([]);
+    expect(p.companies[0]).toMatchObject({ name: 'Similarweb', read: 5, israel: 3, inLocations: 3, added: 0 });
+    repo.upsertJob(toJob({ site: 'drushim', externalId: '1', company: 'X', title: 'Developer', location: 'תל אביב', descriptionText: 'x', requirementsText: '', url: 'https://www.drushim.co.il/job/1/', postedAt: null, applyType: 'site_one_click', applyTarget: '', language: 'he', detailsFetched: true, raw: {} }));
+    const companyJobs = repo.listJobs({ site: 'companies', limit: 100 }).items;
+    expect(companyJobs).toHaveLength(3);
+    expect(companyJobs.every((j) => j.site === 'greenhouse')).toBe(true);
+  });
+
   it('a refusal pauses that ATS for 48 hours; a paused ATS is not read', async () => {
     saveCompanies([company({ ats: 'greenhouse', board: 'similarweb' })]);
     await runCompaniesToCompletion(db, { fetchImpl: ghFetch(429).f });

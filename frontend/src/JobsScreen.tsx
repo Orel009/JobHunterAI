@@ -5,6 +5,8 @@ import { RankBadge } from './RankBadge';
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('he-IL') : '');
 
 const ASSISTED = ['linkedin', 'indeed'];
+/** target-company jobs (Companies screen): applied to by you, from their Assisted apply card */
+const COMPANY: Record<string, string> = { greenhouse: 'Greenhouse', comeet: 'Comeet', smartrecruiters: 'SmartRecruiters' };
 
 export function JobsScreen({
   refreshKey,
@@ -12,12 +14,17 @@ export function JobsScreen({
   roleTypes = [],
   applyDisabled = false,
   alertSources = [],
+  companiesListed = false,
+  onOpenAssisted,
 }: {
   refreshKey: number;
   sites: Status['sites'];
   roleTypes?: Status['roleTypes'];
   applyDisabled?: boolean;
   alertSources?: string[];
+  companiesListed?: boolean;
+  /** open that job's card in Assisted apply */
+  onOpenAssisted?: (jobId: string) => void;
 }) {
   const [filters, setFilters] = useState({ site: '', status: '', minScore: '', q: '', roleType: '' });
   const [showSkipped, setShowSkipped] = useState(false);
@@ -58,6 +65,7 @@ export function JobsScreen({
           ))}
           {alertSources.includes('linkedin') && <option value="linkedin">LinkedIn (alerts)</option>}
           {alertSources.includes('indeed') && <option value="indeed">Indeed (alerts)</option>}
+          {companiesListed && <option value="companies">Companies (assisted)</option>}
         </select>
         <select value={filters.status} onChange={set('status')}>
           <option value="">All statuses</option>
@@ -122,7 +130,18 @@ export function JobsScreen({
                 <td className={j.salaryUnit ? '' : 'muted'} title={j.salaryText ?? ''}>
                   {salaryLabel(j)}
                 </td>
-                <td>{j.site}</td>
+                <td>
+                  {COMPANY[j.site] ? (
+                    <>
+                      <span dir="auto">{j.company}</span>{' '}
+                      <span className="badge" title={`${COMPANY[j.site]}: you apply on the company's form, from its Assisted apply card`}>
+                        assisted
+                      </span>
+                    </>
+                  ) : (
+                    j.site
+                  )}
+                </td>
                 <td className="muted">{j.applyType.replace('site_', '')}</td>
                 <td>
                   <span className={`pill status-${j.status}`} title={j.statusReason ?? ''}>
@@ -140,7 +159,11 @@ export function JobsScreen({
                     </button>
                   ) : (
                     <>
-                      {ASSISTED.includes(j.site) ? (
+                      {COMPANY[j.site] ? (
+                        <button className="link" title="the company's form, the CV and the prepared answers: in Assisted apply" onClick={() => onOpenAssisted?.(j.id)}>
+                          Assisted apply →
+                        </button>
+                      ) : ASSISTED.includes(j.site) ? (
                         <span className="muted" title={j.applyTarget ? `company link: ${j.applyTarget} (review queue)` : 'LinkedIn / Indeed are assisted-only: apply yourself from the Email alerts screen'}>
                           by hand
                         </span>

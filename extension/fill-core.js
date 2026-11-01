@@ -136,6 +136,23 @@
   /** A suggestion that IS the city: the same text, or the same before its first comma ("Tel Aviv, Israel"). */
   const exactPlace = (option, value) => norm(String(option).split(',')[0]) === norm(value) || norm(option) === norm(value);
 
+  // words that do not identify an institution or a company
+  const GENERIC = new Set(['college', 'university', 'academic', 'academy', 'institute', 'institution', 'school', 'center', 'centre', 'of', 'the', 'and', 'for', 'ltd', 'inc', 'llc', 'group', 'מכללת', 'מכללה', 'המכללה', 'אוניברסיטת', 'אוניברסיטה', 'האוניברסיטה', 'מרכז', 'המרכז', 'בית', 'ספר', 'בעמ']);
+  const coreWords = (s) => norm(s).split(' ').filter((w) => w && !GENERIC.has(w));
+  /**
+   * A suggestion that is exactly or closely the value: the same name, or the same name without "College",
+   * "University", "Ltd"… on either side ("ORT" or "ORT Hermelin Academic College" for "ORT Hermelin College",
+   * "John Bryce" for "John Bryce College"). "ORT Braude College" is not "ORT Hermelin College".
+   */
+  const closeMatch = (option, value) => {
+    if (norm(option) === norm(value) || exactPlace(option, value)) return true;
+    const a = coreWords(String(option).split(',')[0]);
+    const b = coreWords(value);
+    if (!a.length || !b.length) return false;
+    const within = (x, y) => x.every((w) => y.includes(w));
+    return within(a, b) || within(b, a);
+  };
+
   /** "+972-50-123 4567" / "972501234567" → "0501234567" (a country selector next to the field holds the +972). */
   function localPhone(p) {
     const d = String(p ?? '').replace(/[^\d+]/g, '');
@@ -337,19 +354,20 @@
   const isAutocomplete = (el) => el.getAttribute('aria-autocomplete') === 'list' || el.getAttribute('role') === 'combobox' || /select__input/.test(el.className) || hosts(el).some((h) => /autocomplete|combobox/i.test(h.tagName));
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  /** A list with suggestions: type, then pick the suggestion that matches (exactly, for a city); else clear and leave it to you. */
+  /**
+   * A list with suggestions: type, wait for them, pick the one that matches (the exact text first). No match: the typed
+   * text stays and the caller marks the field yellow ("pick from the list").
+   */
   async function fillFromList(doc, input, value, matches) {
     setValue(input, value);
     input.focus();
-    let option = null;
-    for (let i = 0; i < 12 && !option; i++) {
+    let found = [];
+    for (let i = 0; i < 12 && !found.length; i++) {
       await wait(250);
-      option = deepAll(doc, '[role="option"]').find((o) => visible(o) && matches(textOf(o)));
+      found = deepAll(doc, '[role="option"]').filter((o) => visible(o) && matches(textOf(o)));
     }
-    if (!option) {
-      setValue(input, '');
-      return false;
-    }
+    if (!found.length) return false;
+    const option = found.find((o) => norm(textOf(o)) === norm(value)) || found[0];
     option.click(); // a suggestion in the field's own list (not a button)
     await wait(200);
     return true;
@@ -381,7 +399,9 @@
   }
 
   const ENTRY = {
+    // "location" first: "School location" / "Company location" is a place, never the institution or the company
     experience: [
+      ['location', /location|city|עיר|מיקום|ישוב/],
       ['company', /company|employer|organi[sz]ation|חברה|מעסיק|ארגון|מקום עבודה/],
       ['title', /title|position|role|תפקיד/],
       ['current', /current|present|i work here|עובד כאן|עובדת כאן|עדיין|כיום/],
@@ -390,6 +410,7 @@
       ['description', /description|responsibilit|achievement|summary|תיאור|תחומי אחריות/],
     ],
     education: [
+      ['location', /location|city|עיר|מיקום|ישוב/],
       ['institution', /school|institution|university|college|מוסד|אוניברסיטה|מכללה|בית ספר/],
       ['degree', /degree|diploma|תואר|תעודה/],
       ['field', /field|major|discipline|study|תחום|חוג|מגמה/],
@@ -443,8 +464,18 @@
           if (el.type === 'checkbox' && next.current) tick(el);
           continue;
         }
-        const v = key === 'start' || key === 'end' ? (key === 'end' && next.current ? null : dateFor(el, next[key])) : next[key];
+        // a location: the institution's city when the profile has one, else left empty (never the institution's name)
+        const v = key === 'location' ? next.city || null : key === 'start' || key === 'end' ? (key === 'end' && next.current ? null : dateFor(el, next[key])) : next[key];
         if (!v || !empty(el)) continue;
+        if (isAutocomplete(el)) {
+          // institution / company / place lists: a suggestion only when it is exactly or closely the value
+          const place = key === 'location';
+          if (await fillFromList(doc, el, String(v), (t) => (place ? exactPlace(t, v) : closeMatch(t, v)))) {
+            mark(el, 'filled');
+            filled++;
+          } else needYou(out, el, labelFor(el) || key, `pick "${v}" from the list`);
+          continue;
+        }
         if (el.tagName === 'SELECT') {
           const i = chooseOption([...el.options].map((o) => o.text), v);
           if (i < 0) continue;
@@ -579,14 +610,15 @@
         continue;
       }
       if (isAutocomplete(el)) {
-        // a city: only the exact suggestion; any other list: the option matching the answer
-        const ok = await fillFromList(doc, el, String(a.value), a.type === 'city' ? (t) => exactPlace(t, a.value) : (t) => chooseOption([t], a.value) === 0);
+        // a city: only the exact suggestion; a name (company, school): exact or close; anything else: the matching option.
+        // No match: the typed text stays, yellow
+        const ok = await fillFromList(doc, el, String(a.value), a.type === 'city' ? (t) => exactPlace(t, a.value) : (t) => closeMatch(t, a.value) || chooseOption([t], a.value) === 0);
         if (ok) {
           mark(el, 'filled');
           out.filled++;
           out.details.push({ label: f.label, value: a.value, from: a.from });
         } else {
-          needYou(out, el, f.label, a.type === 'city' ? `no suggestion is exactly "${a.value}" — pick your city` : `choose "${a.value}" in the list`);
+          needYou(out, el, f.label, `pick "${a.value}" from the list`);
         }
         continue;
       }
@@ -632,6 +664,8 @@
         <div id="sum"><span class="g">filled ${out.filled}</span>${out.drafts ? `, <span class="d">AI drafts ${out.drafts}</span>` : ''}, <span class="y">need you ${out.needYou}</span>${out.cv ? `, <span class="c">CV: ${escapeHtml(out.cv)}</span>` : ''}</div>
         <div class="m">${job ? `${escapeHtml(job.title)} — ${escapeHtml(job.company)} (${escapeHtml(job.siteLabel)})` : 'not linked to a JobHunter job: your details only'}</div>
         ${out.drafts ? `<div class="m">The purple text is an AI draft from your profile: read and edit it before submitting.${claims ? ` Check these claims: <ul>${claims}</ul>` : ''}</div>` : ''}
+        ${out.pending.length ? `<div class="m"><span class="y">need you</span><ul>${out.pending.slice(0, 12).map((x) => `<li>${escapeHtml(x)}</li>`).join('')}${out.pending.length > 12 ? `<li>… ${out.pending.length - 12} more (outlined yellow)</li>` : ''}</ul></div>` : ''}
+        ${(data.problems || []).map((n) => `<div class="m">⚠ ${escapeHtml(n)}</div>`).join('')}
         ${out.notes.map((n) => `<div class="m">${escapeHtml(n)}</div>`).join('')}
         <div class="m">Check everything, attach the CV, then submit yourself.</div>
         <div class="r">${job ? '<button class="p" id="applied">I applied</button>' : ''}<button id="close">Close</button></div>
@@ -656,5 +690,5 @@
 
   const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
-  root.JobHunterFill = { norm, classify, fieldType, bankAnswer, chooseOption, exactPlace, localPhone, answerFor, dateFor, entryKey, run, scan, clearMarks, manualOnlyHost, MANUAL_ONLY_MESSAGE, FORBIDDEN };
+  root.JobHunterFill = { norm, classify, fieldType, bankAnswer, chooseOption, exactPlace, closeMatch, localPhone, answerFor, dateFor, entryKey, run, scan, clearMarks, manualOnlyHost, MANUAL_ONLY_MESSAGE, FORBIDDEN };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

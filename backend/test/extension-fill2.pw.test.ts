@@ -4,7 +4,11 @@
  *     roots kept): fields inside shadow roots, values set the way frameworks accept, events that reach the component
  *     hosts, the local phone number next to the +972 selector, the country search and other profiles left alone, the
  *     privacy box left for you, and the AI draft in the message to the hiring team (purple);
- *   - a city autocomplete: the suggestion is taken only when it is exactly your city;
+ *   - a city autocomplete: the suggestion is taken only when it is exactly your city; otherwise your typed text stays,
+ *     yellow ("pick from the list");
+ *   - an education entry like SmartRecruiters': the institution picked from its list only when the suggestion is exactly
+ *     or closely the name, the "School location" from the institution's city (never its name), the degree and the major;
+ *   - the overlay lists every yellow field with its reason (e.g. why there is no draft);
  *   - Experience / Education entries: "Add" inside those sections only, the new entry filled from the profile, never
  *     Save / Submit; the next entry on the next click;
  *   - cover letters off → left empty.
@@ -30,7 +34,7 @@ const DATA = {
     { company: 'Acme', title: 'Developer', start: '2023-02', end: null, current: true, description: '• Built APIs' },
     { company: 'Beta Ltd', title: 'Junior Developer', start: '2021-01', end: '2022-12', current: false, description: '• Tests' },
   ],
-  education: [{ institution: 'Open University', degree: 'B.Sc.', field: 'Computer Science', start: '2017-10', end: '2021-06' }],
+  education: [{ institution: 'Open University', degree: 'B.Sc.', field: 'Computer Science', city: '', start: '2017-10', end: '2021-06' }],
   fillCoverLetters: true,
   draft: { text: 'I would like to join your team. I build APIs at Acme.', flaggedClaims: ['"join your team"'], usedFactIds: ['exp.acme'], error: null },
 };
@@ -107,7 +111,7 @@ describe('SmartRecruiters "Easy apply" (web components, shadow DOM)', () => {
     expect(await page.locator('spl-textarea#hiring-manager-message-input').getAttribute('data-jobhunter-fill')).toBe('draft');
     expect(r).toMatchObject({ filled: 7, drafts: 1, cvFields: 2, flaggedClaims: ['"join your team"'] });
     // need you: the city (no live suggestions in a saved page) and the privacy box — nothing else
-    expect(r.pending).toEqual([expect.stringMatching(/yours to decide/), expect.stringMatching(/^City: no suggestion is exactly "Tel Aviv"/)]);
+    expect(r.pending).toEqual([expect.stringMatching(/yours to decide/), 'City: pick "Tel Aviv" from the list']);
     expect(await clicked(page)).toEqual([]); // no Submit, no Add (the profile entries need a live form: nothing opens here)
   });
 
@@ -139,12 +143,65 @@ describe('a city autocomplete', () => {
     expect(await page.locator('#c').getAttribute('data-picked')).toBe('Tel Aviv, Israel');
     expect(r.filled).toBe(1);
   });
-  it('no exact suggestion → cleared and left yellow for you', async () => {
+  it('no exact suggestion → your typed text stays, yellow: pick it from the list', async () => {
     const page = await open(CITY(['Tel Aviv-Yafo, Israel', 'Tel Mond, Israel']));
     const r = await fill(page);
-    expect(await page.locator('#c').inputValue()).toBe('');
+    expect(await page.locator('#c').inputValue()).toBe('Tel Aviv');
+    expect(await page.locator('#c').getAttribute('data-picked')).toBeNull();
     expect(await page.locator('#c').getAttribute('data-jobhunter-fill')).toBe('pending');
     expect(r.needYou).toBe(1);
+    expect(r.pending).toEqual(['City: pick "Tel Aviv" from the list']);
+    // the overlay lists it, with the reason
+    const again = await open(CITY(['Tel Aviv-Yafo, Israel', 'Tel Mond, Israel']));
+    await again.evaluate((d) => (window as unknown as { JobHunterFill: { run: (doc: Document, x: unknown, o: unknown) => Promise<unknown> } }).JobHunterFill.run(document, d, {}), DATA);
+    expect(await again.evaluate(() => document.getElementById('jobhunter-fill-overlay')!.shadowRoot!.textContent)).toMatch(/need you.*City: pick "Tel Aviv" from the list/s);
+  });
+});
+
+/** an education entry like SmartRecruiters': Institution and School location are lists; the institution is required */
+const EDU_LIST = (institutions: string[]) => `<!DOCTYPE html><html><body><form>
+  <section id="edu"><h3>Education</h3><div class="list"></div><button type="button" class="add">+ Add</button></section>
+  <script>
+    const LISTS = { institution: ${JSON.stringify(institutions)}, location: ['Netanya, Israel', 'Netivot, Israel'] };
+    const entry = '<div class="entry">' +
+      '<label for="i">Institution</label><input id="i" required role="combobox" aria-autocomplete="list"><ul role="listbox" id="li"></ul>' +
+      '<label for="m">Major</label><input id="m">' +
+      '<label for="d">Degree</label><input id="d">' +
+      '<label for="l">School location</label><input id="l" role="combobox" aria-autocomplete="list"><ul role="listbox" id="ll"></ul>' +
+      '<label for="f">From</label><input id="f" placeholder="YYYY"><label for="t">To</label><input id="t" placeholder="YYYY">' +
+      '<button type="button" class="save">Save</button></div>';
+    const wire = (input, list, options) => {
+      input.addEventListener('input', () => { list.innerHTML = input.value.length >= 2 ? options.map((o) => '<li role="option">' + o + '</li>').join('') : ''; });
+      list.addEventListener('click', (e) => { const o = e.target.closest('[role=option]'); if (o) { input.value = o.textContent; input.dataset.picked = o.textContent; list.innerHTML = ''; } });
+    };
+    document.querySelector('#edu .add').addEventListener('click', () => {
+      document.querySelector('#edu .list').insertAdjacentHTML('beforeend', entry);
+      wire(document.getElementById('i'), document.getElementById('li'), LISTS.institution);
+      wire(document.getElementById('l'), document.getElementById('ll'), LISTS.location);
+    });
+  </script></form></body></html>`;
+const ORT = { institution: 'ORT Hermelin College', degree: 'Practical Software Engineer (Handasai)', field: 'Software Engineering', city: 'Netanya', start: '2021', end: '2024' };
+
+describe('an education entry with lists (SmartRecruiters)', () => {
+  it('the institution picked when a suggestion is closely the name; School location = the city; Degree and Major in their own fields', async () => {
+    const page = await open(EDU_LIST(['ORT Braude College', 'ORT Hermelin Academic College']));
+    const r = await fill(page, { ...DATA, experience: [], education: [ORT] });
+    expect(await page.locator('#i').getAttribute('data-picked')).toBe('ORT Hermelin Academic College');
+    expect(await page.locator('#l').getAttribute('data-picked')).toBe('Netanya, Israel');
+    expect(await page.locator('#d').inputValue()).toBe('Practical Software Engineer (Handasai)');
+    expect(await page.locator('#m').inputValue()).toBe('Software Engineering');
+    expect([await page.locator('#f').inputValue(), await page.locator('#t').inputValue()]).toEqual(['2021', '2024']);
+    expect(r.needYou).toBe(0);
+  });
+
+  it('no close suggestion: the typed name stays, yellow "pick from the list"; no city in the profile: School location left empty', async () => {
+    const page = await open(EDU_LIST(['Tel Aviv University', 'ORT Braude College']));
+    const r = await fill(page, { ...DATA, experience: [], education: [{ ...ORT, city: '' }] });
+    expect(await page.locator('#i').inputValue()).toBe('ORT Hermelin College');
+    expect(await page.locator('#i').getAttribute('data-picked')).toBeNull();
+    expect(await page.locator('#i').getAttribute('data-jobhunter-fill')).toBe('pending');
+    expect(await page.locator('#l').inputValue()).toBe('');
+    expect(r.pending).toContain('Institution: pick "ORT Hermelin College" from the list');
   });
 });
 

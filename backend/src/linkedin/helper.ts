@@ -49,7 +49,9 @@ export function applyHelper(db: DB, job: StoredJob, matchedSkills: string[] = []
     add('Full name', pick(c.name), 'profile: contact.name');
     add('Email', c.email, 'profile: contact.email');
     add('Phone', c.phone, 'profile: contact.phone');
-    add('City', pick(c.city), 'profile: contact.city');
+    // the city for application forms (Profile → Contact), else the CV's
+    const formCity = profile.forms?.city ? pick(profile.forms.city) : null;
+    add('City', formCity || pick(c.city), formCity ? 'profile: city for application forms' : 'profile: contact.city');
     for (const l of profile.links) add(l.label, l.url, `profile: links.${l.id}`);
   }
 

@@ -4,7 +4,7 @@ import type { Job, JobStatus } from '../sites/types.js';
 import { mergeJob } from '../core/job.js';
 import { findDuplicate, type DedupeCandidate } from '../core/dedupe.js';
 import { isAnonymousCompany } from '../core/text.js';
-import { isAssistedOnly } from '../alerts/assisted.js';
+import { COMPANY_SOURCES, isAssistedOnly } from '../alerts/assisted.js';
 
 interface JobRow {
   id: string;
@@ -497,7 +497,9 @@ export class Repo {
   listJobs(f: { site?: string; status?: string; minScore?: number; q?: string; roleType?: string; hideSkipped?: boolean; limit?: number; offset?: number }) {
     const where: string[] = [];
     const args: Array<string | number> = [];
-    if (f.site) (where.push('j.site = ?'), args.push(f.site));
+    // "companies": every company source (Greenhouse, Comeet, SmartRecruiters)
+    if (f.site === 'companies') where.push(`j.site IN (${COMPANY_SOURCES.map((x) => `'${x}'`).join(',')})`);
+    else if (f.site) (where.push('j.site = ?'), args.push(f.site));
     if (f.status) (where.push('j.status = ?'), args.push(f.status));
     else if (f.hideSkipped) where.push("j.status NOT LIKE 'skipped%'");
     if (f.minScore !== undefined) (where.push('s.score >= ?'), args.push(f.minScore));

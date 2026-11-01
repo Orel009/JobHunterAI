@@ -105,9 +105,10 @@ export function summarize(db: DB, c: Company, f: CompanyFetch | null, keptIds: S
     id: c.id,
     name: c.name || f?.jobs[0]?.company || c.board || c.id,
     ats: c.ats,
-    read: f?.total ?? null,
-    israel: f?.israel ?? null,
-    inLocations: f && !f.error && !f.blocked ? keptIds.size : null,
+    // not read in this run (Score only): the totals of the last read
+    read: f ? f.total : (c.lastCheck?.total ?? null),
+    israel: f ? f.israel : (c.lastCheck?.israel ?? null),
+    inLocations: f ? (!f.error && !f.blocked ? keptIds.size : null) : (c.lastCheck?.kept ?? null),
     added,
     skipped: [...skipped].map(([reason, v]) => ({ reason, ...v })).sort((a, b) => b.count - a.count),
     scored: jobs.filter((j) => j.score).length,

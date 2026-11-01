@@ -133,6 +133,16 @@ roleTypes:
       fit.
     queries: [Customer Success Engineer, Technical Account Manager, Technical Customer Success, מהנדס הצלחת לקוח]
     titleKeywords: [customer success engineer, technical customer success, technical account manager, TAM, הצלחת לקוח, הצלחת לקוחות]
+  # Manual QA. To turn it on: enabled: true, and remove בודק ידני / manual QA / manual tester from excludeTitleKeywords
+  # below. A title that also says automation keeps the automation role type (better tier).
+  - id: manual-qa
+    label: Manual QA / Software Tester
+    tier: 3
+    enabled: false
+    excludeTitlesWhenDisabled: false
+    neverAutoSubmit: true
+    queries: [בודק תוכנה, QA ידני, Manual QA]
+    titleKeywords: [בודק/ת תוכנה, בודקת תוכנה, QA ידני, בדיקות ידניות, manual QA, manual tester]
     # "Manager" is a seniority word everywhere else; here it is the role's name
     allowSeniorityWords: [Technical Account Manager]
     devContentCap: false

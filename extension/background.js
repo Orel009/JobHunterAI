@@ -43,7 +43,15 @@ async function fillTab(tabId) {
   const page = scanned?.result ?? { unknown: [], coverLetter: false, title: tab.title || '', lang: 'en' };
   const data = await api(`/api/fill/data?lang=${page.lang}${job ? `&jobId=${encodeURIComponent(job.id)}` : ''}`);
   // unknown labels → a field type (the model picks a type, never a value; cached by JobHunter)
-  if (page.unknown.length) data.labelTypes = (await api('/api/fill/classify', { method: 'POST', body: JSON.stringify({ labels: page.unknown }) }).catch(() => ({ types: {} }))).types;
+  // what went wrong on the way is shown in the overlay
+  data.problems = [];
+  if (page.unknown.length)
+    data.labelTypes = (
+      await api('/api/fill/classify', { method: 'POST', body: JSON.stringify({ labels: page.unknown }) }).catch((e) => {
+        data.problems.push(`${page.unknown.length} unknown labels not classified: ${e.message}`);
+        return { types: {} };
+      })
+    ).types;
   // a cover letter / message to the hiring team: an AI draft from your profile, filled purple for you to review
   if (page.coverLetter && data.fillCoverLetters) {
     data.draft = await api('/api/fill/draft', {

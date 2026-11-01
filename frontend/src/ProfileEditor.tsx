@@ -31,11 +31,19 @@ interface Edu {
   start: string | null;
   end: string | null;
   datesLocked?: boolean;
+  /** null = from the name ("course", "bootcamp", "קורס"… = a course) */
+  kind?: 'degree' | 'course' | null;
+  /** order on application forms (1 = first); null = degrees before courses, newest first */
+  order?: number | null;
+  /** the institution's city (forms' "school location") */
+  city?: Bi;
 }
 export interface ProfileDoc {
   gender: 'male' | 'female' | null;
   blockedSkills: string[];
   contact: { name: Bi; email: string | null; phone: string | null; city: Bi };
+  /** values for application forms only (JobHunter Fill / form filling); never in the CV or a draft */
+  forms?: { city: Bi };
   links: Array<{ id: string; label: string; url: string }>;
   summary: Bi;
   experience: Role[];
@@ -176,6 +184,12 @@ export function ProfileEditor({ compact = false, sections, onSaved, onDirtyChang
             </Field>
             <Field label="City (English)">
               <input value={p.contact.city.en ?? ''} onChange={(e) => up((d) => void (d.contact.city.en = e.target.value || null))} />
+            </Field>
+            <Field label="City for application forms (Hebrew)" hint="only JobHunter Fill and form filling use it; never added to your CV">
+              <input dir="rtl" value={p.forms?.city.he ?? ''} onChange={(e) => up((d) => void ((d.forms ??= { city: { he: null, en: null } }).city.he = e.target.value || null))} />
+            </Field>
+            <Field label="City for application forms (English)" hint="e.g. Netanya; used instead of the CV's city on forms">
+              <input value={p.forms?.city.en ?? ''} onChange={(e) => up((d) => void ((d.forms ??= { city: { he: null, en: null } }).city.en = e.target.value || null))} />
             </Field>
           </div>
           {!compact && (
@@ -346,7 +360,22 @@ export function ProfileEditor({ compact = false, sections, onSaved, onDirtyChang
       {show('education') && (
         <fieldset>
           <legend>Education</legend>
+          <p className="muted">
+            Application forms get your education in this order: <b>Order</b> where you set it (1 = first), otherwise degrees before courses, newest first. <b>City</b> fills a
+            form's "school location" (left empty without it).
+          </p>
           <table className="edit-table">
+            <thead>
+              <tr>
+                <th>Institution</th>
+                <th>Degree / course name</th>
+                <th>Field of study (Major)</th>
+                <th>City</th>
+                <th>Dates</th>
+                <th>Kind / order</th>
+                <th />
+              </tr>
+            </thead>
             <tbody>
               {p.education.map((e, i) => (
                 <tr key={e.id}>
@@ -359,8 +388,33 @@ export function ProfileEditor({ compact = false, sections, onSaved, onDirtyChang
                     <input placeholder="degree (en)" value={e.degree.en ?? ''} onChange={(v) => up((d) => void (d.education[i]!.degree.en = v.target.value || null))} />
                   </td>
                   <td>
+                    <input dir="rtl" placeholder="field (he)" value={e.field.he ?? ''} onChange={(v) => up((d) => void (d.education[i]!.field.he = v.target.value || null))} />
+                    <input placeholder="field (en)" value={e.field.en ?? ''} onChange={(v) => up((d) => void (d.education[i]!.field.en = v.target.value || null))} />
+                  </td>
+                  <td>
+                    <input dir="rtl" placeholder="city (he)" value={e.city?.he ?? ''} onChange={(v) => up((d) => void ((d.education[i]!.city ??= { he: null, en: null }).he = v.target.value || null))} />
+                    <input placeholder="city (en)" value={e.city?.en ?? ''} onChange={(v) => up((d) => void ((d.education[i]!.city ??= { he: null, en: null }).en = v.target.value || null))} />
+                  </td>
+                  <td>
                     <input className="date" placeholder="start" value={e.start ?? ''} onChange={(v) => up((d) => void ((d.education[i]!.start = v.target.value || null), (d.education[i]!.datesLocked = true)))} />
                     <input className="date" placeholder="end" value={e.end ?? ''} onChange={(v) => up((d) => void ((d.education[i]!.end = v.target.value || null), (d.education[i]!.datesLocked = true)))} />
+                  </td>
+                  <td>
+                    <select value={e.kind ?? ''} title="degree or course (automatic: from the name)" onChange={(v) => up((d) => void (d.education[i]!.kind = (v.target.value || null) as Edu['kind']))}>
+                      <option value="">automatic</option>
+                      <option value="degree">degree</option>
+                      <option value="course">course</option>
+                    </select>
+                    <input
+                      className="date"
+                      type="number"
+                      min={1}
+                      max={99}
+                      placeholder="order"
+                      title="1 = first on application forms; empty = automatic"
+                      value={e.order ?? ''}
+                      onChange={(v) => up((d) => void (d.education[i]!.order = v.target.value ? Math.max(1, Math.min(99, Math.round(Number(v.target.value)))) : null))}
+                    />
                   </td>
                   <td>
                     <button className="link" onClick={() => up((d) => void d.education.splice(i, 1))}>
@@ -375,7 +429,7 @@ export function ProfileEditor({ compact = false, sections, onSaved, onDirtyChang
             className="secondary"
             onClick={() =>
               up((d) =>
-                d.education.push({ id: uniq('edu.new', d.education.map((x) => x.id)), institution: { he: null, en: null }, degree: { he: null, en: null }, field: { he: null, en: null }, start: null, end: null, datesLocked: true }),
+                d.education.push({ id: uniq('edu.new', d.education.map((x) => x.id)), institution: { he: null, en: null }, degree: { he: null, en: null }, field: { he: null, en: null }, start: null, end: null, datesLocked: true, kind: null, order: null, city: { he: null, en: null } }),
               )
             }
           >

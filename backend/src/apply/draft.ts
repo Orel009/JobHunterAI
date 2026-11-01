@@ -3,6 +3,9 @@
  *  1. WRITE model gets only relevant profile facts with ids + the job text → {text, usedFactIds, unanswerable}
  *  2. post-check: unanswerable / no citations / unknown ids → rejected (field becomes pending)
  *  3. ANALYZE model verification pass lists claims not supported by the cited facts → flaggedClaims (kept as draft)
+ * A cover letter / message to the hiring team has its own rules (plain, specific, 2–4 sentences, no AI clichés, no em
+ * dashes, no lists, no flattery), an optional sample of your own writing as the style reference, and a style post-check
+ * that sends it back once; a draft that still fails is not used.
  */
 import { z } from 'zod';
 import { hebrewFirstPersonRule, type Gender } from '../core/gender.js';
@@ -63,23 +66,95 @@ const WRITE_SYSTEM: Record<'he' | 'en', string> = {
   ].join('\n'),
 };
 
-/** sentences: the length asked for ("2-4" for form answers; "4-6" for a cover letter / message to the hiring team) */
-export function makeDrafter(profile: Profile | null, opts: { cache?: LlmCache; now?: Date; sentences?: string } = {}) {
+// ---------- cover letters / messages to the hiring team ----------
+
+/** Phrases that make a message sound machine-written (case-insensitive; a draft with any of them is sent back). */
+export const COVER_BANNED: Array<[RegExp, string]> = [
+  [/\bexcit(ed|ing|ement)\b/i, 'excited'],
+  [/\bpassion(ate)?\b/i, 'passionate'],
+  [/\bthrilled\b/i, 'thrilled'],
+  [/\bI(?: am|'m) confident\b/i, 'I am confident'],
+  [/\bleverag(e|es|ed|ing)\b/i, 'leverage'],
+  [/\bdynamic\b/i, 'dynamic'],
+  [/\bfast[- ]paced\b/i, 'fast-paced'],
+  [/\b(would be|am|I'm) a (great|perfect|strong|good) fit\b|\bI believe I would be\b/i, 'I believe I would be a great fit'],
+  [/נלהב/, 'נלהב'],
+  [/אשמח מאוד להצטרף/, 'אשמח מאוד להצטרף'],
+  [/מאתגר ודינמי|דינמי ומאתגר|דינמית ומאתגרת|מאתגרת ודינמית/, 'מאתגר ודינמי'],
+];
+
+/** "Netanya. Built x! Done?" → 3; decimals and "e.g." are not sentence ends. */
+export const sentenceCount = (t: string): number =>
+  t
+    .replace(/\b(e\.g|i\.e|etc|vs|Ltd|Inc)\./gi, '$1')
+    .replace(/(\d)\.(\d)/g, '$1$2')
+    .split(/[.!?]+(?:\s|$)/)
+    .filter((x) => x.trim().length > 1).length;
+
+/** Why a cover-letter draft breaks the style rules (null = fine): a banned phrase, an em dash, a list, over 4 sentences. */
+export function coverLetterProblem(text: string): string | null {
+  const banned = COVER_BANNED.filter(([re]) => re.test(text)).map(([, name]) => `"${name}"`);
+  if (banned.length) return `banned phrase${banned.length > 1 ? 's' : ''}: ${banned.join(', ')}`;
+  if (/[—–]/.test(text)) return 'an em dash';
+  if (/^\s*([-*•●▪]|\d+[.)])\s/m.test(text)) return 'a list';
+  const n = sentenceCount(text);
+  if (n > 4) return `${n} sentences (at most 4)`;
+  return null;
+}
+
+const COVER_SYSTEM: Record<'he' | 'en', string> = {
+  he: [
+    'אתה כותב הודעה קצרה לצוות הגיוס (מכתב מקדים) בשם המועמד, בגוף ראשון, בעברית.',
+    '{GENDER_RULE}',
+    '2-4 משפטים קצרים, פשוטים וספציפיים, כמו שאדם כותב בעצמו. בלי פתיח ובלי חתימה.',
+    'הזכר 1-2 עובדות קונקרטיות מהרשימה שמתאימות למשרה, וסיבה קונקרטית אחת שקשורה למודעה עצמה (משהו שכתוב בה).',
+    'אסור: קלישאות ("נלהב", "אשמח מאוד להצטרף", "מאתגר ודינמי", "תשוקה"), מחמאות לחברה, קו מפריד ארוך (—), רשימות או תבליטים.',
+    'מותר להשתמש אך ורק בעובדות שברשימה (כל עובדה עם מזהה בסוגריים מרובעים). אסור להוסיף שום פרט שלא מופיע בהן.',
+    'אם אי אפשר לכתוב מתוך העובדות: unanswerable=true ו-text ריק. usedFactIds: מזהי העובדות שההודעה נשענת עליהן.',
+  ].join('\n'),
+  en: [
+    'You write a short message to the hiring team (a cover letter) as the candidate, in first person, in English.',
+    '2-4 short sentences: plain and specific, the way a person writes it themselves. No greeting, no sign-off.',
+    'Mention 1-2 concrete facts from the list that match the job, and one concrete reason tied to the job ad itself (something it actually says).',
+    'Never: clichés ("excited", "passionate", "thrilled", "I am confident", "leverage", "dynamic", "fast-paced", "I believe I would be a great fit"), flattery of the company, em dashes (—), lists or bullet points.',
+    'Use ONLY the facts listed (each has an id in square brackets). Do not add any detail that is not in them.',
+    'If it cannot be written from the facts: unanswerable=true and empty text. usedFactIds: ids of every fact the message relies on.',
+  ].join('\n'),
+};
+export const coverSystem = (language: 'he' | 'en', gender: Gender): string => COVER_SYSTEM[language].replace('{GENDER_RULE}', hebrewFirstPersonRule(gender));
+
+/**
+ * sentences: the length asked for form answers ("2-4"). mode "coverLetter": the cover-letter rules, your writing sample
+ * (styleSample) as the style reference, and the style post-check (sent back once).
+ */
+export function makeDrafter(profile: Profile | null, opts: { cache?: LlmCache; now?: Date; sentences?: string; mode?: 'answer' | 'coverLetter'; styleSample?: string } = {}) {
   return async (field: FormField, ctx: { jobTitle: string; jobText: string; language: 'he' | 'en' }): Promise<DraftResult> => {
     if (!profile) return { text: null, usedFactIds: [], unanswerable: true, flaggedClaims: [], rejectedReason: 'no profile.json yet' };
     const all = listFacts(profile, opts.now);
     const facts = relevantFacts(all, field.label, ctx.jobText);
     const factBlock = facts.map((f) => `[${f.id}] ${f.text}`).join('\n');
-    const { data } = await chatJson({
-      task: 'write',
-      schema: DraftSchema,
-      temperature: 0.2,
-      cache: opts.cache,
-      messages: [
-        { role: 'system', content: writeSystem(ctx.language, profile.gender, opts.sentences) },
-        { role: 'user', content: `Facts:\n${factBlock}\n\nJob: ${ctx.jobTitle}\n${ctx.jobText.slice(0, 2500)}\n\nQuestion: ${field.label}` },
-      ],
-    });
+    const cover = opts.mode === 'coverLetter';
+    const sample = cover && opts.styleSample?.trim() ? `\n\nWriting style sample (messages I wrote myself; match their tone, length and wording, never copy facts from them):\n${opts.styleSample.trim().slice(0, 3000)}` : '';
+    const messages = [
+      { role: 'system' as const, content: cover ? coverSystem(ctx.language, profile.gender) : writeSystem(ctx.language, profile.gender, opts.sentences) },
+      { role: 'user' as const, content: `Facts:\n${factBlock}\n\nJob: ${ctx.jobTitle}\n${ctx.jobText.slice(0, 2500)}\n\nQuestion: ${field.label}${sample}` },
+    ];
+    let { data } = await chatJson({ task: 'write', schema: DraftSchema, temperature: 0.2, cache: opts.cache, messages });
+    // a cover letter that breaks the style rules is sent back once, with the reason
+    if (cover && !data.unanswerable && data.text.trim()) {
+      const problem = coverLetterProblem(data.text);
+      if (problem) {
+        ({ data } = await chatJson({
+          task: 'write',
+          schema: DraftSchema,
+          temperature: 0.4,
+          cache: opts.cache,
+          messages: [...messages, { role: 'assistant' as const, content: JSON.stringify(data) }, { role: 'user' as const, content: `Rejected: it has ${problem}. Rewrite it following every rule: 2-4 short plain sentences, none of the banned phrases, no em dashes, no lists.` }],
+        }));
+        const again = data.text.trim() ? coverLetterProblem(data.text) : null;
+        if (again) return { text: null, usedFactIds: data.usedFactIds, unanswerable: false, flaggedClaims: [], rejectedReason: `style check failed twice (${again})` };
+      }
+    }
     const rejected = checkDraftCitations(data, new Set(all.map((f) => f.id)));
     if (rejected) return { text: null, usedFactIds: data.usedFactIds, unanswerable: data.unanswerable, flaggedClaims: [], rejectedReason: rejected };
     const cited = all.filter((f) => data.usedFactIds.includes(f.id));

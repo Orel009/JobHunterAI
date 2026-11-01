@@ -2,13 +2,17 @@ import { useEffect, useState } from 'react';
 
 /** Settings: the JobHunter Fill extension (your regular Chrome) — where it is, the token to paste, a new token. */
 export function ExtensionCard() {
-  const [info, setInfo] = useState<{ token: string; folder: string; settings?: { fillCoverLetters: boolean } } | null>(null);
+  const [info, setInfo] = useState<{ token: string; folder: string; settings?: { fillCoverLetters: boolean; styleSample?: string } } | null>(null);
   const [shown, setShown] = useState(false);
+  const [sample, setSample] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
     void fetch('/api/extension')
       .then((r) => r.json())
-      .then(setInfo)
+      .then((x: NonNullable<typeof info>) => {
+        setInfo(x);
+        setSample(x.settings?.styleSample ?? '');
+      })
       .catch((e: Error) => setNote(e.message));
   }, []);
   const copy = (t: string, what: string) => void navigator.clipboard.writeText(t).then(() => setNote(`${what} copied`));
@@ -16,6 +20,14 @@ export function ExtensionCard() {
     const r = (await (await fetch('/api/extension/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fillCoverLetters: on }) })).json()) as { fillCoverLetters: boolean };
     setInfo((i) => (i ? { ...i, settings: r } : i));
     setNote(on ? 'cover letters: the extension fills an AI draft (purple) for you to review' : 'cover letters: the extension leaves them empty');
+  };
+  const saveSample = async () => {
+    const r = (await (await fetch('/api/extension/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ styleSample: sample ?? '' }) })).json()) as {
+      fillCoverLetters: boolean;
+      styleSample: string;
+    };
+    setInfo((i) => (i ? { ...i, settings: r } : i));
+    setNote(r.styleSample ? 'writing style sample saved: drafts follow your style' : 'writing style sample cleared');
   };
   const regenerate = async () => {
     const r = (await (await fetch('/api/extension/token', { method: 'POST' })).json()) as { token: string };
@@ -40,10 +52,21 @@ export function ExtensionCard() {
           <label className="row" title="the automated sites (Drushim, JobMaster, Jobnet, JobKarov) always keep cover letters empty">
             <input type="checkbox" checked={info.settings?.fillCoverLetters !== false} onChange={(e) => void setCoverLetters(e.target.checked)} />
             <span>
-              <b>Fill cover letters in the extension</b> — a short AI draft from your profile facts (4–6 sentences, the job&apos;s language), marked purple for you to review and
-              edit before you submit. The automated sites keep cover letters empty.
+              <b>Fill cover letters in the extension</b> — a short AI draft from your profile facts (2–4 plain sentences in the job&apos;s language: 1–2 facts that match the job
+              and one reason from the ad; no clichés, no em dashes, no lists), marked purple for you to review and edit before you submit. The automated sites keep cover letters
+              empty.
             </span>
           </label>
+          <label>
+            <b>Writing style sample</b>{' '}
+            <span className="muted">— paste 2–3 short messages you wrote yourself; the drafts follow their tone and wording (never their facts). Empty = no sample.</span>
+            <textarea dir="auto" rows={5} style={{ width: '100%' }} value={sample ?? ''} maxLength={4000} onChange={(e) => setSample(e.target.value)} />
+          </label>
+          <div className="row">
+            <button className="secondary" disabled={sample === (info.settings?.styleSample ?? '')} onClick={() => void saveSample()}>
+              Save style sample
+            </button>
+          </div>
           <div className="row">
             <b>Folder:</b> <code dir="ltr">{info.folder}</code>
             <button className="link" onClick={() => copy(info.folder, 'folder')}>

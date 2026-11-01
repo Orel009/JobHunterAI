@@ -19,7 +19,7 @@ import { Repo } from '../src/db/repo.js';
 import { toJob } from '../src/core/job.js';
 import { buildApp } from '../src/server/app.js';
 import { extensionToken } from '../src/extension/token.js';
-import { jobIdsInUrl, normalizeJobUrl } from '../src/extension/fill.js';
+import { educationEntries, fillData, isCourse, jobIdsInUrl, normalizeJobUrl, orderEducation } from '../src/extension/fill.js';
 import { ProfileSchema } from '../src/profile/schema.js';
 import { profilePath } from '../src/profile/facts.js';
 
@@ -28,6 +28,7 @@ type Fill = {
   fieldType(f: Record<string, unknown>, d?: Record<string, unknown>): string | null;
   localPhone(p: string): string;
   exactPlace(o: string, v: string): boolean;
+  closeMatch(o: string, v: string): boolean;
   dateFor(el: Record<string, unknown>, d: string | null): string | null;
   entryKey(section: string, label: string): string | null;
   FORBIDDEN: RegExp;
@@ -121,9 +122,22 @@ describe('semantic field types (dictionary, autocomplete, form-control names)', 
     expect([F.dateFor(el('month'), '2023-02'), F.dateFor(el('date'), '2023-02'), F.dateFor(el('text', 'MM/YYYY'), '2023-02'), F.dateFor(el('text', 'MM/YY'), '2023-02'), F.dateFor(el('text', 'YYYY'), '2023-02'), F.dateFor(el('text'), null)]).toEqual(['2023-02', '2023-02-01', '02/2023', '02/23', '2023', null]);
     expect(['Company', 'Job title', 'From', 'To', 'I currently work here', 'Description'].map((l) => F.entryKey('experience', l))).toEqual(['company', 'title', 'start', 'end', 'current', 'description']);
     expect(['School', 'Degree', 'Field of study'].map((l) => F.entryKey('education', l))).toEqual(['institution', 'degree', 'field']);
+    // SmartRecruiters' education entry: "School location" is a place (never the institution); Major = the field of study
+    expect(['Institution', 'Major', 'Degree', 'School location', 'From', 'To'].map((l) => F.entryKey('education', l))).toEqual(['institution', 'field', 'degree', 'location', 'start', 'end']);
+    expect(['Company location', 'Location', 'עיר'].map((l) => F.entryKey('experience', l))).toEqual(['location', 'location', 'location']);
     expect(['Submit', 'Next', 'Apply', 'Save', 'שלח', 'שמור', 'המשך'].every((t) => F.FORBIDDEN.test(t))).toBe(true);
     expect(F.FORBIDDEN.test('+ Add')).toBe(false);
   });
+  it('a list suggestion: exactly or closely the name ("ORT" / "John Bryce"), never another institution', () => {
+    expect(F.closeMatch('ORT', 'ORT Hermelin College')).toBe(true);
+    expect(F.closeMatch('ORT Hermelin Academic College', 'ORT Hermelin College')).toBe(true);
+    expect(F.closeMatch('John Bryce', 'John Bryce College')).toBe(true);
+    expect(F.closeMatch('מכללת אורט הרמלין', 'אורט הרמלין')).toBe(true);
+    expect(F.closeMatch('ORT Braude College', 'ORT Hermelin College')).toBe(false);
+    expect(F.closeMatch('Tel Aviv University', 'Open University')).toBe(false);
+    expect(F.closeMatch('College', 'ORT Hermelin College')).toBe(false); // generic words only
+  });
+
   it('the very question in your answers bank wins over a profile value', () => {
     expect(F.answerFor({ label: 'Years of experience', type: 'text' }, { ...DATA, profile: { yearsExperience: 2 }, bank: [{ question: 'Years of experience', answer: '3' }] })).toMatchObject({ value: '3', from: 'answers bank' });
     expect(F.answerFor({ label: 'Years of experience', type: 'text' }, { ...DATA, profile: { yearsExperience: 2 }, bank: [] })).toMatchObject({ value: '2', from: 'profile' });
@@ -265,6 +279,32 @@ describe('the local backend (token, never from a web page)', () => {
     expect(asked[0]).toBe('en|Message to the hiring team: a short note to the hiring team on why I fit the Support Lead role at Base44|Support Lead at Base44');
     const none = (async () => ({ text: null, usedFactIds: [], unanswerable: false, flaggedClaims: [], rejectedReason: 'draft cites no facts' })) as never;
     expect(await coverLetterDraft(db, { job: null, title: 'x', company: 'y', label: '', lang: 'he' }, none)).toMatchObject({ text: null, error: 'draft cites no facts' });
+  });
+
+  it('education on forms: your order where set, else degrees before courses and newest first; the institution\'s city; the city for forms', async () => {
+    const edu = (id: string, degree: string, start: string, end: string, o: Record<string, unknown> = {}) => ({ id, institution: { en: `${id} College` }, degree: { en: degree }, field: { en: null }, start, end, ...o });
+    const course = edu('course', 'Full Stack Development Course', '2024', '2025');
+    const degree = edu('degree', 'Practical Software Engineer', '2021', '2024', { field: { en: 'Software Engineering' }, city: { en: 'Netanya' } });
+    const older = edu('older', 'B.A. Economics', '2010', '2013');
+    const p = ProfileSchema.parse({ contact: { name: { en: 'Test Person' }, city: { en: 'Tel Aviv' } }, forms: { city: { en: 'Netanya' } }, education: [course, older, degree] });
+    expect(p.education.map(isCourse)).toEqual([true, false, false]);
+    expect(isCourse({ kind: null, degree: { he: 'קורס פיתוח', en: null } })).toBe(true);
+    expect(isCourse({ kind: 'degree', degree: { he: null, en: 'Full Stack Development Course' } })).toBe(false); // your choice wins
+    expect(orderEducation(p.education).map((e) => e.id)).toEqual(['degree', 'older', 'course']);
+    expect(educationEntries(p, 'en')[0]).toMatchObject({ institution: 'degree College', degree: 'Practical Software Engineer', field: 'Software Engineering', city: 'Netanya', start: '2021', end: '2024' });
+    expect(educationEntries(p, 'en')[2]!.city).toBe('');
+    // your order wins (1 = first)
+    p.education.find((e) => e.id === 'course')!.order = 1;
+    expect(orderEducation(p.education).map((e) => e.id)).toEqual(['course', 'degree', 'older']);
+    // the city for application forms, not the CV's
+    fs.writeFileSync(profilePath(), JSON.stringify(p));
+    try {
+      expect((await fillData(db, null, 'en')).contact.city).toBe('Netanya');
+      fs.writeFileSync(profilePath(), JSON.stringify({ ...p, forms: { city: { he: null, en: null } } }));
+      expect((await fillData(db, null, 'en')).contact.city).toBe('Tel Aviv');
+    } finally {
+      fs.rmSync(profilePath(), { force: true });
+    }
   });
 
   it('fill data: your details, the CV to choose, the bank; then "I applied" marks it applied by hand (once)', async () => {

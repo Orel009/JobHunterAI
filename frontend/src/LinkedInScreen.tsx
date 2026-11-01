@@ -197,7 +197,22 @@ const ASSISTED = ['linkedin', 'indeed'];
  * Assisted apply: jobs from alert emails (LinkedIn, Indeed), and jobs a site's send left for you (needs_manual, e.g. a
  * JobKarov CAPTCHA). Open in your own browser, apply yourself with the helper, then mark it.
  */
-export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'], alertsOn = true }: { busy: boolean; onChanged: () => void; sources?: string[]; alertsOn?: boolean }) {
+export function LinkedInScreen({
+  busy,
+  onChanged,
+  sources = ['linkedin'],
+  alertsOn = true,
+  openJobId = null,
+  onOpened,
+}: {
+  busy: boolean;
+  onChanged: () => void;
+  sources?: string[];
+  alertsOn?: boolean;
+  /** a job to open (from the Jobs list) */
+  openJobId?: string | null;
+  onOpened?: () => void;
+}) {
   const [view, setView] = useState<'todo' | 'applied' | 'all'>('todo');
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [sel, setSel] = useState<JobItem | null>(null);
@@ -218,6 +233,15 @@ export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'], alerts
   useEffect(() => {
     void load();
   }, [load, busy]);
+  // opened from the Jobs list: select it, in "All" when it is not in To do
+  useEffect(() => {
+    if (!openJobId) return;
+    const j = jobs.find((x) => x.id === openJobId);
+    if (!j) return;
+    if (!TODO.includes(j.status)) setView('all');
+    setSel(j);
+    onOpened?.();
+  }, [openJobId, jobs]);
   useEffect(() => {
     setHelper(null);
     setDesc('');
