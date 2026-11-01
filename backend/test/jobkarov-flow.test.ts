@@ -62,6 +62,7 @@ import { questionKey } from '../src/apply/classify.js';
 import type { BankEntry } from '../src/apply/bank.js';
 import { ProfileSchema } from '../src/profile/schema.js';
 import { optionIdFor, previewFields, rangeIdFor, type JkPreview } from '../src/sites/jobkarov/parse.js';
+import { isPaused, pauseOf, sitePauses, unpauseSite } from '../src/core/site-pause.js';
 
 fs.mkdirSync(path.dirname(config.paths.preferences), { recursive: true });
 fs.mkdirSync(config.paths.screenshots, { recursive: true });
@@ -94,6 +95,7 @@ beforeEach(() => {
   h.sent = [];
   h.openError = null;
   h.outcome = { kind: 'submitted' };
+  for (const site of Object.keys(sitePauses())) unpauseSite(site);
 });
 
 describe('JobKarov through the apply service', () => {
@@ -144,7 +146,7 @@ describe('JobKarov through the apply service', () => {
     expect(repo.getJob(b.job.id)!.status).toBe('skipped_screening');
   });
 
-  it('batch: after the second CAPTCHA, the rest of JobKarov waits in review (not sent)', async () => {
+  it('batch: the first CAPTCHA → assisted panel only; the second in the same session pauses the site for 48h, the rest waits', async () => {
     const ids: number[] = [];
     for (let i = 0; i < 3; i++) ids.push((await prepared()).app.id);
     h.outcome = { kind: 'needs_manual', reason: 'captcha', message: 'JobKarov asked for a CAPTCHA — not attempted; apply by hand' };
@@ -154,7 +156,22 @@ describe('JobKarov through the apply service', () => {
     const b = batchProgress()!;
     expect(b.captchas).toBe(2);
     expect(b.results.map((r) => r.status)).toEqual(['needs_manual', 'needs_manual', 'not_sent']);
-    expect(b.results[2]!.detail).toMatch(/CAPTCHA twice/);
+    expect(b.results[0]!.detail).not.toMatch(/paused/);
+    expect(b.results[1]!.detail).toMatch(/second CAPTCHA this session: JobKarov paused for 48 hours/);
+    expect(b.results[2]!.detail).toMatch(/JobKarov is paused: CAPTCHA at send twice in a session/);
+    expect(pauseOf('jobkarov')).toMatchObject({ reason: 'CAPTCHA at send twice in a session', source: 'block' });
+    expect(apps.get(ids[2]!)!.status).toBe('needs_review');
+  });
+
+  it('one CAPTCHA per session does not pause: two separate approvals are two sessions', async () => {
+    h.outcome = { kind: 'needs_manual', reason: 'captcha', message: 'JobKarov asked for a CAPTCHA — not attempted; apply by hand' };
+    for (let i = 0; i < 2; i++) {
+      const { app } = await prepared();
+      approveApplication(db, app.id);
+      await waitIdle();
+    }
+    expect(h.sent).toHaveLength(2);
+    expect(isPaused('jobkarov')).toBe(false);
   });
 
   it('the assisted panel serves a needs_manual job with email alerts off: helper, open, "I applied"', async () => {

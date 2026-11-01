@@ -30,7 +30,7 @@ import { excludedCompanyMatch } from '../core/prefilter.js';
 import type { ApplyPlan, ResolvedField } from './types.js';
 import { isAssistedSite } from '../alerts/assisted.js';
 import { isPaused, pauseSite, pausedText } from '../core/site-pause.js';
-import { BudgetError } from '../core/site-budget.js';
+import { BudgetError, noteSendCaptcha } from '../core/site-budget.js';
 import { SITES } from '../sites/registry.js';
 
 const siteName = (site: string) => SITES.find((s) => s.id === site)?.displayName ?? site;
@@ -381,6 +381,11 @@ function recordSubmitResult(apps: Applications, repo: Repo, appId: number, job: 
     apps.update(appId, { status: 'skipped', screenshotBefore: before, screenshotAfter: r.screenshotAfter, confirmationText: r.confirmationText, error: `needs_manual: ${r.outcome.reason} — ${r.outcome.message}` });
     repo.setStatus(job.id, 'needs_manual', r.outcome.reason);
     L.warn({ job: job.title, reason: r.outcome.reason }, 'not sent: the site wants a CAPTCHA — apply by hand (assisted panel)');
+    // the second CAPTCHA at send on the same site in one session pauses that site for 48 hours (any site)
+    if (r.outcome.reason === 'captcha' && noteSendCaptcha(job.site) >= 2) {
+      pauseSite(job.site, `the site asked for a CAPTCHA at send twice in one session (${siteName(job.site)})`, { reason: 'CAPTCHA at send twice in a session' });
+      return { status: 'needs_manual', detail: `${r.outcome.message} (assisted panel) — the second CAPTCHA this session: ${siteName(job.site)} paused for 48 hours` };
+    }
     return { status: 'needs_manual', detail: `${r.outcome.message} (assisted panel)` };
   }
   apps.update(appId, { status: 'failed', screenshotBefore: before, screenshotAfter: r.screenshotAfter, confirmationText: r.confirmationText, error: r.outcome.message });
@@ -738,8 +743,7 @@ export function approveBatch(db: DB, appIds: number[]): { runId: number; dryRun:
       if (!appliedBySite.has(site)) appliedBySite.set(site, await driverFor(site)!.fetchAppliedJobs(page).catch(() => null));
       return appliedBySite.get(site)!;
     };
-    // a CAPTCHA is never attempted; after the second one on a site, the rest of that site waits (left in review)
-    const captchas = new Map<string, number>();
+    // a CAPTCHA is never attempted; the second one on a site pauses it, so the rest of that site waits (left in review)
     for (const [i, { app, job }] of accepted.entries()) {
       if (run.controller.signal.aborted) {
         batch!.stoppedReason = 'stopped by you';
@@ -749,17 +753,13 @@ export function approveBatch(db: DB, appIds: number[]): { runId: number; dryRun:
       run.stage = `${dryRun ? 'dry run' : 'SUBMIT'} ${batch!.current}`;
       const fresh = apps.get(app.id);
       const still = fresh ? batchBlock(fresh) : 'gone';
-      const siteCaptchas = captchas.get(job.site) ?? 0;
       const r: SendResult = still
         ? { appId: app.id, title: job.title, company: job.company, status: 'not_sent', detail: `changed since you selected it: ${still}` }
-        : siteCaptchas >= 2
-          ? { appId: app.id, title: job.title, company: job.company, status: 'not_sent', detail: `not sent: ${job.site} asked for a CAPTCHA twice in this batch — left in review, try later` }
-          : await sendApproved(db, app.id, job, dryRun, L, await appliedFor(job.site));
+        : await sendApproved(db, app.id, job, dryRun, L, await appliedFor(job.site));
       batch!.results.push(r);
       batch!.done++;
       run.stats.sent = (run.stats.sent ?? 0) + (r.status === 'submitted' ? 1 : 0);
       if (r.status === 'needs_manual') {
-        captchas.set(job.site, siteCaptchas + 1);
         batch!.captchas++;
         run.stats.captchas = (run.stats.captchas ?? 0) + 1;
       }

@@ -10,7 +10,7 @@ const h = vi.hoisted(() => {
   process.env.PREFERENCES_FILE = 'data/test-batch/preferences.yaml';
   process.env.DRY_RUN = 'false';
   Object.assign(process.env, { LLM_ANALYZE_PROVIDER: 'fake', LLM_ANALYZE_MODEL: 'test', LLM_WRITE_PROVIDER: 'fake', LLM_WRITE_MODEL: 'test' });
-  return { sent: [] as string[], failOn: null as null | { n: number; kind: 'captcha' | 'session' } };
+  return { sent: [] as string[], failOn: null as null | { n: number; kind: 'captcha' | 'session' }, sendCaptcha: false };
 });
 
 vi.mock('../src/browser/session.js', async (orig) => ({
@@ -40,6 +40,7 @@ vi.mock('../src/sites/drushim/apply.js', async (orig) => {
     screenshotPanel: async () => 'shot.png',
     submitPanel: async (_p: unknown, externalId: number) => {
       h.sent.push(String(externalId));
+      if (h.sendCaptcha) return { outcome: { kind: 'needs_manual', reason: 'captcha', message: 'the site asked for a CAPTCHA — not attempted' }, confirmationText: null, screenshotAfter: 'after.png' };
       return { outcome: { kind: 'submitted' }, confirmationText: 'עבודה טובה!', screenshotAfter: 'after.png' };
     },
     __reset: () => (opened = 0),
@@ -110,6 +111,7 @@ beforeEach(() => {
   apps = new Applications(db);
   h.sent = [];
   h.failOn = null;
+  h.sendCaptcha = false;
   (drushimApply as unknown as { __reset(): void }).__reset();
   saveAutoSubmitSettings({ sites: { drushim: false }, minRank: 90, paused: false, pausedAt: null });
   fs.writeFileSync(config.paths.preferences, PREFS);
@@ -159,6 +161,16 @@ describe('approve selected → submit', () => {
     expect(b.results.map((x) => x.status)).toEqual(['submitted', 'not_sent', 'not_sent']);
     expect(b.results[1]!.stop).toBe('captcha');
     expect(pauseOf('drushim')).toMatchObject({ reason: 'CAPTCHA / bot check', source: 'block' });
+  });
+
+  it('a CAPTCHA at send twice in one session pauses the site (Drushim too); the first alone does not', async () => {
+    h.sendCaptcha = true;
+    approveBatch(db, [waiting('30', 99), waiting('31', 98), waiting('32', 97)]);
+    await waitIdle();
+    expect(h.sent).toEqual(['30', '31']);
+    expect(batchProgress()!.results.map((x) => x.status)).toEqual(['needs_manual', 'needs_manual', 'not_sent']);
+    expect(pauseOf('drushim')).toMatchObject({ reason: 'CAPTCHA at send twice in a session' });
+    expect(status('32')).toBe('needs_review');
   });
 
   it('a session problem stops the batch', async () => {
