@@ -144,12 +144,7 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
 
   const places = [job.location, ...(job.regions ?? [])].map((p) => p.trim()).filter(Boolean);
   if (prefs.locations.length > 0 && places.length > 0) {
-    // city OR the site's region field; both directions so "השרון" matches "שרון" and "תל אביב" matches "תל אביב יפו"
-    const matches = (place: string) => {
-      const n = normalizeText(place);
-      return prefs.locations.some((l) => containsKeyword(n, l) || containsKeyword(normalizeText(l), place)) || f.remoteKeywords.some((k) => containsKeyword(n, k));
-    };
-    if (!places.some(matches)) return { pass: false, reason: `location: ${job.location}${job.regions?.length ? ` (regions: ${job.regions.join(', ')})` : ''}` };
+    if (!places.some((p) => placeMatches(p, prefs.locations, f.remoteKeywords))) return { pass: false, reason: `location: ${job.location}${job.regions?.length ? ` (regions: ${job.regions.join(', ')})` : ''}` };
   }
 
   // posted monthly salary below the role type's floor (known range only; an empty floor = no salary filtering)
@@ -163,6 +158,55 @@ export function prefilter(job: PrefilterInput, prefs: PrefilterPrefs, opts: { al
   }
 
   return { pass: true, reason: 'ok' };
+}
+
+/** Israeli cities as English-language posts and ATS lists write them (Greenhouse, Comeet), with the Hebrew name. */
+const CITY_NAMES: Array<[RegExp, string]> = [
+  [/tel[ -]?aviv|jaffa|yafo/i, 'תל אביב'],
+  [/herzliy?a/i, 'הרצליה'],
+  [/ra'?anana/i, 'רעננה'],
+  [/kfar[ -]?saba/i, 'כפר סבא'],
+  [/hod[ -]?hasharon/i, 'הוד השרון'],
+  [/ramat[ -]?hasharon/i, 'רמת השרון'],
+  [/netanya/i, 'נתניה'],
+  [/peta[c]?h[ -]?tik[v]?(v)?a/i, 'פתח תקווה'],
+  [/ramat[ -]?gan/i, 'רמת גן'],
+  [/bnei[ -]?brak/i, 'בני ברק'],
+  [/givatayim/i, 'גבעתיים'],
+  [/rosh[ -]?ha'?ayin/i, 'ראש העין'],
+  [/hadera/i, 'חדרה'],
+  [/even[ -]?yehuda/i, 'אבן יהודה'],
+  [/kfar[ -]?yona/i, 'כפר יונה'],
+  [/jerusalem/i, 'ירושלים'],
+  [/haifa/i, 'חיפה'],
+  [/be'?er[ -]?sheva/i, 'באר שבע'],
+  [/rehovot/i, 'רחובות'],
+  [/rishon[ -]?le[ -]??zion/i, 'ראשון לציון'],
+  [/holon/i, 'חולון'],
+  [/bat[ -]?yam/i, 'בת ים'],
+  [/modi'?in/i, 'מודיעין'],
+  [/yokne'?am/i, 'יקנעם'],
+  [/or[ -]?yehuda/i, 'אור יהודה'],
+  [/airport[ -]?city/i, 'איירפורט סיטי'],
+  [/caesarea/i, 'קיסריה'],
+];
+/** The place text plus the Hebrew name of any Israeli city written in English. */
+export const withHebrewCityNames = (place: string): string => {
+  const he = CITY_NAMES.filter(([re]) => re.test(place)).map(([, h]) => h);
+  return he.length ? `${place} ${he.join(' ')}` : place;
+};
+
+/** City OR region text matches a location (both directions: "השרון" ~ "שרון", "תל אביב" ~ "תל אביב יפו") or a remote word. */
+export function placeMatches(place: string, locations: string[], remoteKeywords: string[]): boolean {
+  const n = normalizeText(withHebrewCityNames(place));
+  return locations.some((l) => containsKeyword(n, l) || containsKeyword(normalizeText(l), place)) || remoteKeywords.some((k) => containsKeyword(n, k));
+}
+
+/** The location filter alone: no location, no locations set, or a match (city / region / remote). */
+export function locationAccepted(location: string, prefs: Pick<Prefs, 'locations' | 'filters'>): boolean {
+  if (!prefs.locations.length || !location.trim()) return true;
+  // "Tel Aviv · Tel Aviv, Israel" — any part may match
+  return location.split(/\s*[·|;]\s*/).concat(location).some((p) => p.trim() && placeMatches(p, prefs.locations, prefs.filters.remoteKeywords));
 }
 
 /** A role type's own exclude word in the title or description (none when an "unless" phrase is also there). */

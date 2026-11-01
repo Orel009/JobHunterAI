@@ -1,0 +1,256 @@
+{
+ "jobs": [
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/similarweb/jobs/6897277",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": false
+    }
+   ],
+   "internal_job_id": 3150934,
+   "location": {
+    "name": "Tel Aviv-Yafo"
+   },
+   "metadata": [],
+   "id": 6897277,
+   "updated_at": "2026-05-03T07:29:43-04:00",
+   "requisition_id": "1165",
+   "title": "Big Data Analyst",
+   "company_name": "Similarweb",
+   "first_published": "2025-05-19T07:51:22-04:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;p&gt;At Similarweb, we are revolutionizing the way businesses interact with the digital world by revealing to them everything that happens online.&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;Our unique data and solutions empower over 4,300 customers globally, including industry giants like Google, Meta, OpenAI, to make game-changing decisions that drive their digital strategies. In 2021, we went public on the New York Stock Exchange, and we continue to reach new heights! Come work alongside Similarwebbers across the globe who are bright, curious, practical, and good people.&lt;/p&gt;\n&lt;p&gt;We’re looking for a sharp and driven Data Analyst to join our fast - paced Data Labs team. As part of a high-performing group of analysts, you’ll handle complex, custom requests from some of the biggest names in the market, turning raw data into strategic, ad hoc insights. The work is intense and constantly evolving - it requires strong analytical skills and the ability to work independently under pressure. You’ll need to be curious, adaptable, and willing to dive deep to find answers where others might stop. If you thrive in a demanding environment and are excited by the opportunity to make a real impact, we want you on our team.&lt;/p&gt;\n&lt;p&gt;&lt;strong&gt;What does the day to day of a Big Data Analyst Customer Facing (Data Labs) at Similarweb look like:&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;Building custom-made reports end to end - from meeting with the client and understanding thei",
+   "departments": [
+    {
+     "id": 7114,
+     "name": "R&D",
+     "child_ids": [],
+     "parent_id": null
+    }
+   ],
+   "offices": [
+    {
+     "id": 4439,
+     "name": "Tel Aviv",
+     "location": "Tel Aviv-Yafo, Israel",
+     "child_ids": [],
+     "parent_id": 245997
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": false,
+   "ai_opt_out_request_url": null
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/similarweb/jobs/7972320",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": false
+    }
+   ],
+   "internal_job_id": 3460764,
+   "location": {
+    "name": "Tel Aviv, Israel"
+   },
+   "metadata": [],
+   "id": 7972320,
+   "updated_at": "2026-10-07T09:15:12-04:00",
+   "requisition_id": "1431",
+   "title": "Big Data Engineer",
+   "company_name": "Similarweb",
+   "first_published": "2026-06-01T07:36:11-04:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;p&gt;At Similarweb, we&#39;re revolutionizing the way businesses interact with the digital world by revealing to them everything that happens online. Our cutting-edge platform and unique data empower over 4,300 customers globally, including industry giants like Google, eBay, and Adidas, to make game-changing decisions that drive their digital strategies.&lt;/p&gt;\n&lt;p&gt;In 2021, we went public on the New York Stock Exchange, and we haven’t stopped growing since!&amp;nbsp;&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;We&#39;re seeking exceptional individuals to join us to our R&amp;amp;D team. At Similarweb, you&#39;ll innovate fast, collaborate with brilliant minds, solve big problems, work with cutting-edge technologies and data at incredible scales, and make a tangible impact on the world&#39;s most innovative companies.&lt;/p&gt;\n&lt;p&gt;&lt;strong&gt;We’re looking for a Big Data Engineer&lt;/strong&gt; to develop and integrate systems that retrieve, process and analyze data from around the digital world, generating customer-facing data. This role will report to our Team Manager, R&amp;amp;D.&lt;/p&gt;\n&lt;p&gt;&lt;strong&gt;Why is this role so important at Similarweb?&lt;/strong&gt;&lt;/p&gt;\n&lt;p&gt;Similarweb is a data-focused company, and data is the heart of our business.&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;As a big data engineer developer, you will work at the very core of the company, designing and implementing complex high scale systems to retrieve and analyze data from millions",
+   "departments": [
+    {
+     "id": 7114,
+     "name": "R&D",
+     "child_ids": [],
+     "parent_id": null
+    }
+   ],
+   "offices": [
+    {
+     "id": 4439,
+     "name": "Tel Aviv",
+     "location": "Tel Aviv-Yafo, Israel",
+     "child_ids": [],
+     "parent_id": 245997
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": false,
+   "ai_opt_out_request_url": null
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/similarweb/jobs/8284137",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": false
+    }
+   ],
+   "internal_job_id": 3583030,
+   "location": {
+    "name": "Tel Aviv-Yafo"
+   },
+   "metadata": [],
+   "id": 8284137,
+   "updated_at": "2026-10-26T07:46:53-04:00",
+   "requisition_id": "1508",
+   "title": "Data Analyst- Product Data & AI Quality",
+   "company_name": "Similarweb",
+   "first_published": "2026-10-15T01:09:31-04:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;h1&gt;&lt;strong&gt;Data Analyst – Product Data &amp;amp; AI Quality&lt;/strong&gt;&lt;/h1&gt;\n&lt;p&gt;At Similarweb, we are revolutionizing the way businesses interact with the digital world by revealing to them everything that happens online.&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;Our unique data and solutions empower thousands of customers globally, including industry giants like Google, eBay, and Adidas, to make game-changing decisions that drive their digital strategies.&lt;/p&gt;\n&lt;p&gt;In 2021, we went public on the New York Stock Exchange, and we continue to reach new heights! Come work alongside Similarwebbers across the globe who are bright, curious, practical, and good people.&lt;/p&gt;\n&lt;p&gt;We’re looking for a Data Analyst to join our R&amp;amp;D department!&lt;/p&gt;\n&lt;h2&gt;&lt;strong&gt;Why is this role so important at Similarweb?&lt;/strong&gt;&lt;/h2&gt;\n&lt;p&gt;Our Retail Intelligence products help leading brands and retailers understand how their products, brands and categories perform online. Behind them is data collected from retailers and marketplaces around the world, each describing products in its own way. We use LLMs and ML models to classify, normalize and structure that data into a single, trusted view.&lt;/p&gt;\n&lt;p&gt;As a Data Analyst on the team, you’ll be the person who knows this data best. You’ll own its quality: defining what “correct” looks like, building the ground truth our models are measured against, and finding where things brea",
+   "departments": [
+    {
+     "id": 7114,
+     "name": "R&D",
+     "child_ids": [],
+     "parent_id": null
+    }
+   ],
+   "offices": [
+    {
+     "id": 4439,
+     "name": "Tel Aviv",
+     "location": "Tel Aviv-Yafo, Israel",
+     "child_ids": [],
+     "parent_id": 245997
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": false,
+   "ai_opt_out_request_url": null
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/similarweb/jobs/6385457",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": false
+    }
+   ],
+   "internal_job_id": 3002397,
+   "location": {
+    "name": "Burlington, MA"
+   },
+   "metadata": [],
+   "id": 6385457,
+   "updated_at": "2026-10-21T13:53:50-04:00",
+   "requisition_id": "1016",
+   "title": "Account Executive, Mid Market",
+   "company_name": "Similarweb",
+   "first_published": "2024-11-08T15:58:55-05:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;p&gt;At Similarweb, we are revolutionizing the way businesses interact with the digital world by revealing to them everything that happens online.&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;Our unique data and solutions empower over 6,000 customers globally, including industry giants like Google, eBay, and Adidas, to make game-changing decisions that drive their digital strategies. In 2021, we went public on the New York Stock Exchange and continue reaching new heights! Come work alongside Similarwebbers who are bright, curious, practical, and good people.&lt;/p&gt;\n&lt;p&gt;We’re looking for an Account Executive to drive growth in our Mid-Market book of business. This role will report to the VP of Commercial Sales.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Why is this role so important at Similarweb?&lt;/strong&gt;&lt;strong&gt;&lt;br&gt;&lt;/strong&gt;&lt;strong&gt;&lt;br&gt;&lt;/strong&gt;Similarweb’s digital intelligence solutions serve thousands of customers across many different industries and use cases around the world, and we’ve just scratched the surface of our addressable market.&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;With recognizable customers who love our product, strong brand recognition, and an incredible team, you’ll have the power of a well-established company behind you with the flexibility to help us develop a blueprint for success in the Mid-Market. You’ll control the entire sales cycle, develop critical relationships with mid-sized enterprise accounts, and partner closely with leader",
+   "departments": [
+    {
+     "id": 272822,
+     "name": "GTM",
+     "child_ids": [],
+     "parent_id": null
+    }
+   ],
+   "offices": [
+    {
+     "id": 61600,
+     "name": "Burlington",
+     "location": "Burlington, Massachusetts, United States",
+     "child_ids": [],
+     "parent_id": 245996
+    },
+    {
+     "id": 5118,
+     "name": "NY",
+     "location": "New York, New York, United States",
+     "child_ids": [],
+     "parent_id": 245996
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": false,
+   "ai_opt_out_request_url": null
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/similarweb/jobs/8256182",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": false
+    }
+   ],
+   "internal_job_id": 3002397,
+   "location": {
+    "name": "New York, NY"
+   },
+   "metadata": [],
+   "id": 8256182,
+   "updated_at": "2026-10-21T13:54:03-04:00",
+   "requisition_id": "1016",
+   "title": "Account Executive, Mid Market",
+   "company_name": "Similarweb",
+   "first_published": "2026-10-05T10:23:19-04:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;p&gt;At Similarweb, we are revolutionizing the way businesses interact with the digital world by revealing to them everything that happens online.&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;Our unique data and solutions empower over 6,000 customers globally, including industry giants like Google, eBay, and Adidas, to make game-changing decisions that drive their digital strategies. In 2021, we went public on the New York Stock Exchange and continue reaching new heights! Come work alongside Similarwebbers who are bright, curious, practical, and good people.&lt;/p&gt;\n&lt;p&gt;We’re looking for an Account Executive to drive growth in our Mid-Market book of business. This role will report to the VP of Commercial Sales.&lt;br&gt;&lt;br&gt;&lt;strong&gt;Why is this role so important at Similarweb?&lt;/strong&gt;&lt;strong&gt;&lt;br&gt;&lt;/strong&gt;&lt;strong&gt;&lt;br&gt;&lt;/strong&gt;Similarweb’s digital intelligence solutions serve thousands of customers across many different industries and use cases around the world, and we’ve just scratched the surface of our addressable market.&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;With recognizable customers who love our product, strong brand recognition, and an incredible team, you’ll have the power of a well-established company behind you with the flexibility to help us develop a blueprint for success in the Mid-Market. You’ll control the entire sales cycle, develop critical relationships with mid-sized enterprise accounts, and partner closely with leader",
+   "departments": [
+    {
+     "id": 272822,
+     "name": "GTM",
+     "child_ids": [],
+     "parent_id": null
+    }
+   ],
+   "offices": [
+    {
+     "id": 61600,
+     "name": "Burlington",
+     "location": "Burlington, Massachusetts, United States",
+     "child_ids": [],
+     "parent_id": 245996
+    },
+    {
+     "id": 5118,
+     "name": "NY",
+     "location": "New York, New York, United States",
+     "child_ids": [],
+     "parent_id": 245996
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": false,
+   "ai_opt_out_request_url": null
+  }
+ ],
+ "meta": {
+  "total": 5
+ }
+}

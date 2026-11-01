@@ -1,0 +1,162 @@
+{
+ "id": 6897277,
+ "title": "Big Data Analyst",
+ "questions": [
+  {
+   "description": null,
+   "label": "First Name",
+   "required": true,
+   "fields": [
+    {
+     "name": "first_name",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Last Name",
+   "required": true,
+   "fields": [
+    {
+     "name": "last_name",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Email",
+   "required": true,
+   "fields": [
+    {
+     "name": "email",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Phone",
+   "required": true,
+   "fields": [
+    {
+     "name": "phone",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Resume/CV",
+   "required": true,
+   "fields": [
+    {
+     "name": "resume",
+     "type": "input_file",
+     "values": []
+    },
+    {
+     "name": "resume_text",
+     "type": "textarea",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Cover Letter",
+   "required": false,
+   "fields": [
+    {
+     "name": "cover_letter",
+     "type": "input_file",
+     "values": []
+    },
+    {
+     "name": "cover_letter_text",
+     "type": "textarea",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "LinkedIn Profile",
+   "required": false,
+   "fields": [
+    {
+     "name": "question_56780370",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Website",
+   "required": false,
+   "fields": [
+    {
+     "name": "question_56780371",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "How did you hear about this job?",
+   "required": false,
+   "fields": [
+    {
+     "name": "question_56780372",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  }
+ ],
+ "location_questions": [
+  {
+   "description": null,
+   "label": "Longitude",
+   "required": true,
+   "fields": [
+    {
+     "name": "longitude",
+     "type": "input_hidden",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Latitude",
+   "required": true,
+   "fields": [
+    {
+     "name": "latitude",
+     "type": "input_hidden",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Location",
+   "required": true,
+   "fields": [
+    {
+     "name": "location",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  }
+ ]
+}

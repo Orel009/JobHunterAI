@@ -26,6 +26,8 @@ import { inQuietHours, isHhmm, nextRun, runnableTimes, saveScheduleSettings, sch
 import { emailAlertsEnabled, enabledSources, linkedInEnabled } from '../linkedin/settings.js';
 import { batchProgress, prepareJobs, recoverStuckApprovals, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
+import { registerCompaniesRoutes } from './companies-routes.js';
+import { isSupported, loadCompanies, seedCompanies } from '../companies/store.js';
 import { registerCvRoutes, registerEditorRoutes } from './editor-routes.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -38,6 +40,7 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   const app = Fastify({ logger: false });
   const repo = new Repo(db);
   syncSalaries(repo); // posted salary of jobs stored before this version (or whose text changed)
+  seedCompanies(); // an empty data/companies.yaml the first time (never filled in for you)
   // applications left "approved" by a run that never finished (no run is active at startup): back to review, or blocked
   // when the send may have gone out
   const stuck = recoverStuckApprovals(db);
@@ -90,6 +93,8 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
       linkedin: { enabled: linkedInEnabled() },
       /** optional email job alerts (LinkedIn, Indeed): the assisted screen and the fetch button exist only while on */
       emailAlerts: { enabled: emailAlertsEnabled(), sources: enabledSources() },
+      /** target companies (Companies screen): how many are listed / read on Run & send (their jobs: assisted panel) */
+      companies: { listed: loadCompanies().length, enabled: loadCompanies().filter((c) => c.enabled && isSupported(c)).length },
       /** jobs a site's send left for you to apply by hand (e.g. a JobKarov CAPTCHA): shown in the assisted panel */
       needsManual: (db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'needs_manual'").get() as { n: number }).n,
       /** paused sites (not loaded at all): reason, since, until (the resume check may run from then), expired */
@@ -186,6 +191,7 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   registerLlmRoutes(app);
   registerOnboardingRoutes(app, db);
   registerLinkedInRoutes(app, db);
+  registerCompaniesRoutes(app, db);
   registerHistoryRoutes(app, db);
 
   // ---------- hunts and schedule ----------

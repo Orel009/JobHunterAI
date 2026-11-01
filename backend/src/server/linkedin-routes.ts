@@ -15,7 +15,8 @@ import { ServiceError, prepareJobs } from '../apply/service.js';
 import { getActiveRun, startRun, syncSalaries } from '../pipeline/runner.js';
 import { startLinkedInRun } from '../pipeline/linkedin-run.js';
 import { emailAlertsEnabled, publicLinkedInSettings, saveEmailAlertSettings, setImapConfig } from '../linkedin/settings.js';
-import { isAssistedSite, SITE_LABEL } from '../alerts/assisted.js';
+import { COMPANY_SOURCE_LABEL, isAssistedSite, isCompanySource, SITE_LABEL } from '../alerts/assisted.js';
+import { formAnswers } from '../companies/answers.js';
 import { LinkedInDisabledError, testImap } from '../linkedin/imap.js';
 import { applyHelper, localCvFile } from '../linkedin/helper.js';
 import { openInDefaultBrowser, revealFile } from '../linkedin/open.js';
@@ -23,7 +24,7 @@ import { routeExternalApply } from '../linkedin/external.js';
 import { contentHash } from '../core/job.js';
 import { SITES } from '../sites/registry.js';
 
-const siteLabel = (site: string) => (isAssistedSite(site) ? SITE_LABEL[site] : (SITES.find((s) => s.id === site)?.displayName ?? site));
+const siteLabel = (site: string) => (isAssistedSite(site) ? SITE_LABEL[site] : isCompanySource(site) ? COMPANY_SOURCE_LABEL[site] : (SITES.find((s) => s.id === site)?.displayName ?? site));
 
 const SettingsBody = z.object({
   enabled: z.boolean().optional(),
@@ -46,6 +47,8 @@ export function registerLinkedInRoutes(app: FastifyInstance, db: DB): void {
     const job = repo.getJob(id);
     // a job left for you by a site's send (needs_manual): assisted, alerts on or off
     if (job && !isAssistedSite(job.site) && (job.status === 'needs_manual' || /^applied by hand/.test(job.statusReason ?? ''))) return job;
+    // a target company's job (Companies screen): assisted, alerts on or off
+    if (job && isCompanySource(job.site)) return job;
     requireOn();
     if (!job || !isAssistedSite(job.site)) throw new ServiceError(404, 'no such LinkedIn / Indeed job');
     return job;
@@ -83,7 +86,9 @@ export function registerLinkedInRoutes(app: FastifyInstance, db: DB): void {
   app.get<{ Params: { id: string } }>('/api/linkedin/jobs/:id/helper', async (req) => {
     const job = linkedInJob(req.params.id);
     // every link of this job: its own and those of the same job from other sources (LinkedIn, Indeed, Drushim…)
-    return { ...applyHelper(db, job, repo.getScore(job.id)?.matchedSkills ?? []), site: job.site, siteLabel: siteLabel(job.site), links: repo.sourceLinks(job.id) };
+    // Greenhouse: the application form's questions, answered ahead from your profile / answers bank (read once per job)
+    const form = await formAnswers(db, job).catch((e: unknown) => ({ ats: 'greenhouse' as const, readAt: null, answers: [], error: e instanceof Error ? e.message : String(e) }));
+    return { ...applyHelper(db, job, repo.getScore(job.id)?.matchedSkills ?? []), site: job.site, siteLabel: siteLabel(job.site), links: repo.sourceLinks(job.id), form };
   });
 
   /** Opens the job in the user's DEFAULT browser (never the automated one). */

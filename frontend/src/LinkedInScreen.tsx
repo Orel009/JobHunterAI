@@ -137,6 +137,42 @@ function CopyRow({ item }: { item: HelperItem }) {
   );
 }
 
+/** Greenhouse: the application form's own questions, answered ahead (pending ones: answer them in the answers bank). */
+function FormAnswersTable({ form }: { form: NonNullable<ApplyHelper['form']> }) {
+  if (form.error) return <p className="note">Application form questions: {form.error}</p>;
+  const pending = form.answers.filter((a) => a.status === 'pending');
+  return (
+    <>
+      <h4>Application form (Greenhouse){pending.length ? ` — ${pending.length} pending` : ''}</h4>
+      <table className="helper-table">
+        <tbody>
+          {form.answers.map((a, i) =>
+            a.status === 'resolved' && a.value ? (
+              <CopyRow key={i} item={{ label: `${a.label}${a.required ? ' *' : ''}`, value: a.value, source: a.source }} />
+            ) : (
+              <tr key={i}>
+                <td dir="auto">
+                  {a.label}
+                  {a.required ? ' *' : ''}
+                </td>
+                <td className="muted" colSpan={2}>
+                  {a.status === 'pending' ? `pending — ${a.source} (Answers bank)` : 'optional — left empty'}
+                  {a.options?.length ? ` · options: ${a.options.join(' / ')}` : ''}
+                </td>
+              </tr>
+            ),
+          )}
+          {!form.answers.length && (
+            <tr>
+              <td className="muted">The form asks only for the CV and your details.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
 function HelperTable({ title, items }: { title: string; items: HelperItem[] }) {
   if (!items.length) return null;
   return (
@@ -154,7 +190,7 @@ function HelperTable({ title, items }: { title: string; items: HelperItem[] }) {
 }
 
 const TODO = ['discovered', 'scored', 'queued', 'needs_review', 'needs_manual'];
-const SOURCE_LABEL: Record<string, string> = { linkedin: 'LinkedIn', indeed: 'Indeed', drushim: 'Drushim', jobmaster: 'JobMaster', jobnet: 'Jobnet', jobkarov: 'JobKarov' };
+const SOURCE_LABEL: Record<string, string> = { linkedin: 'LinkedIn', indeed: 'Indeed', drushim: 'Drushim', jobmaster: 'JobMaster', jobnet: 'Jobnet', jobkarov: 'JobKarov', greenhouse: 'Greenhouse', comeet: 'Comeet' };
 const ASSISTED = ['linkedin', 'indeed'];
 
 /**
@@ -215,6 +251,12 @@ export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'], alerts
           LinkedIn and Indeed are assisted-only: JobHunter never logs in to them or clicks anything there (to keep your accounts safe). Open the job in your own browser, apply
           yourself with the details below, then click “I applied”. Never tick or state anything that isn't true.
         </div>
+        {jobs.some((j) => j.site === 'greenhouse' || j.site === 'comeet') && (
+          <div>
+            Company jobs (Greenhouse / Comeet, from the Companies screen) are applied to by you on the company's form: open it in your browser, attach the CV and copy the
+            answers below. For Greenhouse jobs the form's questions are read once and answered ahead from your profile and answers bank.
+          </div>
+        )}
         {jobs.some((j) => j.status === 'needs_manual') && (
           <div>
             “By hand” jobs: the site asked for a CAPTCHA when JobHunter sent the application, so nothing was sent (a CAPTCHA is never attempted). Apply to them yourself the
@@ -328,6 +370,7 @@ export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'], alerts
                   </button>
                   {!helper.cv.exists && <span className="muted"> — not uploaded yet (Profile screen)</span>}
                 </p>
+                {helper.form && <FormAnswersTable form={helper.form} />}
                 <HelperTable title="Your details" items={helper.contact} />
                 {helper.declared && (
                   <HelperTable

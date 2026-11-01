@@ -10,6 +10,27 @@ export type AssistedSite = (typeof ASSISTED_SITES)[number];
 export const isAssistedSite = (site: string): site is AssistedSite => (ASSISTED_SITES as readonly string[]).includes(site);
 export const SITE_LABEL: Record<AssistedSite, string> = { linkedin: 'LinkedIn', indeed: 'Indeed' };
 
+/**
+ * Jobs from your target companies' public ATS lists (Companies screen). Like LinkedIn / Indeed they are applied to by
+ * you (assisted panel): the ATS forms have CAPTCHA and the submit APIs need the employer's key. Not tied to email alerts.
+ */
+export const COMPANY_SOURCES = ['greenhouse', 'comeet'] as const;
+export type CompanySource = (typeof COMPANY_SOURCES)[number];
+export const isCompanySource = (site: string): site is CompanySource => (COMPANY_SOURCES as readonly string[]).includes(site);
+export const COMPANY_SOURCE_LABEL: Record<CompanySource, string> = { greenhouse: 'Greenhouse', comeet: 'Comeet' };
+/** never applied to by the automated flow: alert-email sources and company ATS sources */
+export const isAssistedOnly = (site: string): boolean => isAssistedSite(site) || isCompanySource(site);
+
+/** ATS-hosted careers pages and apply forms: never loaded by the automated browser either. */
+export function isAtsHost(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return /(^|\.)greenhouse\.io$/.test(h) || /(^|\.)comeet\.(com|co)$/.test(h) || /(^|\.)lever\.co$/.test(h) || /(^|\.)ashbyhq\.com$/.test(h);
+  } catch {
+    return false;
+  }
+}
+
 /** indeed.com, any subdomain (il.indeed.com, cts.indeed.com, apply.indeed.com…) and Indeed's country domains. */
 export function isIndeedHost(url: string): boolean {
   try {
@@ -21,4 +42,4 @@ export function isIndeedHost(url: string): boolean {
 }
 
 /** Hosts the automated browser must never load. */
-export const isAssistedOnlyHost = (url: string): boolean => isLinkedInHost(url) || isIndeedHost(url);
+export const isAssistedOnlyHost = (url: string): boolean => isLinkedInHost(url) || isIndeedHost(url) || isAtsHost(url);

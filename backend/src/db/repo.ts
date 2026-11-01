@@ -4,7 +4,7 @@ import type { Job, JobStatus } from '../sites/types.js';
 import { mergeJob } from '../core/job.js';
 import { findDuplicate, type DedupeCandidate } from '../core/dedupe.js';
 import { isAnonymousCompany } from '../core/text.js';
-import { isAssistedSite } from '../alerts/assisted.js';
+import { isAssistedOnly } from '../alerts/assisted.js';
 
 interface JobRow {
   id: string;
@@ -209,7 +209,7 @@ export class Repo {
       const j = this.getJob(id);
       return !!j && ['discovered', 'scored'].includes(j.status) && !this.db.prepare('SELECT 1 FROM applications WHERE job_id = ?').get(id);
     };
-    if (!isAssistedSite(job.site) && isAssistedSite(dup.site) && untouched(dup.id)) {
+    if (!isAssistedOnly(job.site) && isAssistedOnly(dup.site) && untouched(dup.id)) {
       this.db.prepare(`UPDATE jobs SET duplicate_of=?, updated_at=? WHERE duplicate_of=?`).run(job.id, nowIso(), dup.id);
       this.markDuplicate(dup.id, job.id);
       return { duplicateOf: null, absorbed: dup.id };
@@ -251,7 +251,7 @@ export class Repo {
         const cluster = g.slice(i).filter((r) => (new Date(r.firstSeenAt).getTime() - start) / 86_400_000 <= windowDays);
         i += cluster.length;
         if (cluster.length < 2) continue;
-        const original = cluster.find(applied) ?? cluster.find((r) => !isAssistedSite(r.site)) ?? cluster[0]!;
+        const original = cluster.find(applied) ?? cluster.find((r) => !isAssistedOnly(r.site)) ?? cluster[0]!;
         for (const r of cluster) {
           if (r.id === original.id || applied(r)) continue;
           this.markDuplicate(r.id, original.id);
@@ -311,6 +311,11 @@ export class Repo {
    * never reach scoring or the review queue. Jobs JobHunter itself submitted keep their status. Open applications of
    * those jobs are closed as skipped. Returns how many jobs changed.
    */
+  /** Replaces a job's raw data (e.g. the application questions read for the assisted panel). */
+  setRaw(id: string, raw: unknown): void {
+    this.db.prepare('UPDATE jobs SET raw_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(raw ?? {}), nowIso(), id);
+  }
+
   /** The apply preview found a company-site link: applying happens there (by hand, from the review queue). */
   setExternalApply(id: string, target: string): void {
     this.db.prepare("UPDATE jobs SET apply_type = 'external', apply_target = ?, updated_at = ? WHERE id = ?").run(target, nowIso(), id);

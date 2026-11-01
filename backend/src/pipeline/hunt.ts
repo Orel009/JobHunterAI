@@ -28,6 +28,7 @@ import { adapters, SITES } from '../sites/registry.js';
 import { isPaused, pauseExpired, pauseOf, sitePauses } from '../core/site-pause.js';
 import { beginBudgetSession, budgetSummary, endBudgetSession } from '../core/site-budget.js';
 import { resumeCheck } from './site-resume.js';
+import { enabledCompanies, runCompaniesToCompletion } from '../companies/run.js';
 
 export type HuntTrigger = 'manual' | 'schedule' | 'task' | 'cli';
 
@@ -184,6 +185,18 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     if (emailAlertsEnabled()) {
       end = step(`reading job-alert emails (${enabledSources().join(', ')})`);
       await runEmailAlertsToCompletion(db, { followUp: false });
+      const r = lastRun();
+      runs.push(r);
+      p.counts.found += r.inserted;
+      p.counts.scored += r.scored;
+      end(r.status === 'done' ? 'done' : 'failed', `${r.status === 'done' ? '' : `${r.status}${r.reason ? ` (${r.reason})` : ''} · `}new ${r.inserted} · scored ${r.scored}`);
+    }
+    // your target companies' public job lists (Greenhouse, Comeet): read before the sites, so a Drushim copy found
+    // afterwards takes over from a company copy for applying (applying to company jobs is done by you)
+    const companies = enabledCompanies();
+    if (companies.length) {
+      end = step(`reading ${companies.length} company job list${companies.length > 1 ? 's' : ''} (Greenhouse / Comeet)`);
+      await runCompaniesToCompletion(db);
       const r = lastRun();
       runs.push(r);
       p.counts.found += r.inserted;

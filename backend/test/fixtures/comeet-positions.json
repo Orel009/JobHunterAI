@@ -1,0 +1,157 @@
+[
+ {
+  "name": "AI Research Team Lead",
+  "department": "Research",
+  "url_comeet_hosted_page": "https://www.comeet.com/jobs/cyera/17.008/ai-research-team-lead/75.277",
+  "url_active_page": "https://www.comeet.com/jobs/cyera/17.008/ai-research-team-lead/75.277",
+  "employment_type": "Full-time",
+  "experience_level": "Management",
+  "uid": "75.277",
+  "location": {
+   "name": "Tel Aviv",
+   "country": "IL",
+   "city": "Tel Aviv-Yafo",
+   "is_remote": false
+  },
+  "time_updated": "2026-10-26T15:43:31Z",
+  "company_name": "Cyera",
+  "is_internal": false,
+  "workplace_type": "On-site",
+  "details": [
+   {
+    "name": "Description",
+    "order": 1,
+    "value": "<p><strong>About Cyera&nbsp;&nbsp;</strong></p><p>Come join the company building the security operating model for the age of AI. AI has changed how data is used — and security must change with it. Cyera's mission is to empower businesses to accelerate AI Adoption by defining a holistic approach to securing AI - from data to access to model. Instead of perimeter controls and static policies, Cyera provides a unified control plane that understands relationships between data, access, and behaviors across humans, systems, and AI. Backed by the world’s leading investors and working with a large and growing list of Fortune 1000 companies, we are looking for world-class talent to join us as we usher in the new era of data and AI security.</p><p><strong>About the Role</strong></p><p>As an AI Research Team Lead on Cyera’s Research group, you will mentor a talented team of researchers, set the strategic vision for research initiatives, and drive team-wide project goals. You’ll partner closely with Product and Engineering leadership to turn open-ended data-security challenges into measurable experiments and shipped features. You will manage the critical balance between research exploration and product delivery, owning the end-to-end lifecycle—from problem framing and data strategy to evaluation, deployment, and ongoing monitoring—helping customers discover, protect, and govern their data at scale.</p><p><br></p><p><strong>What You’ll Do</strong></p><ul><li>Lead and mentor a team of AI r"
+   },
+   {
+    "name": "Requirements",
+    "order": 2,
+    "value": "<p><strong>Who You Are</strong></p><p><strong>Must-Haves</strong></p><ul><li>BSc in computer science, math, physics, or a related field</li><li>7+ years of experience as an AI Researcher/NLP Researcher/Applied Scientist, including experience leading or managing research teams</li><li>Proven track record of building and managing high-performing AI research / Data Science teams.</li><li>Solid grounding in core machine and deep learning concepts and techniques, data challenges (imbalance, scaling etc.), and evaluation.</li><li>Demonstrated expertise in applying LLMs - prompt engineering and prompt tuning (few-shot, chain-of-thought, tool/function calling, routing), task adaptation (instruction/SFT, PEFT/LoRA, DPO/RLHF), retrieval-augmented generation, rigorous evaluation and production deployment with appropriate safety, latency, and cost controls.</li><li>Self-learner, initiator, able to quickly learn new technologies</li><li>Experience in NLP - a significant advantage</li></ul><p><strong>Why Join Us?</strong></p><p>At Cyera, we care about collaboration, innovation, and agility. We take “teamwork” seriously—with our inclusive and supportive culture at the forefront—and we’re just as serious about nurturing Cyerans to grow, both personally and professionally.</p><p>Feel free to apply even if your experience doesn’t tick every box.</p><p>We’re building something special here—and we welcome Cyerans with diverse backgrounds, perspectives, and experiences.</p>"
+   }
+  ]
+ },
+ {
+  "name": "AI Researcher",
+  "department": "Research",
+  "url_comeet_hosted_page": "https://www.comeet.com/jobs/cyera/17.008/ai-researcher/2B.D67",
+  "url_active_page": "https://www.comeet.com/jobs/cyera/17.008/ai-researcher/2B.D67",
+  "employment_type": "Full-time",
+  "experience_level": "Senior",
+  "uid": "2B.D67",
+  "location": {
+   "name": "Tel Aviv",
+   "country": "IL",
+   "city": "Tel Aviv-Yafo",
+   "is_remote": false
+  },
+  "time_updated": "2026-10-26T15:43:42Z",
+  "company_name": "Cyera",
+  "is_internal": false,
+  "workplace_type": "On-site",
+  "details": [
+   {
+    "name": "Description",
+    "order": 1,
+    "value": "<p><strong>About Cyera&nbsp;&nbsp;</strong></p><p>Come join the company building the security operating model for the age of AI. AI has changed how data is used — and security must change with it. Cyera's mission is to empower businesses to accelerate AI Adoption by defining a holistic approach to securing AI - from data to access to model. Instead of perimeter controls and static policies, Cyera provides a unified control plane that understands relationships between data, access, and behaviors across humans, systems, and AI. Backed by the world’s leading investors and working with a large and growing list of Fortune 1000 companies, we are looking for world-class talent to join us as we usher in the new era of data and AI security.</p><p><br></p><p><strong>About the Role</strong></p><p>As an AI Researcher on Cyera’s Research group, you’ll research, develop and productionize LLMs powered applications and AI-agents. You’ll partner closely with Product and Engineering to turn open-ended data-security challenges into measurable experiments and shipped features. You’ll own the end-to-end lifecycle - from problem framing and data strategy to evaluation, deployment, and ongoing monitoring - helping customers discover, protect, and govern their data at scale.</p><p><br></p><p><strong>What You’ll Do</strong></p><ul><li>Responsible for the end-to-end research process. This includes identifying problems, preparing data, tuning and developing models, deploying to production, and analyzin"
+   },
+   {
+    "name": "Requirements",
+    "order": 2,
+    "value": "<p><strong>Who You Are</strong></p><p><strong>Must-Haves</strong></p><ul><li>MSc in Computer Science, Mathematics, Statistics, Physics or a related field</li><li>5+ years of experience as a Data Scientist/AI Researcher/NLP Researcher/Applied Scientist</li><li>Strong knowledge and understanding of machine learning concepts and techniques.&nbsp;</li><li>Deep understanding in modern NLP: LLMs, transformers, etc.&nbsp;</li><li>Proven experience in applying LLM-based applications or AI agents.</li><li>Experience in deploying and optimizing ML / LLMs / AI-agents to production processes&nbsp;</li><li>Experience with data pipelines / big-data analytics</li><li>Self-learner, initiator, able to quickly learn new technologies</li></ul><p><strong>﻿Why Join Us?</strong></p><p>At Cyera, we care about collaboration, innovation, and agility. We take “teamwork” seriously - with our inclusive and supportive culture at the forefront - and we’re just as serious about nurturing Cyerans to grow, both personally and professionally.</p><p>Feel free to apply even if your experience doesn’t tick every box.</p><p>We’re building something special here - and we welcome Cyerans with diverse backgrounds, perspectives, and experiences.</p>"
+   }
+  ]
+ },
+ {
+  "name": "Application Security Lead",
+  "department": "R&D",
+  "url_comeet_hosted_page": "https://www.comeet.com/jobs/cyera/17.008/application-security-lead/EB.F63",
+  "url_active_page": "https://www.comeet.com/jobs/cyera/17.008/application-security-lead/EB.F63",
+  "employment_type": "Full-time",
+  "experience_level": null,
+  "uid": "EB.F63",
+  "location": {
+   "name": "Tel Aviv",
+   "country": "IL",
+   "city": "Tel Aviv-Yafo",
+   "is_remote": false
+  },
+  "time_updated": "2026-10-16T17:26:07Z",
+  "company_name": "Cyera",
+  "is_internal": false,
+  "workplace_type": "On-site",
+  "details": [
+   {
+    "name": "Description",
+    "order": 1,
+    "value": "<p>Come join the company building the security operating model for the age of AI. AI has changed how data is used — and security must change with it. Cyera's mission is to empower businesses to accelerate AI Adoption by defining a holistic approach to securing AI - from data to access to model. Instead of perimeter controls and static policies, Cyera provides a unified control plane that understands relationships between data, access, and behaviors across humans, systems, and AI. Backed by the world's leading investors and working with a large and growing list of Fortune 1000 companies, we are looking for world-class talent to join us as we usher in the new era of data and AI security.</p><p><br></p><p><strong>About the Role</strong></p><p>Our customers trust Cyera with their most sensitive data, and we hold our own platform to the standard we set for the industry. We meet and exceed industry security standards, and we treat that as the baseline rather than the finish line.</p><p>We're looking for an Application Security Lead to own product security inside R&amp;D and be the focal point at Cyera for validating how secure our platform is. Your mandate is continuous assurance: proving, through hands-on adversarial testing and architecture-level review, that no gaps exist across our code, infrastructure, and architecture — and keeping it that way as we ship fast.</p><p>You'll map our most sensitive areas, lead research and red team exercises against our own systems, run an inter"
+   },
+   {
+    "name": "Requirements",
+    "order": 2,
+    "value": "<p><strong>What You’ll Bring</strong></p><ul><li>8+ years in application security or product security, including hands-on ownership of a security program.</li><li>Deep, current expertise in authentication and authorization, multi-tenant isolation, API and web security, cryptography and secrets management, software supply chain risk, and business logic vulnerabilities.</li><li>An attacker's mindset applied to systems you didn't build. You can read unfamiliar code, form a hypothesis about how it breaks, and prove it — and you can scope and direct red team work against your own organization.</li><li>Threat modeling and security architecture review as a practiced discipline, ideally at a scale serving many engineering teams at once.</li><li>Strong engineering background: you write code (Python, Go, TypeScript, Java, or similar), understand distributed systems, and hold credible design discussions with senior engineers.</li><li>Cloud-native security depth in AWS, GCP, or Azure — IAM, network boundaries, Kubernetes, containers, CI/CD security, and infrastructure-as-code — and comfort working shoulder-to-shoulder with DevOps and Infrastructure engineers.</li><li>Experience embedding security across the development lifecycle from design through deployment, including secure SDLC processes and developer-facing tooling.</li><li>Technical leadership without authority: driving security outcomes across engineering teams through credibility, clarity, and prioritization.</li></ul><p>Fluency "
+   }
+  ]
+ },
+ {
+  "name": "Account Executive - ANZ (Commercial)",
+  "department": "Sales",
+  "url_comeet_hosted_page": "https://www.comeet.com/jobs/cyera/17.008/account-executive---anz-commercial/C7.A41",
+  "url_active_page": "https://www.comeet.com/jobs/cyera/17.008/account-executive---anz-commercial/C7.A41",
+  "employment_type": "Full-time",
+  "experience_level": null,
+  "uid": "C7.A41",
+  "location": {
+   "name": "Australia",
+   "country": "AU",
+   "city": "Sydney",
+   "is_remote": true
+  },
+  "time_updated": "2026-08-10T18:53:13Z",
+  "company_name": "Cyera",
+  "is_internal": false,
+  "workplace_type": "Remote",
+  "details": [
+   {
+    "name": "Description",
+    "order": 1,
+    "value": "<p><strong>WHO WE ARE</strong></p><p>Come join the company reinventing data security, empowering businesses to realize the full potential of their data. As the leading data security platform purpose-built for the cloud era, Cyera’s mission is to reinvent how businesses secure data, enable agile collaboration, and boldly pursue new business opportunities. Trusted by security teams at leading global businesses, our team is proving that data security is the next big thing in cyber. Backed by the world’s leading investors and working with a large and growing list of Fortune 1000 companies, we are looking for world-class talent to join us as we usher in the new era of data security.</p><p><br></p><p><strong>THE OPPORTUNITY</strong></p><p>We’re looking for a high-performing, hunter-type Mid-Market Account Executive ready to pioneer the new era of cloud data security with us!</p><p>As a Mid-Market Account Executive, you will work with Cyera's prospects and clients selling company-wide cloud data security and data risk management solutions. This full-cycle sales position handles everything from prospecting through closing complex sales cycles that best position Cyera's capabilities and integrated value proposition.</p><p>In this role, you will need to be able to analyze and understand a customer’s business, their process, challenges, and objectives, and work collaboratively with a Sales Engineer to map Cyera’s technology to solving the pain points of your prospects.&nbsp;</p><p><br><"
+   },
+   {
+    "name": "Requirements",
+    "order": 2,
+    "value": "<p><strong>REQUIRED QUALIFICATIONS:</strong></p><ul><li>Results-oriented mindset and history of overachievement when selling large deals in a hyper growth startup environment.</li><li>Minimum 5 years selling mid-market SaaS solutions in the cloud/security/data space.</li><li>Proficient in value-based solution selling, with a keen focus on delivering tangible business outcomes, ensuring alignment with end business value.</li><li>Exceptional communication and relationship-building skills. Strong presentation skills and ability to develop creative solutions that move the sales process along.</li><li>Proven understanding of cloud environments (AWS, Azure, or GCP), security in the cloud, and data risk. Strong preference for candidates with a cloud security, data, or AI sales background.</li><li>Basic understanding of various data security and compliance frameworks and how this impacts business value.</li><li>Must demonstrate proficiency in executing a formal sales process and possess familiarity with qualification frameworks and sales forecasting / management tools.</li><li>Experience working in a fast-paced, dynamic environment with the ability to adapt quickly to changing circumstances.</li><li><strong>This is an AUS-based position. Willingness and ability to travel as needed, approximately 50% depending on the sales cycle.</strong></li></ul><p><br></p><p><strong>COMPENSATION INFORMATION:</strong></p><p>This compensation range represents Cyera’s good faith and reasonable estimat"
+   }
+  ]
+ },
+ {
+  "name": "Internal transfer (test)",
+  "department": "Research",
+  "url_comeet_hosted_page": "https://www.comeet.com/jobs/cyera/17.008/ai-research-team-lead/75.277",
+  "url_active_page": "https://www.comeet.com/jobs/cyera/17.008/ai-research-team-lead/75.277",
+  "employment_type": "Full-time",
+  "experience_level": "Management",
+  "uid": "FF.FFF",
+  "location": {
+   "name": "Tel Aviv",
+   "country": "IL",
+   "city": "Tel Aviv-Yafo",
+   "is_remote": false
+  },
+  "time_updated": "2026-10-26T15:43:31Z",
+  "company_name": "Cyera",
+  "is_internal": true,
+  "workplace_type": "On-site",
+  "details": [
+   {
+    "name": "Description",
+    "order": 1,
+    "value": "<p><strong>About Cyera&nbsp;&nbsp;</strong></p><p>Come join the company building the security operating model for the age of AI. AI has changed how data is used — and security must change with it. Cyera's mission is to empower businesses to accelerate AI Adoption by defining a holistic approach to securing AI - from data to access to model. Instead of perimeter controls and static policies, Cyera provides a unified control plane that understands relationships between data, access, and behaviors across humans, systems, and AI. Backed by the world’s leading investors and working with a large and growing list of Fortune 1000 companies, we are looking for world-class talent to join us as we usher in the new era of data and AI security.</p><p><strong>About the Role</strong></p><p>As an AI Research Team Lead on Cyera’s Research group, you will mentor a talented team of researchers, set the strategic vision for research initiatives, and drive team-wide project goals. You’ll partner closely with Product and Engineering leadership to turn open-ended data-security challenges into measurable experiments and shipped features. You will manage the critical balance between research exploration and product delivery, owning the end-to-end lifecycle—from problem framing and data strategy to evaluation, deployment, and ongoing monitoring—helping customers discover, protect, and govern their data at scale.</p><p><br></p><p><strong>What You’ll Do</strong></p><ul><li>Lead and mentor a team of AI r"
+   },
+   {
+    "name": "Requirements",
+    "order": 2,
+    "value": "<p><strong>Who You Are</strong></p><p><strong>Must-Haves</strong></p><ul><li>BSc in computer science, math, physics, or a related field</li><li>7+ years of experience as an AI Researcher/NLP Researcher/Applied Scientist, including experience leading or managing research teams</li><li>Proven track record of building and managing high-performing AI research / Data Science teams.</li><li>Solid grounding in core machine and deep learning concepts and techniques, data challenges (imbalance, scaling etc.), and evaluation.</li><li>Demonstrated expertise in applying LLMs - prompt engineering and prompt tuning (few-shot, chain-of-thought, tool/function calling, routing), task adaptation (instruction/SFT, PEFT/LoRA, DPO/RLHF), retrieval-augmented generation, rigorous evaluation and production deployment with appropriate safety, latency, and cost controls.</li><li>Self-learner, initiator, able to quickly learn new technologies</li><li>Experience in NLP - a significant advantage</li></ul><p><strong>Why Join Us?</strong></p><p>At Cyera, we care about collaboration, innovation, and agility. We take “teamwork” seriously—with our inclusive and supportive culture at the forefront—and we’re just as serious about nurturing Cyerans to grow, both personally and professionally.</p><p>Feel free to apply even if your experience doesn’t tick every box.</p><p>We’re building something special here—and we welcome Cyerans with diverse backgrounds, perspectives, and experiences.</p>"
+   }
+  ]
+ }
+]

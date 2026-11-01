@@ -127,6 +127,8 @@ export interface Status {
   emailAlerts: { enabled: boolean; sources: string[] };
   /** jobs a site's send left for you to apply by hand (e.g. a JobKarov CAPTCHA): the assisted panel lists them */
   needsManual: number;
+  /** target companies: listed, and read on Run & send */
+  companies: { listed: number; enabled: number };
   /** paused sites: not loaded at all until a resume check passes */
   pauses: Record<string, SitePause>;
   autoSubmit: { sites: Record<string, boolean>; minRank: number | null; minRankEffective: number; paused: boolean; pausedAt: string | null };
@@ -371,7 +373,40 @@ export interface ApplyHelper {
   siteLabel?: string;
   /** every link of this job: its own and the same job from other sources */
   links?: Array<{ site: string; url: string; applyTarget: string | null; jobId: string }>;
+  /** Greenhouse: the application form's questions, answered ahead from your profile / answers bank */
+  form?: {
+    ats: 'greenhouse';
+    readAt: string | null;
+    error: string | null;
+    answers: Array<{ label: string; required: boolean; type: string; options?: string[]; status: 'resolved' | 'pending' | 'empty_optional'; value: string | null; source: string }>;
+  } | null;
 }
+
+// ---------- target companies ----------
+export interface Company {
+  id: string;
+  name: string;
+  url: string;
+  ats: string;
+  board: string | null;
+  enabled: boolean;
+  supported: boolean;
+  status: string;
+  paused: boolean;
+  lastCheck: { at: string; total: number | null; israel: number | null; kept: number | null; error: string | null } | null;
+}
+export const companies = {
+  list: () => req<{ companies: Company[] }>('GET', '/api/companies'),
+  add: (url: string, name?: string) =>
+    req<{ detected: { ats: string; board: string | null; supported: boolean; how: string; evidence: string }; preview: { total: number | null; israel: number | null; kept: number | null; error: string | null } | null; companies: Company[] }>(
+      'POST',
+      '/api/companies',
+      { url, name },
+    ),
+  update: (id: string, patch: { enabled?: boolean; name?: string }) => req<{ companies: Company[] }>('PATCH', `/api/companies/${encodeURIComponent(id)}`, patch),
+  remove: (id: string) => req<{ companies: Company[] }>('DELETE', `/api/companies/${encodeURIComponent(id)}`),
+  fetch: () => req<{ runId: number }>('POST', '/api/companies/fetch', {}),
+};
 export const linkedin = {
   settings: () => req<LinkedInSettings>('GET', '/api/linkedin/settings'),
   save: (b: Partial<{ enabled: boolean; sources: Partial<{ linkedin: boolean; indeed: boolean }>; windowDays: number; mailbox: string; host: string; port: number; user: string; password: string | null }>) =>

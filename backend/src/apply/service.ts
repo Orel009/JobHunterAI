@@ -28,7 +28,7 @@ import { autoSubmitOn, evaluateAutoSubmit } from './auto-submit.js';
 import { getSession, setSession } from '../browser/site-session.js';
 import { excludedCompanyMatch } from '../core/prefilter.js';
 import type { ApplyPlan, ResolvedField } from './types.js';
-import { isAssistedSite } from '../alerts/assisted.js';
+import { isAssistedSite, isCompanySource } from '../alerts/assisted.js';
 import { isPaused, pauseSite, pausedText } from '../core/site-pause.js';
 import { BudgetError, noteSendCaptcha } from '../core/site-budget.js';
 import { SITES } from '../sites/registry.js';
@@ -137,6 +137,9 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
   // LinkedIn / Indeed are assisted-only: their jobs reach the review queue only with a company / ATS link
   if (jobs.some((j) => isAssistedSite(j.site) && !(j.applyType === 'external' && j.applyTarget))) {
     throw new ServiceError(400, 'LinkedIn / Indeed jobs are applied to by hand: use the Email alerts screen (Open in my browser)');
+  }
+  if (jobs.some((j) => isCompanySource(j.site))) {
+    throw new ServiceError(400, 'company jobs (Greenhouse / Comeet) are applied to by hand: use the assisted panel (Open in my browser)');
   }
   for (const j of jobs) repo.setStatus(j.id, 'queued', 'preparing application');
 

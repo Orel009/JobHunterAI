@@ -10,6 +10,7 @@ import { ProfileScreen } from './ProfileScreen';
 import { SettingsScreen } from './SettingsScreen';
 import { Wizard } from './Wizard';
 import { LinkedInScreen } from './LinkedInScreen';
+import { CompaniesScreen } from './CompaniesScreen';
 import { MarketScreen } from './MarketScreen';
 import { HistoryScreen } from './HistoryScreen';
 import { AutoSubmitKillSwitch } from './AutoSubmit';
@@ -23,6 +24,7 @@ const TABS = [
   { id: 'prefs', label: 'Preferences', enabled: true },
   { id: 'market', label: 'Market', enabled: true },
   { id: 'linkedin', label: 'Email alerts', enabled: true },
+  { id: 'companies', label: 'Companies', enabled: true },
   { id: 'settings', label: 'Settings', enabled: true },
   { id: 'history', label: 'History', enabled: true },
 ] as const;
@@ -73,7 +75,7 @@ export function App() {
       <header>
         <h1>JobHunter</h1>
         <nav>
-          {TABS.filter((t) => t.id !== 'linkedin' || status?.emailAlerts.enabled || !!status?.needsManual).map((t) => (
+          {TABS.filter((t) => t.id !== 'linkedin' || status?.emailAlerts.enabled || !!status?.needsManual || !!status?.companies?.listed).map((t) => (
             <button key={t.id} className={tab === t.id ? 'tab active' : 'tab'} disabled={!t.enabled || !!onboarding} onClick={() => setTab(t.id)}>
               {t.id === 'linkedin' && !status?.emailAlerts.enabled ? 'Assisted apply' : t.label}
               {t.id === 'linkedin' && !!status?.needsManual && <span className="badge warn"> {status.needsManual} by hand</span>}
@@ -149,9 +151,15 @@ export function App() {
       {onboarding === false && tab === 'answers' && <AnswersBank onChanged={refresh} />}
       {onboarding === false && tab === 'profile' && <ProfileScreen onChanged={refresh} />}
       {onboarding === false && tab === 'prefs' && <PreferencesEditor onSaved={refresh} />}
-      {onboarding === false && tab === 'linkedin' && (status?.emailAlerts.enabled || !!status?.needsManual) && (
-        <LinkedInScreen sources={status.emailAlerts.enabled ? status.emailAlerts.sources : []} alertsOn={status.emailAlerts.enabled} busy={!!status.activeRun} onChanged={refresh} />
+      {onboarding === false && tab === 'linkedin' && (status?.emailAlerts.enabled || !!status?.needsManual || !!status?.companies?.listed) && (
+        <LinkedInScreen
+          sources={[...(status.emailAlerts.enabled ? status.emailAlerts.sources : []), ...(status.companies?.listed ? ['greenhouse', 'comeet'] : [])]}
+          alertsOn={status.emailAlerts.enabled}
+          busy={!!status.activeRun}
+          onChanged={refresh}
+        />
       )}
+      {onboarding === false && tab === 'companies' && <CompaniesScreen busy={!!status?.activeRun} onChanged={refresh} />}
       {onboarding === false && tab === 'history' && <HistoryScreen />}
       {onboarding === false && tab === 'market' && <MarketScreen onSaved={refresh} />}
       {onboarding === false && tab === 'settings' && <SettingsScreen onSaved={refresh} sites={status?.sites ?? []} pauses={status?.pauses ?? {}} busy={!!status?.activeRun} />}
