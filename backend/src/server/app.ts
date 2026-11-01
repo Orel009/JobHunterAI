@@ -28,6 +28,7 @@ import { emailAlertsEnabled, enabledSources, linkedInEnabled } from '../linkedin
 import { batchProgress, prepareJobs, recoverStuckApprovals, ServiceError } from '../apply/service.js';
 import { registerApplyRoutes } from './apply-routes.js';
 import { registerCompaniesRoutes } from './companies-routes.js';
+import { registerFillRoutes } from './fill-routes.js';
 import { isSupported, loadCompanies, seedCompanies } from '../companies/store.js';
 import { registerCvRoutes, registerEditorRoutes } from './editor-routes.js';
 import fs from 'node:fs';
@@ -200,6 +201,7 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   registerOnboardingRoutes(app, db);
   registerLinkedInRoutes(app, db);
   registerCompaniesRoutes(app, db);
+  registerFillRoutes(app, db);
   registerHistoryRoutes(app, db);
 
   // ---------- hunts and schedule ----------

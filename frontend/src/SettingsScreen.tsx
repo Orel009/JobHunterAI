@@ -4,6 +4,7 @@ import { Field, Num } from './forms';
 import { LinkedInSettingsCard } from './LinkedInScreen';
 import { AutoSubmitCard } from './AutoSubmit';
 import { SitePausesCard } from './SitePauses';
+import { ExtensionCard } from './ExtensionCard';
 import type { SitePause } from './api';
 import { ScheduleCard } from './Schedule';
 import type { Status } from './api';
@@ -305,6 +306,7 @@ export function SettingsScreen({ onSaved, sites = [], pauses = {}, busy = false 
       )}
       <SitePausesCard pauses={pauses} sites={sites} busy={busy} onChanged={onSaved} />
       <AutoSubmitCard sites={sites} onSaved={onSaved} />
+      <ExtensionCard />
       <ScheduleCard onSaved={onSaved} />
       <LinkedInSettingsCard onSaved={onSaved} />
     </div>

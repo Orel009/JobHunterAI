@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>JobHunter Fill — options</title>
+    <style>
+      body { font: 14px system-ui, sans-serif; max-width: 560px; margin: 24px; color: #222; }
+      label { display: block; margin: 12px 0 4px; font-weight: 600; }
+      input { width: 100%; padding: 6px; font: inherit; box-sizing: border-box; }
+      button { margin-top: 12px; padding: 6px 14px; font: inherit; }
+      .m { color: #666; font-size: 13px; }
+      #msg { margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <h2>JobHunter Fill</h2>
+    <p class="m">
+      Fills the application form on the page you are on when you click the extension's button, from your local JobHunter. It never submits, never clicks
+      buttons and never touches CAPTCHA. Nothing leaves your computer.
+    </p>
+    <label for="base">JobHunter address</label>
+    <input id="base" placeholder="http://127.0.0.1:8787" />
+    <label for="token">Token</label>
+    <input id="token" placeholder="paste it from JobHunter → Settings → JobHunter Fill" autocomplete="off" />
+    <button id="save">Save and test</button>
+    <div id="msg" class="m"></div>
+    <script src="options.js"></script>
+  </body>
+</html>

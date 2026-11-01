@@ -12,6 +12,8 @@ import type { FormField } from '../apply/types.js';
 import { ghQuestionFields, ghQuestionsUrl, type GhQuestion } from './greenhouse.js';
 
 export interface FormAnswer {
+  /** the question's field name on the form (Greenhouse: the input's id, e.g. question_56780370, first_name) */
+  name?: string | null;
   label: string;
   required: boolean;
   type: FormField['type'];
@@ -77,6 +79,7 @@ export async function formAnswers(db: DB, job: StoredJob, fetchImpl: typeof fetc
     readAt: q.readAt,
     error: null,
     answers: plan.fields.map((f) => ({
+      name: f.field.key.startsWith('gh.') ? f.field.key.slice(3) : null,
       label: f.field.label,
       required: f.field.required,
       type: f.field.type,
