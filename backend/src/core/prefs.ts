@@ -140,6 +140,13 @@ export const PrefsSchema = z.object({
       regions: z.array(z.string()).default([]),
     })
     .prefault({}),
+  /** JobKarov: the CV files in your JobKarov account, by the file name the site stored (what its send form lists) */
+  jobkarov: z
+    .object({
+      /** chosen by the same language rule as cv.he / cv.en; a missing name means the application fails (no fallback) */
+      cv: z.object({ he: z.string().default(''), en: z.string().default('') }).prefault({}),
+    })
+    .prefault({}),
   standardAnswers: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
 });
 

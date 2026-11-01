@@ -153,11 +153,15 @@ function HelperTable({ title, items }: { title: string; items: HelperItem[] }) {
   );
 }
 
-const TODO = ['discovered', 'scored', 'queued', 'needs_review'];
-const SOURCE_LABEL: Record<string, string> = { linkedin: 'LinkedIn', indeed: 'Indeed', drushim: 'Drushim' };
+const TODO = ['discovered', 'scored', 'queued', 'needs_review', 'needs_manual'];
+const SOURCE_LABEL: Record<string, string> = { linkedin: 'LinkedIn', indeed: 'Indeed', drushim: 'Drushim', jobmaster: 'JobMaster', jobnet: 'Jobnet', jobkarov: 'JobKarov' };
+const ASSISTED = ['linkedin', 'indeed'];
 
-/** Assisted apply for jobs from alert emails (LinkedIn, Indeed): open in your own browser, apply yourself with the helper, then mark it. */
-export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'] }: { busy: boolean; onChanged: () => void; sources?: string[] }) {
+/**
+ * Assisted apply: jobs from alert emails (LinkedIn, Indeed), and jobs a site's send left for you (needs_manual, e.g. a
+ * JobKarov CAPTCHA). Open in your own browser, apply yourself with the helper, then mark it.
+ */
+export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'], alertsOn = true }: { busy: boolean; onChanged: () => void; sources?: string[]; alertsOn?: boolean }) {
   const [view, setView] = useState<'todo' | 'applied' | 'all'>('todo');
   const [jobs, setJobs] = useState<JobItem[]>([]);
   const [sel, setSel] = useState<JobItem | null>(null);
@@ -167,8 +171,11 @@ export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'] }: { bu
   const [note, setNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const lists = await Promise.all(sources.map((site) => api.jobs({ site, limit: 500 })));
-    const items = lists.flatMap((r) => r.items).sort((a, b) => (b.rank.rank ?? -1) - (a.rank.rank ?? -1));
+    const lists = await Promise.all([...sources.map((site) => api.jobs({ site, limit: 500 })), api.jobs({ status: 'needs_manual', limit: 500 })]);
+    const seen = new Set<string>();
+    const items = lists
+      .flatMap((r) => r.items)
+      .filter((j) => !seen.has(j.id) && !!seen.add(j.id)).sort((a, b) => (b.rank.rank ?? -1) - (a.rank.rank ?? -1));
     setJobs(items);
     setSel((cur) => (cur ? (items.find((j) => j.id === cur.id) ?? null) : null));
   }, [sources.join(',')]);
@@ -208,6 +215,12 @@ export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'] }: { bu
           LinkedIn and Indeed are assisted-only: JobHunter never logs in to them or clicks anything there (to keep your accounts safe). Open the job in your own browser, apply
           yourself with the details below, then click “I applied”. Never tick or state anything that isn't true.
         </div>
+        {jobs.some((j) => j.status === 'needs_manual') && (
+          <div>
+            “By hand” jobs: the site asked for a CAPTCHA when JobHunter sent the application, so nothing was sent (a CAPTCHA is never attempted). Apply to them yourself the
+            same way. On JobKarov, answer “לא” to “send my CV to similar jobs” and leave “קצת על עצמי” empty.
+          </div>
+        )}
       </div>
       <div className="filters">
         {(['todo', 'applied', 'all'] as const).map((v) => (
@@ -215,9 +228,11 @@ export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'] }: { bu
             {v === 'todo' ? 'To do' : v === 'applied' ? 'Applied' : 'All'}
           </button>
         ))}
-        <button disabled={busy} onClick={() => void act(linkedin.fetch)}>
-          Fetch alerts now
-        </button>
+        {alertsOn && (
+          <button disabled={busy} onClick={() => void act(linkedin.fetch)}>
+            Fetch alerts now
+          </button>
+        )}
         <span className="muted">{shown.length} jobs</span>
         {note && <span className="note">{note}</span>}
       </div>
@@ -236,7 +251,8 @@ export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'] }: { bu
                   <div className="muted">
                     {j.company} · {j.location}
                   </div>
-                  {j.applyTarget && <span className="badge ok" title={j.applyTarget}>company link → review queue</span>}
+                  {j.status === 'needs_manual' && <span className="badge warn" title={j.statusReason ?? ''}>{j.statusReason === 'captcha' ? 'CAPTCHA — apply by hand' : 'apply by hand'}</span>}
+                  {j.applyTarget && ASSISTED.includes(j.site) && <span className="badge ok" title={j.applyTarget}>company link → review queue</span>}
                   {!j.descriptionText && <span className="badge warn">incomplete info</span>}
                 </td>
                 <td>
@@ -291,7 +307,7 @@ export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'] }: { bu
               </button>
             </div>
 
-            {(!sel.descriptionText || desc) && (
+            {ASSISTED.includes(sel.site) && (!sel.descriptionText || desc) && (
               <div className="card">
                 <b>Incomplete info:</b> the alert email has only the title, company and location, so the score is a rough guess. Paste the job description from the job page
                 to score it properly.
@@ -327,6 +343,7 @@ export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'] }: { bu
               </>
             )}
 
+            {ASSISTED.includes(sel.site) && (
             <div className="card">
               <b>“Apply on company website”?</b> Paste that link: a Drushim job joins the normal flow (prepare → your approval); any other site goes to the review queue
               with the link.
@@ -337,6 +354,7 @@ export function LinkedInScreen({ busy, onChanged, sources = ['linkedin'] }: { bu
                 </button>
               </div>
             </div>
+            )}
           </div>
         )}
       </div>

@@ -88,6 +88,8 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
       linkedin: { enabled: linkedInEnabled() },
       /** optional email job alerts (LinkedIn, Indeed): the assisted screen and the fetch button exist only while on */
       emailAlerts: { enabled: emailAlertsEnabled(), sources: enabledSources() },
+      /** jobs a site's send left for you to apply by hand (e.g. a JobKarov CAPTCHA): shown in the assisted panel */
+      needsManual: (db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'needs_manual'").get() as { n: number }).n,
       /** auto-submit (off by default): per-site toggles, the kill switch and the effective minimum rank */
       autoSubmit: { ...autoSubmitSettings(), minRankEffective: effectiveMinRank() },
       /** the latest hunt's summary, and the next in-app scheduled hunt (null = off) */
@@ -246,7 +248,7 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
 
   /** Re-check the site login (e.g. after `npm run login -- drushim` in another terminal). Uses the browser, so it is a run. */
   app.post('/api/session/check', async (req, reply) => {
-    const { site } = z.object({ site: z.enum(['drushim', 'jobmaster', 'jobnet', 'alljobs']).default('drushim') }).parse(req.body ?? {});
+    const { site } = z.object({ site: z.enum(['drushim', 'jobmaster', 'jobnet', 'jobkarov', 'alljobs']).default('drushim') }).parse(req.body ?? {});
     try {
       return { runId: startTask(db, site, 'session_check', async () => void (site === 'drushim' ? await checkDrushimSession() : await checkSiteSession(site))) };
     } catch (e) {

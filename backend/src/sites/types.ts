@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 
 /** linkedin: jobs from LinkedIn job-alert emails only (never opened by the automated browser; applying is manual) */
-export type SiteId = 'drushim' | 'alljobs' | 'jobmaster' | 'jobnet' | 'linkedin' | 'indeed';
+export type SiteId = 'drushim' | 'alljobs' | 'jobmaster' | 'jobnet' | 'jobkarov' | 'linkedin' | 'indeed';
 export type ApplyType = 'site_one_click' | 'site_questionnaire' | 'external' | 'email';
 
 export const JOB_STATUSES = [
@@ -14,6 +14,8 @@ export const JOB_STATUSES = [
   'submitted',
   /** applied by hand (LinkedIn assisted apply): "I applied" */
   'submitted_manual',
+  /** the site asked for something JobHunter never does (a CAPTCHA): apply by hand in the assisted panel */
+  'needs_manual',
   'failed',
   'blocked',
   'skipped',

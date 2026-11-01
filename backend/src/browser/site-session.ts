@@ -9,6 +9,8 @@ import { watchSessionProbe } from '../sites/drushim/session-probe.js';
 import { JM_BASE, loginState as jmLoginState } from '../sites/jobmaster/parse.js';
 import { JN_BASE, sendFormUrl as jnSendFormUrl } from '../sites/jobnet/parse.js';
 import { sendFormLoginState as jnLoginState } from '../sites/jobnet/apply.js';
+import { JK_BASE } from '../sites/jobkarov/parse.js';
+import { readLogin as jkReadLogin } from '../sites/jobkarov/apply.js';
 
 export type LoginState = 'logged_in' | 'logged_out' | 'unknown';
 
@@ -166,11 +168,40 @@ export async function checkJobnetSession(onContext?: (ctx: BrowserContext) => Pr
   return info;
 }
 
+/**
+ * JobKarov: its pages load your account with a script (window.User, from /User/UserInfo — a read). Logged in = an
+ * account id arrives; the page loaded normally and none came = logged out. One page load; nothing is sent.
+ */
+export async function checkJobKarovSession(onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
+  let info: SessionInfo;
+  try {
+    const ctx = await getContext({ headless: true });
+    await onContext?.(ctx);
+    const page = await getPage();
+    const res = await page.goto(`${JK_BASE}/`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => undefined);
+    const now = new Date().toISOString();
+    const blocked = await detectBlock(page, res?.status());
+    if (blocked) info = { state: 'unknown', checkedAt: now, detail: `jobkarov: ${blocked} — not bypassed; try again later` };
+    else {
+      const state = await jkReadLogin(page);
+      info = { state, checkedAt: now, detail: state === 'logged_in' ? 'jobkarov: your account loaded' : state === 'logged_out' ? 'jobkarov: no account on the page' : 'jobkarov: could not tell' };
+    }
+  } catch (e) {
+    info = { state: 'unknown', checkedAt: new Date().toISOString(), detail: e instanceof Error ? e.message.split('\n')[0]! : String(e) };
+  } finally {
+    await closeContext();
+  }
+  setSession('jobkarov', info);
+  return info;
+}
+
 /** The session check of a site (sites without one answer "unknown"). */
 export function checkSiteSession(site: string, onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
   if (site === 'drushim') return checkDrushimSession(onContext);
   if (site === 'alljobs') return checkAllJobsSession(onContext);
   if (site === 'jobmaster') return checkJobMasterSession(onContext);
   if (site === 'jobnet') return checkJobnetSession(onContext);
+  if (site === 'jobkarov') return checkJobKarovSession(onContext);
   return Promise.resolve({ state: 'unknown', checkedAt: null, detail: `no session check for ${site} yet` });
 }

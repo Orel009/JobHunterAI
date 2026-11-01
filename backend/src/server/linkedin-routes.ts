@@ -2,6 +2,8 @@
  * Email job alerts — LinkedIn, Indeed (optional, off by default) — and the assisted-apply screen.
  * Settings work while off (to turn it on); everything else answers 409 while off, so nothing touches IMAP.
  * LinkedIn and Indeed are only ever opened in the user's own default browser.
+ * The same assisted panel serves jobs a site's send could not finish without something JobHunter never does
+ * (status needs_manual, e.g. a JobKarov CAPTCHA): those work whether or not email alerts are on.
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -19,6 +21,9 @@ import { applyHelper, localCvFile } from '../linkedin/helper.js';
 import { openInDefaultBrowser, revealFile } from '../linkedin/open.js';
 import { routeExternalApply } from '../linkedin/external.js';
 import { contentHash } from '../core/job.js';
+import { SITES } from '../sites/registry.js';
+
+const siteLabel = (site: string) => (isAssistedSite(site) ? SITE_LABEL[site] : (SITES.find((s) => s.id === site)?.displayName ?? site));
 
 const SettingsBody = z.object({
   enabled: z.boolean().optional(),
@@ -38,8 +43,10 @@ export function registerLinkedInRoutes(app: FastifyInstance, db: DB): void {
     if (!emailAlertsEnabled()) throw new ServiceError(409, new LinkedInDisabledError().message);
   };
   const linkedInJob = (id: string) => {
-    requireOn();
     const job = repo.getJob(id);
+    // a job left for you by a site's send (needs_manual): assisted, alerts on or off
+    if (job && !isAssistedSite(job.site) && (job.status === 'needs_manual' || /^applied by hand/.test(job.statusReason ?? ''))) return job;
+    requireOn();
     if (!job || !isAssistedSite(job.site)) throw new ServiceError(404, 'no such LinkedIn / Indeed job');
     return job;
   };
@@ -76,7 +83,7 @@ export function registerLinkedInRoutes(app: FastifyInstance, db: DB): void {
   app.get<{ Params: { id: string } }>('/api/linkedin/jobs/:id/helper', async (req) => {
     const job = linkedInJob(req.params.id);
     // every link of this job: its own and those of the same job from other sources (LinkedIn, Indeed, Drushim…)
-    return { ...applyHelper(db, job, repo.getScore(job.id)?.matchedSkills ?? []), site: job.site, siteLabel: SITE_LABEL[job.site as 'linkedin'], links: repo.sourceLinks(job.id) };
+    return { ...applyHelper(db, job, repo.getScore(job.id)?.matchedSkills ?? []), site: job.site, siteLabel: siteLabel(job.site), links: repo.sourceLinks(job.id) };
   });
 
   /** Opens the job in the user's DEFAULT browser (never the automated one). */
@@ -101,7 +108,7 @@ export function registerLinkedInRoutes(app: FastifyInstance, db: DB): void {
     const job = linkedInJob(req.params.id);
     const at = nowIso();
     db.prepare("UPDATE jobs SET status = 'submitted_manual', status_reason = ?, applied_manually_at = ?, updated_at = ? WHERE id = ?").run(
-      `applied by hand on ${SITE_LABEL[job.site as 'linkedin']} at ${at}`,
+      `applied by hand on ${siteLabel(job.site)} at ${at}`,
       at,
       at,
       job.id,

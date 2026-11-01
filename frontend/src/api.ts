@@ -7,6 +7,7 @@ export type JobStatus =
   | 'dry_run_ok'
   | 'submitted'
   | 'submitted_manual'
+  | 'needs_manual'
   | 'failed'
   | 'blocked'
   | 'skipped'
@@ -17,7 +18,7 @@ export type JobStatus =
   | 'skipped_company'
   | 'skipped_duplicate';
 
-export const STATUSES: JobStatus[] = ['discovered', 'scored', 'queued', 'needs_review', 'dry_run_ok', 'submitted', 'submitted_manual', 'failed', 'blocked', 'skipped', 'skipped_experience', 'skipped_screening', 'skipped_not_a_job', 'skipped_salary', 'skipped_company', 'skipped_duplicate'];
+export const STATUSES: JobStatus[] = ['discovered', 'scored', 'queued', 'needs_review', 'dry_run_ok', 'submitted', 'submitted_manual', 'needs_manual', 'failed', 'blocked', 'skipped', 'skipped_experience', 'skipped_screening', 'skipped_not_a_job', 'skipped_salary', 'skipped_company', 'skipped_duplicate'];
 
 export interface Rank {
   rank: number | null;
@@ -124,6 +125,8 @@ export interface Status {
   linkedin: { enabled: boolean };
   /** optional email job alerts (LinkedIn, Indeed): the Email alerts screen and the fetch button exist only while on */
   emailAlerts: { enabled: boolean; sources: string[] };
+  /** jobs a site's send left for you to apply by hand (e.g. a JobKarov CAPTCHA): the assisted panel lists them */
+  needsManual: number;
   autoSubmit: { sites: Record<string, boolean>; minRank: number | null; minRankEffective: number; paused: boolean; pausedAt: string | null };
   lastHunt: import('./Schedule').HuntSummary | null;
   huntRunning: boolean;

@@ -11,7 +11,13 @@ export class ApplyError extends Error {
       | 'daily_limit'
       | 'no_apply_button'
       /** a safety check failed right before sending (e.g. "send to similar jobs" still ticked): never sent */
-      | 'unsafe_form',
+      | 'unsafe_form'
+      /** the job is no longer current (removed, or marked "not current" by the employer): skipped, not failed */
+      | 'expired'
+      /** applying happens on the company's own site (message = the link): to the review queue, no automation */
+      | 'external_apply'
+      /** the employer accepts only other answers than your honest ones (e.g. JobKarov's accepted options): skipped */
+      | 'screening_mismatch',
     message: string,
   ) {
     super(message);

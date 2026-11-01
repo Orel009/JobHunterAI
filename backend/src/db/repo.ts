@@ -311,6 +311,11 @@ export class Repo {
    * never reach scoring or the review queue. Jobs JobHunter itself submitted keep their status. Open applications of
    * those jobs are closed as skipped. Returns how many jobs changed.
    */
+  /** The apply preview found a company-site link: applying happens there (by hand, from the review queue). */
+  setExternalApply(id: string, target: string): void {
+    this.db.prepare("UPDATE jobs SET apply_type = 'external', apply_target = ?, updated_at = ? WHERE id = ?").run(target, nowIso(), id);
+  }
+
   markAlreadyApplied(site: string, applied: Map<string, string | null>): number {
     if (applied.size === 0) return 0;
     const now = nowIso();

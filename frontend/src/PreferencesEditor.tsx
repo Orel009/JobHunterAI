@@ -33,6 +33,7 @@ export interface Prefs {
   cv: { he: string; en: string; englishMaxHebrewRatio?: number };
   jobmaster: { cv: { he: string; en: string }; shareContactDetails: boolean };
   jobnet: { cv: { he: string; en: string }; regions: string[] };
+  jobkarov?: { cv: { he: string; en: string } };
   [k: string]: unknown;
 }
 
@@ -345,6 +346,24 @@ export function PreferencesEditor({ sections, onSaved, onDirtyChange }: { sectio
                 value={p.jobnet.regions.join(', ')}
                 onChange={(e) => up((d) => void (d.jobnet.regions = e.target.value.split(',').map((x) => x.trim()).filter(Boolean)))}
               />
+            </Field>
+          </div>
+        </fieldset>
+      )}
+
+      {show('cv') && (
+        <fieldset>
+          <legend>JobKarov</legend>
+          <p className="muted">
+            CV file names exactly as JobKarov stored them in your account: the name its send form lists, which can differ from the file you uploaded (same language rule; a
+            missing name means that application fails, no fallback). JobKarov searches use your locations above as its city filter.
+          </p>
+          <div className="grid3">
+            <Field label="Hebrew CV file (JobKarov)">
+              <input dir="auto" value={p.jobkarov?.cv.he ?? ''} onChange={(e) => up((d) => void (d.jobkarov = { cv: { ...(d.jobkarov?.cv ?? { he: '', en: '' }), he: e.target.value } }))} />
+            </Field>
+            <Field label="English CV file (JobKarov)">
+              <input dir="auto" value={p.jobkarov?.cv.en ?? ''} onChange={(e) => up((d) => void (d.jobkarov = { cv: { ...(d.jobkarov?.cv ?? { he: '', en: '' }), en: e.target.value } }))} />
             </Field>
           </div>
         </fieldset>

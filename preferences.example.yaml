@@ -124,6 +124,14 @@ jobnet:
     en: ""
   regions: []
 
+# JobKarov: the CV files in your JobKarov account, by the name JobKarov STORED — the name its send form lists, which
+# can differ from the file you uploaded (same language rule; a missing name = that application fails, no fallback).
+# JobKarov searches use your locations as its city filter.
+jobkarov:
+  cv:
+    he: ""
+    en: ""
+
 thresholds:
   autoSubmitMinScore: 80
   matchConfidence: 0.85

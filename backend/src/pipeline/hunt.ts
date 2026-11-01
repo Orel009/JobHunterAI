@@ -48,6 +48,8 @@ export interface HuntSummary {
   /** the Drushim session expired: discovery-only, log in again */
   loginNeeded: boolean;
   note: string | null;
+  /** per site: sends the site answered with a CAPTCHA (never attempted → assisted panel), out of all send attempts */
+  captchas?: Record<string, { captcha: number; attempts: number }>;
 }
 
 export interface HuntResult extends HuntSummary {
@@ -240,6 +242,8 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       loginNeeded: loginNeeded || (applySites.some((x) => x.id === 'drushim') && getSession('drushim').state === 'logged_out'),
       note,
     };
+    const captchas = captchaCounts(db, startedAt);
+    if (Object.keys(captchas).length) summary.captchas = captchas;
     Object.assign(p.counts, { sent: summary.sent, review: summary.waitingForReview, failed: summary.failed });
     db.prepare('UPDATE hunts SET finished_at = ?, summary_json = ? WHERE id = ?').run(summary.finishedAt, JSON.stringify(summary), huntId);
     L.info(summary, 'hunt finished');
@@ -265,6 +269,20 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
   }
 }
 
+/** Since a time, per site: sends answered with a CAPTCHA (jobs now needs_manual / captcha) and all send attempts. */
+export function captchaCounts(db: DB, since: string): Record<string, { captcha: number; attempts: number }> {
+  const rows = db
+    .prepare(
+      `SELECT j.site AS site,
+              SUM(CASE WHEN a.error LIKE 'needs_manual: captcha%' THEN 1 ELSE 0 END) AS captcha,
+              SUM(CASE WHEN a.status = 'submitted' OR a.error LIKE 'needs_manual: captcha%' THEN 1 ELSE 0 END) AS attempts
+         FROM applications a JOIN jobs j ON j.id = a.job_id
+        WHERE a.updated_at >= ? GROUP BY j.site`,
+    )
+    .all(since) as Array<{ site: string; captcha: number; attempts: number }>;
+  return Object.fromEntries(rows.filter((r) => r.captcha > 0).map((r) => [r.site, { captcha: r.captcha, attempts: r.attempts }]));
+}
+
 /** The end-of-session summary: what happened, and whether JobHunter can be closed (nothing still running). */
 export function doneReport(h: HuntSummary & { error?: string }, still: string[]): string[] {
   const skipped = Object.entries(h.skipped ?? {}).sort((a, b) => b[1] - a[1]);
@@ -279,6 +297,9 @@ export function doneReport(h: HuntSummary & { error?: string }, still: string[])
     out.push(`waiting for your review ${h.waitingForReview ?? h.readyForReview}`);
     out.push(`failed ${h.failed}`);
     if (h.loginNeeded) out.push('Drushim login expired — log in again (dashboard button or npm run login -- drushim); this run was discovery-only.');
+    for (const [site, c] of Object.entries(h.captchas ?? {})) {
+      out.push(`${SITES.find((x) => x.id === site)?.displayName ?? site}: CAPTCHA on ${c.captcha} of ${c.attempts} send attempt(s) — never attempted; those jobs are in the assisted panel (apply by hand)`);
+    }
     if (h.note) out.push(h.note);
   }
   return out;

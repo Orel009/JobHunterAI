@@ -73,9 +73,10 @@ export function App() {
       <header>
         <h1>JobHunter</h1>
         <nav>
-          {TABS.filter((t) => t.id !== 'linkedin' || status?.emailAlerts.enabled).map((t) => (
+          {TABS.filter((t) => t.id !== 'linkedin' || status?.emailAlerts.enabled || !!status?.needsManual).map((t) => (
             <button key={t.id} className={tab === t.id ? 'tab active' : 'tab'} disabled={!t.enabled || !!onboarding} onClick={() => setTab(t.id)}>
-              {t.label}
+              {t.id === 'linkedin' && !status?.emailAlerts.enabled ? 'Assisted apply' : t.label}
+              {t.id === 'linkedin' && !!status?.needsManual && <span className="badge warn"> {status.needsManual} by hand</span>}
             </button>
           ))}
         </nav>
@@ -148,7 +149,9 @@ export function App() {
       {onboarding === false && tab === 'answers' && <AnswersBank onChanged={refresh} />}
       {onboarding === false && tab === 'profile' && <ProfileScreen onChanged={refresh} />}
       {onboarding === false && tab === 'prefs' && <PreferencesEditor onSaved={refresh} />}
-      {onboarding === false && tab === 'linkedin' && status?.emailAlerts.enabled && <LinkedInScreen sources={status.emailAlerts.sources} busy={!!status.activeRun} onChanged={refresh} />}
+      {onboarding === false && tab === 'linkedin' && (status?.emailAlerts.enabled || !!status?.needsManual) && (
+        <LinkedInScreen sources={status.emailAlerts.enabled ? status.emailAlerts.sources : []} alertsOn={status.emailAlerts.enabled} busy={!!status.activeRun} onChanged={refresh} />
+      )}
       {onboarding === false && tab === 'history' && <HistoryScreen />}
       {onboarding === false && tab === 'market' && <MarketScreen onSaved={refresh} />}
       {onboarding === false && tab === 'settings' && <SettingsScreen onSaved={refresh} sites={status?.sites ?? []} />}

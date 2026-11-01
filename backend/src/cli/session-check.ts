@@ -8,8 +8,8 @@ import { siteBrowser } from '../browser/session.js';
 import { formatSessionReport, sessionReport } from '../browser/session-report.js';
 
 const site = process.argv[2] ?? 'drushim';
-if (site !== 'drushim' && site !== 'alljobs' && site !== 'jobmaster' && site !== 'jobnet') {
-  console.error('session checks exist for drushim, alljobs, jobmaster and jobnet');
+if (site !== 'drushim' && site !== 'alljobs' && site !== 'jobmaster' && site !== 'jobnet' && site !== 'jobkarov') {
+  console.error('session checks exist for drushim, alljobs, jobmaster, jobnet and jobkarov');
   process.exit(1);
 }
 if (profileInUse(config.paths.browserProfile)) {

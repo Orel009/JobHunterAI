@@ -22,7 +22,8 @@ import { driverFor, type ApplyDriver, type SubmitResult } from './drivers.js';
 import { cvNamesFor } from './cv-names.js';
 import { AnswersBank, bankTypeFor, yesNo } from './bank.js';
 import { hebrewRatio } from './cv.js';
-import { Applications, buildPlan, isConfirmation, readiness, type ApplicationRow } from './plan.js';
+import { Applications, buildPlan, isConfirmation, readiness, type ApplicationRow, type AppStatus } from './plan.js';
+import type { JobStatus } from '../sites/types.js';
 import { autoSubmitOn, evaluateAutoSubmit } from './auto-submit.js';
 import { getSession, setSession } from '../browser/site-session.js';
 import { excludedCompanyMatch } from '../core/prefilter.js';
@@ -68,6 +69,31 @@ function queueManualApplication(apps: Applications, repo: Repo, job: StoredJob):
   const plan: ApplyPlan = { jobId: job.id, site: job.site, createdAt: new Date().toISOString(), cv: null, fields: [], readiness: 'needs_answers', notes: [`${job.applyType} apply → ${job.applyTarget} (handled manually in this phase)`] };
   apps.savePlan(job, plan, 'needs_review');
   repo.setStatus(job.id, 'needs_review', `${job.applyType} apply`);
+}
+
+/**
+ * Apply errors that close a job without failing it: already applied, no longer current, answers the employer does not
+ * accept, and a company-site link (→ the review queue with the link, no automation). Null = a real failure.
+ */
+function closeOnApplyError(apps: Applications, repo: Repo, job: StoredJob, appId: number | null, e: unknown): { status: string; detail: string } | null {
+  if (!(e instanceof ApplyError)) return null;
+  const close = (jobStatus: JobStatus, reason: string, appStatus: AppStatus = 'skipped') => {
+    repo.setStatus(job.id, jobStatus, reason);
+    const app = appId !== null ? apps.get(appId) : apps.latestForJob(job.id);
+    if (app && app.status !== 'submitted') apps.update(app.id, { status: appStatus, error: reason });
+    return { status: 'skipped', detail: reason };
+  };
+  if (e.code === 'already_applied') return close('skipped', `already_applied: ${e.message}`);
+  if (e.code === 'expired') return close('skipped', `expired: ${e.message}`);
+  if (e.code === 'screening_mismatch') return close('skipped_screening', `the employer does not accept your answer: ${e.message}`);
+  if (e.code === 'external_apply') {
+    const app = appId !== null ? apps.get(appId) : apps.latestForJob(job.id);
+    if (app && app.status !== 'submitted') apps.update(app.id, { status: 'skipped', error: `applies on the company's site: ${e.message}` });
+    repo.setExternalApply(job.id, e.message);
+    queueManualApplication(apps, repo, repo.getJob(job.id)!);
+    return { status: 'needs_review', detail: `applies on the company's site — in the review queue with the link (${e.message})` };
+  }
+  return null;
 }
 
 /**
@@ -181,10 +207,9 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
         }
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
-        if (e instanceof ApplyError && e.code === 'already_applied') {
-          repo.setStatus(job.id, 'skipped', `already_applied: ${err}`);
-          const last = apps.latestForJob(job.id);
-          if (last && last.status !== 'submitted') apps.update(last.id, { status: 'skipped', error: `already_applied: ${err}` });
+        const closed = closeOnApplyError(apps, repo, job, null, e);
+        if (closed) {
+          L.info({ job: job.title }, closed.detail);
           continue;
         }
         repo.setStatus(job.id, 'failed', err);
@@ -317,6 +342,19 @@ function recordSubmitResult(apps: Applications, repo: Repo, appId: number, job: 
     apps.update(appId, { status: 'skipped', screenshotBefore: before, screenshotAfter: r.screenshotAfter, error: reason });
     repo.setStatus(job.id, 'skipped', reason);
     return { status: 'skipped', detail: reason };
+  }
+  if (r.outcome.kind === 'expired') {
+    const reason = `expired: ${r.outcome.message}`;
+    apps.update(appId, { status: 'skipped', screenshotBefore: before, screenshotAfter: r.screenshotAfter, error: reason });
+    repo.setStatus(job.id, 'skipped', reason);
+    return { status: 'skipped', detail: reason };
+  }
+  if (r.outcome.kind === 'needs_manual') {
+    // never attempted: the job goes to the assisted panel (open in your browser, copy helpers, "I applied")
+    apps.update(appId, { status: 'skipped', screenshotBefore: before, screenshotAfter: r.screenshotAfter, confirmationText: r.confirmationText, error: `needs_manual: ${r.outcome.reason} — ${r.outcome.message}` });
+    repo.setStatus(job.id, 'needs_manual', r.outcome.reason);
+    L.warn({ job: job.title, reason: r.outcome.reason }, 'not sent: the site wants a CAPTCHA — apply by hand (assisted panel)');
+    return { status: 'needs_manual', detail: `${r.outcome.message} (assisted panel)` };
   }
   apps.update(appId, { status: 'failed', screenshotBefore: before, screenshotAfter: r.screenshotAfter, confirmationText: r.confirmationText, error: r.outcome.message });
   repo.setStatus(job.id, 'failed', r.outcome.message);
@@ -556,11 +594,8 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
     return done(res.status, res.detail, res.stop);
   } catch (e) {
     const err = e instanceof Error ? e.message : String(e);
-    if (e instanceof ApplyError && e.code === 'already_applied') {
-      apps.update(appId, { status: 'skipped', error: `already_applied: ${err}` });
-      repo.setStatus(job.id, 'skipped', `already_applied: ${err}`);
-      return done('skipped', `already_applied: ${err}`);
-    }
+    const closed = closeOnApplyError(apps, repo, job, appId, e);
+    if (closed) return done(closed.status, closed.detail);
     if (apps.get(appId)?.status === 'approved') {
       apps.update(appId, { status: 'failed', error: err });
       repo.setStatus(job.id, 'failed', err);
@@ -619,6 +654,8 @@ export interface BatchProgress {
   results: SendResult[];
   stoppedReason: string | null;
   finished: boolean;
+  /** sends the site answered with a CAPTCHA (never attempted; those jobs are in the assisted panel) */
+  captchas: number;
 }
 let batch: BatchProgress | null = null;
 export const batchProgress = () => batch;
@@ -655,6 +692,8 @@ export function approveBatch(db: DB, appIds: number[]): { runId: number; dryRun:
       if (!appliedBySite.has(site)) appliedBySite.set(site, await driverFor(site)!.fetchAppliedJobs(page).catch(() => null));
       return appliedBySite.get(site)!;
     };
+    // a CAPTCHA is never attempted; after the second one on a site, the rest of that site waits (left in review)
+    const captchas = new Map<string, number>();
     for (const [i, { app, job }] of accepted.entries()) {
       if (run.controller.signal.aborted) {
         batch!.stoppedReason = 'stopped by you';
@@ -664,21 +703,32 @@ export function approveBatch(db: DB, appIds: number[]): { runId: number; dryRun:
       run.stage = `${dryRun ? 'dry run' : 'SUBMIT'} ${batch!.current}`;
       const fresh = apps.get(app.id);
       const still = fresh ? batchBlock(fresh) : 'gone';
-      const r: SendResult = still ? { appId: app.id, title: job.title, company: job.company, status: 'not_sent', detail: `changed since you selected it: ${still}` } : await sendApproved(db, app.id, job, dryRun, L, await appliedFor(job.site));
+      const siteCaptchas = captchas.get(job.site) ?? 0;
+      const r: SendResult = still
+        ? { appId: app.id, title: job.title, company: job.company, status: 'not_sent', detail: `changed since you selected it: ${still}` }
+        : siteCaptchas >= 2
+          ? { appId: app.id, title: job.title, company: job.company, status: 'not_sent', detail: `not sent: ${job.site} asked for a CAPTCHA twice in this batch — left in review, try later` }
+          : await sendApproved(db, app.id, job, dryRun, L, await appliedFor(job.site));
       batch!.results.push(r);
       batch!.done++;
       run.stats.sent = (run.stats.sent ?? 0) + (r.status === 'submitted' ? 1 : 0);
+      if (r.status === 'needs_manual') {
+        captchas.set(job.site, siteCaptchas + 1);
+        batch!.captchas++;
+        run.stats.captchas = (run.stats.captchas ?? 0) + 1;
+      }
       if (r.stop) {
         batch!.stoppedReason = STOP_TEXT[r.stop];
         for (const rest of accepted.slice(i + 1)) batch!.results.push({ appId: rest.app.id, title: rest.job.title, company: rest.job.company, status: 'not_sent', detail: 'not sent: the batch stopped' });
         L.warn({ stop: r.stop }, `batch stopped: ${STOP_TEXT[r.stop]}`);
         break;
       }
-      if (i < accepted.length - 1) await pace();
+      // after a CAPTCHA, a much longer pause before the next send
+      if (i < accepted.length - 1) await (r.status === 'needs_manual' ? pace(45_000, 90_000) : pace());
     }
     batch!.current = null;
     batch!.finished = true;
   });
-  batch = { runId, dryRun, startedAt: new Date().toISOString(), total: accepted.length, done: 0, current: null, results: [], stoppedReason: null, finished: false };
+  batch = { runId, dryRun, startedAt: new Date().toISOString(), total: accepted.length, done: 0, current: null, results: [], stoppedReason: null, finished: false, captchas: 0 };
   return { runId, dryRun, accepted: accepted.length, refused };
 }

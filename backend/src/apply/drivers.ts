@@ -1,5 +1,5 @@
 /**
- * The apply flow of each site with an automated apply (Drushim, JobMaster, Jobnet), behind one interface so preparing,
+ * The apply flow of each site with an automated apply (Drushim, JobMaster, Jobnet, JobKarov), behind one interface so preparing,
  * approving, batch approval and auto-submit work the same way for every site. Each function calls the site module
  * at call time.
  */
@@ -10,8 +10,16 @@ import type { ApplyPlan } from './types.js';
 import * as drushim from '../sites/drushim/apply.js';
 import * as jobmaster from '../sites/jobmaster/apply.js';
 import * as jobnet from '../sites/jobnet/apply.js';
+import * as jobkarov from '../sites/jobkarov/apply.js';
 
-export type SendOutcome = { kind: 'submitted' } | { kind: 'already_applied'; sentDate: string } | { kind: 'failed' | 'error'; message: string; needsLogin?: boolean; fatalForDay?: boolean };
+export type SendOutcome =
+  | { kind: 'submitted' }
+  | { kind: 'already_applied'; sentDate: string }
+  /** the employer marked the job as no longer current: skipped/expired */
+  | { kind: 'expired'; message: string }
+  /** the site wants something JobHunter never does (a CAPTCHA): apply by hand in the assisted panel */
+  | { kind: 'needs_manual'; reason: 'captcha'; message: string }
+  | { kind: 'failed' | 'error'; message: string; needsLogin?: boolean; fatalForDay?: boolean };
 export interface SubmitResult {
   outcome: SendOutcome;
   confirmationText: string | null;
@@ -62,6 +70,16 @@ export const DRIVERS: Record<string, ApplyDriver> = {
     installDryRunGuard: (page) => jobnet.installDryRunGuard(page),
     submitPanel: (page, job, name, cvName) => jobnet.submitPanel(page, job, name, cvName),
     fetchAppliedJobs: (page) => jobnet.fetchAppliedJobs(page),
+  },
+  jobkarov: {
+    site: 'jobkarov',
+    label: 'JobKarov',
+    openPanel: (page, job) => jobkarov.openPanel(page, job),
+    fillPanel: (page, state, plan) => jobkarov.fillPanel(page, state, plan),
+    screenshotPanel: (page, name) => jobkarov.screenshotPanel(page, name),
+    installDryRunGuard: (page) => jobkarov.installDryRunGuard(page),
+    submitPanel: (page, job, name, cvName) => jobkarov.submitPanel(page, job, name, cvName),
+    fetchAppliedJobs: (page) => jobkarov.fetchAppliedJobs(page),
   },
 };
 
