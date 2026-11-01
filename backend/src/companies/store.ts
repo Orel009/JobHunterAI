@@ -41,7 +41,23 @@ const HEADER = `# Your target companies. JobHunter reads their public job lists 
 export function loadCompanies(): Company[] {
   const f = companiesFile();
   if (!fs.existsSync(f)) return [];
-  return FileSchema.parse(YAML.parse(fs.readFileSync(f, 'utf8')) ?? {}).companies;
+  const list = FileSchema.parse(YAML.parse(fs.readFileSync(f, 'utf8')) ?? {}).companies;
+  // addresses saved with ad tracking (utm_…, gclid…): cleaned, with a short id (kept once, on disk)
+  const fixed = list.map((c) => (cleanUrl(c.url) !== c.url ? { ...c, url: cleanUrl(c.url), id: c.ats === 'unknown' || !c.board ? companyId(c.ats, c.board, cleanUrl(c.url)) : c.id } : c));
+  if (fixed.some((c, i) => c !== list[i])) saveCompanies(fixed);
+  return fixed;
+}
+
+/** An address without tracking parameters (utm_*, gclid, gbraid, fbclid, gad_*, …) and fragments. */
+export function cleanUrl(u: string): string {
+  try {
+    const url = new URL(u.trim());
+    for (const k of [...url.searchParams.keys()]) if (/^(utm_|gad_|gclid|gbraid|wbraid|fbclid|msclkid|mc_|_hs|ref$|source$)/i.test(k)) url.searchParams.delete(k);
+    url.hash = '';
+    return url.href;
+  } catch {
+    return u.trim();
+  }
 }
 
 export function saveCompanies(list: Company[]): void {
@@ -55,10 +71,20 @@ export function seedCompanies(): void {
 }
 
 export const isSupported = (c: Pick<Company, 'ats' | 'board'>) => SUPPORTED_ATS.includes(c.ats as Ats) && !!c.board;
-export const companyId = (ats: string, board: string | null, url: string) => `${ats}:${board ?? url}`;
+/** "{ats}:{board}", or for a company without a board "{ats}:{host}{path}" (short; no query) */
+export const companyId = (ats: string, board: string | null, url: string) => {
+  if (board) return `${ats}:${board}`;
+  try {
+    const u = new URL(url);
+    return `${ats}:${u.hostname.replace(/^www\./, '')}${u.pathname.replace(/\/+$/, '')}`.slice(0, 120);
+  } catch {
+    return `${ats}:${url.slice(0, 120)}`;
+  }
+};
 
 export function addCompany(d: Detected & { finalUrl?: string }, url: string, name = ''): Company {
   const list = loadCompanies();
+  url = cleanUrl(url);
   const id = companyId(d.ats, d.board, url);
   const existing = list.find((c) => c.id === id);
   if (existing) return existing;

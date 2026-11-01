@@ -396,17 +396,43 @@ export interface Company {
   paused: boolean;
   lastCheck: { at: string; total: number | null; israel: number | null; kept: number | null; error: string | null } | null;
 }
+export interface CompanySummary {
+  id: string;
+  name: string;
+  ats: string;
+  read: number | null;
+  israel: number | null;
+  inLocations: number | null;
+  added: number;
+  skipped: Array<{ reason: string; count: number; examples: string[] }>;
+  scored: number;
+  answersPrepared: number;
+  ready: number;
+  error: string | null;
+  ms: number;
+}
+export interface CompaniesProgress {
+  runId: number | null;
+  startedAt: string;
+  finishedAt: string | null;
+  stage: string;
+  current: string | null;
+  done: number;
+  total: number;
+  companies: CompanySummary[];
+}
+type CompaniesState = { companies: Company[]; progress: CompaniesProgress | null };
+type Detected = { ats: string; board: string | null; supported: boolean; how: string; evidence: string };
+type Preview = { total: number | null; israel: number | null; kept: number | null; error: string | null } | null;
 export const companies = {
-  list: () => req<{ companies: Company[] }>('GET', '/api/companies'),
-  add: (url: string, name?: string) =>
-    req<{ detected: { ats: string; board: string | null; supported: boolean; how: string; evidence: string }; preview: { total: number | null; israel: number | null; kept: number | null; error: string | null } | null; companies: Company[] }>(
-      'POST',
-      '/api/companies',
-      { url, name },
-    ),
-  update: (id: string, patch: { enabled?: boolean; name?: string }) => req<{ companies: Company[] }>('PATCH', `/api/companies/${encodeURIComponent(id)}`, patch),
-  remove: (id: string) => req<{ companies: Company[] }>('DELETE', `/api/companies/${encodeURIComponent(id)}`),
+  list: () => req<CompaniesState>('GET', '/api/companies'),
+  add: (url: string, name?: string) => req<CompaniesState & { detected: Detected; preview: Preview }>('POST', '/api/companies', { url, name }),
+  detect: (id: string) => req<CompaniesState & { detected: Detected; preview: Preview }>('POST', `/api/companies/${encodeURIComponent(id)}/detect`, {}),
+  update: (id: string, patch: { enabled?: boolean; name?: string }) => req<CompaniesState>('PATCH', `/api/companies/${encodeURIComponent(id)}`, patch),
+  remove: (id: string) => req<CompaniesState>('DELETE', `/api/companies/${encodeURIComponent(id)}`),
+  /** the companies-only run: read the lists → prefilter → score → Greenhouse answers */
   fetch: () => req<{ runId: number }>('POST', '/api/companies/fetch', {}),
+  score: () => req<{ runId: number }>('POST', '/api/companies/score', {}),
 };
 export const linkedin = {
   settings: () => req<LinkedInSettings>('GET', '/api/linkedin/settings'),

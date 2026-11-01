@@ -60,6 +60,8 @@ export interface HuntSummary {
   resumed?: Array<{ site: string; resumed: boolean; detail: string }>;
   /** page loads per budgeted site (e.g. JobKarov) */
   pageLoads?: Record<string, { used: number; max: number }>;
+  /** the companies step (the first one): how long it took, in milliseconds */
+  companiesMs?: number;
 }
 
 export interface HuntResult extends HuntSummary {
@@ -145,6 +147,26 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       return { site: r?.site ?? '?', status: r?.status, reason: r?.reason ?? null, inserted: r?.stats?.inserted ?? 0, scored: r?.stats?.scored ?? 0 };
     };
 
+    const runs: HuntSummary['runs'] = [];
+    // FIRST: your target companies' public job lists (Greenhouse, Comeet) — no browser, so they never wait for one; a
+    // Drushim copy found later in this run takes over from a company copy for applying (company jobs: by you)
+    const companies = enabledCompanies();
+    let companiesMs: number | null = null;
+    if (companies.length) {
+      const end = step(`companies: reading ${companies.length} job list${companies.length > 1 ? 's' : ''} → prefilter → score → Greenhouse answers`);
+      const t0 = Date.now();
+      const cp = await runCompaniesToCompletion(db);
+      companiesMs = Date.now() - t0;
+      const r = lastRun();
+      runs.push(r);
+      p.counts.found += r.inserted;
+      p.counts.scored += r.scored;
+      const ready = (cp?.companies ?? []).reduce((n, c) => n + c.ready, 0);
+      end(
+        r.status === 'done' ? 'done' : 'failed',
+        `${r.status === 'done' ? '' : `${r.status}${r.reason ? ` (${r.reason})` : ''} · `}new ${r.inserted} · scored ${r.scored} · ready in Assisted apply ${ready} · ${Math.round(companiesMs / 1000)}s`,
+      );
+    }
     // paused sites whose pause ran out: one session check each; resumed only if the site serves its real page
     const resumed: NonNullable<HuntSummary['resumed']> = [];
     for (const site of SITES.filter((x) => x.enabled && adapters[x.id])) {
@@ -180,23 +202,10 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     const loginNeeded = sessions.get('drushim')?.state === 'logged_out';
     L.info({ sessions: Object.fromEntries([...sessions].map(([k, v]) => [k, v.state])) }, 'hunt started');
 
-    const runs: HuntSummary['runs'] = [];
     // job-alert emails first (optional): Drushim jobs found through Indeed links are then read by the Drushim run
     if (emailAlertsEnabled()) {
       end = step(`reading job-alert emails (${enabledSources().join(', ')})`);
       await runEmailAlertsToCompletion(db, { followUp: false });
-      const r = lastRun();
-      runs.push(r);
-      p.counts.found += r.inserted;
-      p.counts.scored += r.scored;
-      end(r.status === 'done' ? 'done' : 'failed', `${r.status === 'done' ? '' : `${r.status}${r.reason ? ` (${r.reason})` : ''} · `}new ${r.inserted} · scored ${r.scored}`);
-    }
-    // your target companies' public job lists (Greenhouse, Comeet): read before the sites, so a Drushim copy found
-    // afterwards takes over from a company copy for applying (applying to company jobs is done by you)
-    const companies = enabledCompanies();
-    if (companies.length) {
-      end = step(`reading ${companies.length} company job list${companies.length > 1 ? 's' : ''} (Greenhouse / Comeet)`);
-      await runCompaniesToCompletion(db);
       const r = lastRun();
       runs.push(r);
       p.counts.found += r.inserted;
@@ -288,6 +297,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     const pz = sitePauses();
     if (Object.keys(pz).length) summary.paused = Object.fromEntries(Object.entries(pz).map(([k, v]) => [k, { reason: v.reason, until: v.until }]));
     if (resumed.length) summary.resumed = resumed;
+    if (companiesMs !== null) summary.companiesMs = companiesMs;
     const loads = budgetSummary();
     if (Object.keys(loads).length) summary.pageLoads = loads;
     Object.assign(p.counts, { sent: summary.sent, review: summary.waitingForReview, failed: summary.failed });
@@ -344,6 +354,7 @@ export function doneReport(h: HuntSummary & { error?: string }, still: string[])
     out.push(`waiting for your review ${h.waitingForReview ?? h.readyForReview}`);
     out.push(`failed ${h.failed}`);
     if (h.loginNeeded) out.push('Drushim login expired — log in again (dashboard button or npm run login -- drushim); this run was discovery-only.');
+    if (h.companiesMs !== undefined) out.push(`companies first: ${Math.round(h.companiesMs / 1000)}s`);
     for (const r of h.resumed ?? []) out.push(`${SITES.find((x) => x.id === r.site)?.displayName ?? r.site}: ${r.detail}`);
     for (const [site, v] of Object.entries(h.paused ?? {})) {
       out.push(`${SITES.find((x) => x.id === site)?.displayName ?? site} paused: ${v.reason} — left out; resume check from ${v.until.slice(0, 16).replace('T', ' ')} UTC (or Settings → Resume)`);

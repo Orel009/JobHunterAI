@@ -13,6 +13,8 @@ export const SITES: Array<{ id: SiteId; displayName: string; loginUrl: string; e
   { id: 'jobmaster', displayName: 'JobMaster', loginUrl: 'https://www.jobmaster.co.il/', enabled: true },
   { id: 'jobnet', displayName: 'Jobnet', loginUrl: 'https://www.jobnet.co.il/', enabled: true },
   { id: 'jobkarov', displayName: 'JobKarov', loginUrl: 'https://www.jobkarov.com/', enabled: true },
+  // under investigation (not built): listed so the login window can be opened for it
+  { id: 'sqlink', displayName: 'SQLink', loginUrl: 'https://www.sqlink.com/', enabled: false },
 ];
 
 export function getAdapter(id: string): SiteAdapter {

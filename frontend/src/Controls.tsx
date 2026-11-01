@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, linkedin, type RunRow, type Status } from './api';
+import { api, companies as companiesApi, linkedin, type RunRow, type Status } from './api';
 import { HuntSummaryLine } from './Schedule';
 
 export function Controls({ status, onChange, profileReady = true }: { status: Status; onChange: () => void; profileReady?: boolean }) {
@@ -104,6 +104,24 @@ export function Controls({ status, onChange, profileReady = true }: { status: St
             )}
           </span>
         ))}
+        <span className="site-actions">
+          <button
+            disabled={!!run || busy || !status.companies?.enabled}
+            title={
+              status.companies?.enabled
+                ? 'your target companies: read the lists → prefilter → score → Greenhouse answers (applying: Assisted apply)'
+                : status.companies?.listed
+                  ? 'turn on at least one company on the Companies screen'
+                  : 'add companies on the Companies screen'
+            }
+            onClick={() => act(companiesApi.fetch)}
+          >
+            Discover Companies
+          </button>
+          <button className="secondary" disabled={!!run || busy} onClick={() => act(companiesApi.score)}>
+            Score only
+          </button>
+        </span>
         {!profileReady && <span className="note">no approved profile: Discover finds jobs, scoring waits for the profile</span>}
         {status.schedule.enabled && status.schedule.next && <span className="muted">next scheduled hunt {new Date(status.schedule.next).toLocaleString('he-IL', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span>}
         {status.emailAlerts.enabled && (

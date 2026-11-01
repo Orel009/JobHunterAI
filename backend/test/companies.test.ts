@@ -27,11 +27,11 @@ import { openDb, type DB } from '../src/db/index.js';
 import { Repo } from '../src/db/repo.js';
 import { toJob } from '../src/core/job.js';
 import { waitIdle } from '../src/pipeline/runner.js';
-import { detectAts, detectFromHtml, detectFromUrl } from '../src/companies/detect.js';
+import { detectAts, detectFromHtml, detectFromUrl, nameVariants } from '../src/companies/detect.js';
 import { ghQuestionFields, ghToRawJob, type GhJob } from '../src/companies/greenhouse.js';
 import { comeetToken, comeetToRawJob, type ComeetPosition } from '../src/companies/comeet.js';
 import { fetchCompanyJobs, isIsraelLocation, keepCompanyJob } from '../src/companies/fetch.js';
-import { addCompany, companiesFile, loadCompanies, saveCompanies, seedCompanies, updateCompany, type Company } from '../src/companies/store.js';
+import { addCompany, cleanUrl, companiesFile, companyId, loadCompanies, saveCompanies, seedCompanies, updateCompany, type Company } from '../src/companies/store.js';
 import { runCompaniesToCompletion } from '../src/companies/run.js';
 import { formAnswers } from '../src/companies/answers.js';
 import { isAssistedOnlyHost } from '../src/alerts/assisted.js';
@@ -105,7 +105,29 @@ describe('ATS detection', () => {
     expect(await detectAts('https://www.acme.example/careers', page.f)).toMatchObject({ ats: 'greenhouse', board: 'acme', how: 'page' });
     expect(page.calls).toHaveLength(1);
     const err = fakeFetch([[/acme\.example/, () => ({ status: 403, body: 'no' })]]);
-    expect(await detectAts('https://www.acme.example/careers', err.f)).toMatchObject({ ats: 'unknown', evidence: 'the page answered HTTP 403' });
+    expect(await detectAts('https://www.acme.example/careers', err.f)).toMatchObject({ ats: 'unknown', evidence: 'the page answered HTTP 403 — paste one job link from this company' });
+  });
+
+  it('name variants from the name you give and the domain', () => {
+    expect(nameVariants('', 'https://www.similarweb.com/corp/careers/')).toEqual(['similarweb']);
+    expect(nameVariants('', 'https://careers.wix.com/positions')).toEqual(['wix']);
+    expect(nameVariants('', 'https://www.matrix.co.il/jobs/')).toEqual(['matrix']);
+    expect(nameVariants('Similar Web', 'https://www.similarweb.com/x')).toEqual(['similarweb']);
+    expect(nameVariants('מטריקס', 'https://www.matrix.co.il/')).toEqual(['matrix']);
+  });
+
+  it('a page built by script: the ATS APIs asked by name (Greenhouse board first); a few requests at most', async () => {
+    const gh = fakeFetch([
+      [/similarweb\.com\/corp\/careers/, () => ({ body: '<html><script src="/app.js"></script><div id="root"></div></html>' })],
+      [/boards-api\.greenhouse\.io\/v1\/boards\/similarweb$/, () => ({ body: { name: 'Similarweb', content: '' } })],
+    ]);
+    expect(await detectAts('https://www.similarweb.com/corp/careers/', gh.f)).toMatchObject({ ats: 'greenhouse', board: 'similarweb', supported: true, how: 'probe' });
+    expect(gh.calls).toHaveLength(2); // the page, then one board check
+    const none = fakeFetch([[/careers\.wix\.com/, () => ({ body: '<html><script></script></html>' })]]);
+    const d = await detectAts('https://careers.wix.com/positions', none.f, 'Wix');
+    expect(d).toMatchObject({ ats: 'unknown', evidence: expect.stringMatching(/paste one job link from this company$/) });
+    expect(none.calls.length).toBeLessThanOrEqual(1 + 6);
+    expect(none.calls.filter((u) => /comeet/.test(u))).toEqual([]); // Comeet cannot be asked by name
   });
 });
 
@@ -223,6 +245,23 @@ describe('the companies run', () => {
     expect(repo.getJob(ghCopy.id)).toMatchObject({ status: 'skipped_duplicate', duplicateOf: d.id });
   });
 
+  it('the companies-only run reports per company: read / Israel / in your locations / skipped by reason / scored / answers / ready', async () => {
+    saveCompanies([company({ ats: 'greenhouse', board: 'similarweb', name: 'Similarweb' })]);
+    const f = fakeFetch([
+      [/jobs\?content=true/, () => ({ body: GH })],
+      [/questions=true/, () => ({ body: GHQ })],
+    ]);
+    const p = (await runCompaniesToCompletion(db, { fetchImpl: f.f }))!;
+    expect(p.finishedAt).toBeTruthy();
+    const c = p.companies[0]!;
+    expect(c).toMatchObject({ name: 'Similarweb', ats: 'greenhouse', read: 5, israel: 3, inLocations: 3, added: 3 });
+    expect(c.skipped.reduce((n, s) => n + s.count, 0) + c.ready).toBeLessThanOrEqual(c.inLocations!);
+    for (const s of c.skipped) expect(s.examples.length).toBeGreaterThan(0);
+    // scoring waits for an approved profile here; no job is scored, so no answers are prepared
+    expect(c.scored).toBe(0);
+    expect(c.answersPrepared).toBe(0);
+  });
+
   it('a refusal pauses that ATS for 48 hours; a paused ATS is not read', async () => {
     saveCompanies([company({ ats: 'greenhouse', board: 'similarweb' })]);
     await runCompaniesToCompletion(db, { fetchImpl: ghFetch(429).f });
@@ -242,12 +281,40 @@ describe('the companies run', () => {
 });
 
 describe('companies.yaml and the Companies routes', () => {
+  it('addresses lose ad tracking; an id stays short (an address with a long query gave HTTP 414)', () => {
+    const long = 'https://www.sqlink.com/hightechjob/?utm_source=google&utm_medium=cpc&gad_source=1&gbraid=0AAAA&gclid=CjwKCAjw&page=2#x';
+    expect(cleanUrl(long)).toBe('https://www.sqlink.com/hightechjob/?page=2');
+    expect(companyId('unknown', null, long)).toBe('unknown:sqlink.com/hightechjob');
+    expect(companyId('greenhouse', 'similarweb', long)).toBe('greenhouse:similarweb');
+    saveCompanies([{ ...company({ ats: 'unknown', board: null }), id: `unknown:${long}`, url: long }]);
+    expect(loadCompanies()[0]).toMatchObject({ id: 'unknown:sqlink.com/hightechjob', url: 'https://www.sqlink.com/hightechjob/?page=2' });
+  });
+
   it('seeded empty; a company on an unsupported ATS is listed but never turned on', () => {
     seedCompanies();
     expect(fs.readFileSync(companiesFile(), 'utf8')).toMatch(/companies: \[\]/);
     const c = addCompany({ ats: 'lever', board: 'palantir', supported: false, how: 'url', evidence: '' }, 'https://jobs.lever.co/palantir');
     expect(c.enabled).toBe(false);
     expect(updateCompany(c.id, { enabled: true })!.enabled).toBe(false);
+  });
+
+  it('a company on your excluded list is refused, with the reason (by its name, its domain, or the ATS\'s name)', async () => {
+    fs.writeFileSync(config.paths.preferences, fs.readFileSync(config.paths.preferences, 'utf8').replace('filters: { remoteKeywords: [remote] }', 'filters: { remoteKeywords: [remote], excludeCompanies: [matrix, מטריקס, Similarweb] }'));
+    const { f } = fakeFetch([[/boards-api\.greenhouse\.io/, () => ({ body: GH })]]);
+    vi.stubGlobal('fetch', f);
+    try {
+      const app = buildApp(db);
+      const m = await app.inject({ method: 'POST', url: '/api/companies', payload: { url: 'https://www.matrix.co.il/jobs/' } });
+      expect(m.statusCode).toBe(409);
+      expect(m.json().error).toBe('not added: "matrix" is on your excluded companies (matches "matrix")');
+      // detected fine, but the ATS reports the company name "Similarweb" — excluded too
+      const s = await app.inject({ method: 'POST', url: '/api/companies', payload: { url: 'https://job-boards.greenhouse.io/similarweb' } });
+      expect(s.statusCode).toBe(409);
+      expect(loadCompanies()).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+      fs.writeFileSync(config.paths.preferences, fs.readFileSync(config.paths.preferences, 'utf8').replace(', excludeCompanies: [matrix, מטריקס, Similarweb]', ''));
+    }
   });
 
   it('add → detect + one read of the list for the totals; enable / disable; remove', async () => {

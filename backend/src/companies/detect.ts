@@ -22,7 +22,7 @@ export interface Detected {
   /** Comeet: the company's slug in comeet.com/jobs/{slug}/{UID} */
   slug?: string | null;
   supported: boolean;
-  how: 'url' | 'page';
+  how: 'url' | 'page' | 'probe';
   /** what was matched, or why nothing usable was */
   evidence: string;
 }
@@ -84,10 +84,62 @@ export function detectFromHtml(html: string): Detected | null {
   return null;
 }
 
+/**
+ * Name variants to try on the ATS APIs: from the name you gave and from the site's domain ("Similarweb" / similarweb.com
+ * → "similarweb"; careers.wix.com → "wix"; matrix.co.il → "matrix"). At most two.
+ */
+export function nameVariants(name: string, url: string): string[] {
+  const out: string[] = [];
+  const add = (v: string) => {
+    const x = v.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '');
+    if (x.length >= 2 && !out.includes(x)) out.push(x);
+  };
+  if (/[a-z]/i.test(name)) add(name);
+  try {
+    const labels = new URL(url).hostname.toLowerCase().replace(/^www\./, '').split('.');
+    // the registrable name: skip careers. / jobs. and two-part endings (co.il, com.au)
+    const ends = labels.length > 2 && /^(co|com|org|net|ac|gov)$/.test(labels[labels.length - 2]!) ? 3 : 2;
+    add(labels[labels.length - ends] ?? '');
+  } catch {
+    /* not an address */
+  }
+  return out.slice(0, 2);
+}
+
+/**
+ * When neither the address nor the page shows the ATS: the public APIs asked directly, by name variant — Greenhouse
+ * first (its board endpoint answers yes / no), then Lever and Ashby (detected only). At most 6 light requests; Comeet
+ * cannot be asked by name (its API needs the company UID), and SmartRecruiters answers "0 jobs" for any name.
+ */
+export async function probeAts(name: string, url: string, fetchImpl: typeof fetch = fetch): Promise<Detected | null> {
+  const variants = nameVariants(name, url);
+  const probes: Array<{ ats: Ats; url: (v: string) => string; ok: (r: Response) => Promise<boolean> }> = [
+    { ats: 'greenhouse', url: (v) => `https://boards-api.greenhouse.io/v1/boards/${v}`, ok: async (r) => r.status === 200 },
+    { ats: 'lever', url: (v) => `https://api.lever.co/v0/postings/${v}?limit=1&mode=json`, ok: async (r) => r.status === 200 && Array.isArray(await r.json().catch(() => null)) },
+    { ats: 'ashby', url: (v) => `https://api.ashbyhq.com/posting-api/job-board/${v}`, ok: async (r) => r.status === 200 },
+  ];
+  for (const p of probes) {
+    for (const v of variants) {
+      const r = await fetchImpl(p.url(v), { headers: { 'user-agent': UA, accept: 'application/json' }, signal: AbortSignal.timeout(15_000) }).catch(() => null);
+      if (r && (await p.ok(r))) return result(p.ats, v, 'probe', `${ATS_LABEL[p.ats]} has a public job board "${v}"`);
+    }
+  }
+  return null;
+}
+
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
 /** The address first; else one plain GET of the page (Node fetch: never the automated browser). */
-export async function detectAts(url: string, fetchImpl: typeof fetch = fetch): Promise<Detected & { finalUrl: string; pageStatus: number | null }> {
+export async function detectAts(url: string, fetchImpl: typeof fetch = fetch, name = ''): Promise<Detected & { finalUrl: string; pageStatus: number | null }> {
+  const d = await detectFromAddressOrPage(url, fetchImpl);
+  if (d.ats !== 'unknown' && d.board) return d;
+  // nothing usable from the page: ask the ATS APIs by name (a widget without its id, a page built by script, …)
+  const probed = await probeAts(name, d.finalUrl || url, fetchImpl);
+  if (probed) return { ...probed, finalUrl: d.finalUrl, pageStatus: d.pageStatus };
+  return { ...d, evidence: `${d.evidence.replace(/ — paste one job link.*$/, '')} — paste one job link from this company` };
+}
+
+async function detectFromAddressOrPage(url: string, fetchImpl: typeof fetch): Promise<Detected & { finalUrl: string; pageStatus: number | null }> {
   let u: URL;
   try {
     u = new URL(url.trim());

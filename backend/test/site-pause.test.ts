@@ -196,6 +196,25 @@ describe('Run & send with a paused site', () => {
   });
 });
 
+describe('Run & send: companies first', () => {
+  it('the companies step runs first (before the login checks and the sites) and reports its time', async () => {
+    const { saveCompanies } = await import('../src/companies/store.js');
+    saveCompanies([{ id: 'greenhouse:acme', name: 'Acme', url: 'https://job-boards.greenhouse.io/acme', ats: 'greenhouse', board: 'acme', slug: null, enabled: true, addedAt: '', lastCheck: null, comeetToken: null }]);
+    vi.stubGlobal('fetch', (async () => new Response(JSON.stringify({ jobs: [] }), { status: 200 })) as typeof fetch);
+    try {
+      const ok = async (): Promise<SessionInfo> => ({ state: 'logged_in', checkedAt: '', detail: 'ok', realPage: true });
+      const r = await runHunt(db, { checkSession: ok, checkSiteSession: ok, notify: () => undefined });
+      const { huntProgress } = await import('../src/pipeline/hunt.js');
+      expect(huntProgress()!.steps[0]!.name).toMatch(/^companies: reading 1 job list/);
+      expect(r.companiesMs).toBeGreaterThanOrEqual(0);
+      expect(doneReport(r, []).join('\n')).toMatch(/companies first: \d+s/);
+    } finally {
+      vi.unstubAllGlobals();
+      saveCompanies([]);
+    }
+  });
+});
+
 describe('JobKarov page budget', () => {
   it('10 loads per session; going over throws before loading; a new session starts again', () => {
     beginBudgetSession('task');
