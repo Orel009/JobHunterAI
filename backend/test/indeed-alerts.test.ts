@@ -168,7 +168,7 @@ describe('Indeed import: routing by destination', () => {
     const drushim = repo.getJob(jobId('drushim', '33445566'))!;
     expect(drushim).toMatchObject({ site: 'drushim', applyType: 'site_one_click', url: 'https://www.drushim.co.il/job/33445566/a1b2c3d4/', duplicateOf: null });
     expect(st.drushimJobsCreated).toEqual([drushim.id]);
-    expect(ij('1111222233334444')).toMatchObject({ duplicateOf: drushim.id, status: 'skipped' });
+    expect(ij('1111222233334444')).toMatchObject({ duplicateOf: drushim.id, status: 'skipped_duplicate' });
     expect(repo.sourceLinks(drushim.id).map((l) => l.site)).toEqual(['drushim', 'indeed']);
   });
 
@@ -230,7 +230,7 @@ describe('cross-source dedupe (same company + title within 14 days = one job, ev
     repo.upsertJob(d);
     expect(repo.dedupeNewJob(d, config.DEDUPE_WINDOW_DAYS)).toEqual({ duplicateOf: null, absorbed: li.id });
     expect(repo.sourceLinks(d.id).map((l) => l.site).sort()).toEqual(['drushim', 'indeed', 'linkedin']);
-    expect(repo.getJob(li.id)).toMatchObject({ duplicateOf: d.id, status: 'skipped' });
+    expect(repo.getJob(li.id)).toMatchObject({ duplicateOf: d.id, status: 'skipped_duplicate' });
   });
 
   it('an alert job you already applied to by hand stays the one job', () => {

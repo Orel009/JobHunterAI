@@ -2,7 +2,8 @@ import type { DB } from './index.js';
 import { nowIso, tx } from './index.js';
 import type { Job, JobStatus } from '../sites/types.js';
 import { mergeJob } from '../core/job.js';
-import { findCrossSiteDuplicate, type DedupeCandidate } from '../core/dedupe.js';
+import { findDuplicate, type DedupeCandidate } from '../core/dedupe.js';
+import { isAnonymousCompany } from '../core/text.js';
 import { isAssistedSite } from '../alerts/assisted.js';
 
 interface JobRow {
@@ -172,31 +173,37 @@ export class Repo {
     });
   }
 
-  dedupeCandidates(companyNorm: string, titleNorm: string, excludeSite: string): DedupeCandidate[] {
+  /** Jobs with this company + title (any site), except the job itself and copies already linked to another job. */
+  dedupeCandidates(companyNorm: string, titleNorm: string, exceptId: string): DedupeCandidate[] {
     return (
       this.db
         .prepare(
           `SELECT id, site, company_norm AS companyNorm, title_norm AS titleNorm, first_seen_at AS firstSeenAt
-           FROM jobs WHERE company_norm = ? AND title_norm = ? AND site != ? AND duplicate_of IS NULL`,
+           FROM jobs WHERE company_norm = ? AND title_norm = ? AND id != ? AND duplicate_of IS NULL`,
         )
-        .all(companyNorm, titleNorm, excludeSite) as unknown as DedupeCandidate[]
+        .all(companyNorm, titleNorm, exceptId) as unknown as DedupeCandidate[]
     );
   }
 
+  /** The later copy of a job: skipped_duplicate, linked to the original (duplicate_of), its link kept. */
   markDuplicate(id: string, of: string): void {
     this.db
-      .prepare(`UPDATE jobs SET duplicate_of=?, status='skipped', status_reason=?, updated_at=? WHERE id=?`)
+      .prepare(`UPDATE jobs SET duplicate_of=?, status='skipped_duplicate', status_reason=?, updated_at=? WHERE id=?`)
       .run(of, `duplicate of ${of}`, nowIso(), id);
+    // an open application of the copy is closed (one already sent is never touched)
+    this.db
+      .prepare(`UPDATE applications SET status='rejected', error=?, updated_at=? WHERE job_id=? AND status IN ('needs_review','ready','dry_run_ok','failed')`)
+      .run(`duplicate of ${of} — the same company and title (one application per job)`, nowIso(), id);
   }
 
   /**
-   * Cross-source dedupe for a job just inserted: the same company + normalized title within the window is one job,
-   * and every copy keeps its link (the copies point to the one job with duplicate_of).
+   * Dedupe for a job just inserted: the same company + normalized title within the window is one job, on another
+   * site or on the same site under another id (a repost); every copy keeps its link (duplicate_of → the original).
    * The copy on a site with an automated apply flow is preferred: when the earlier copy is assisted-only (LinkedIn,
    * Indeed) and nothing was done with it yet, the new copy becomes the one job and the earlier copies point to it.
    */
   dedupeNewJob(job: Pick<Job, 'id' | 'site' | 'companyNorm' | 'titleNorm'>, windowDays: number, now = new Date()): { duplicateOf: string | null; absorbed: string | null } {
-    const dup = findCrossSiteDuplicate(job, now, this.dedupeCandidates(job.companyNorm, job.titleNorm, job.site), windowDays);
+    const dup = findDuplicate(job, now, this.dedupeCandidates(job.companyNorm, job.titleNorm, job.id), windowDays);
     if (!dup) return { duplicateOf: null, absorbed: null };
     const untouched = (id: string) => {
       const j = this.getJob(id);
@@ -209,6 +216,70 @@ export class Repo {
     }
     this.markDuplicate(job.id, dup.id);
     return { duplicateOf: dup.id, absorbed: null };
+  }
+
+  /**
+   * The same rule over jobs already stored (run at startup, so jobs found before it existed are covered too).
+   * Per group of the same company + title within the window, the original is the one you applied to (sent, or "I
+   * applied"), else the copy on a site with an automated apply flow, else the earliest. A copy that was already sent
+   * is never marked (two sent applications stay as they are).
+   */
+  dedupeExisting(windowDays: number): Array<{ id: string; of: string }> {
+    const rows = this.db
+      .prepare(
+        `SELECT j.id, j.site, j.company_norm AS companyNorm, j.title_norm AS titleNorm, j.first_seen_at AS firstSeenAt, j.status,
+                EXISTS(SELECT 1 FROM applications a WHERE a.job_id = j.id AND a.status = 'submitted') AS sent
+           FROM jobs j
+          WHERE j.duplicate_of IS NULL AND j.company_norm != '' AND j.title_norm != ''
+            AND (j.company_norm, j.title_norm) IN (SELECT company_norm, title_norm FROM jobs WHERE duplicate_of IS NULL GROUP BY 1, 2 HAVING COUNT(*) > 1)
+          ORDER BY j.company_norm, j.title_norm, j.first_seen_at`,
+      )
+      .all() as unknown as Array<DedupeCandidate & { status: string; sent: number }>;
+    const applied = (r: { status: string; sent: number }) => r.sent === 1 || r.status === 'submitted' || r.status === 'submitted_manual';
+    const marked: Array<{ id: string; of: string }> = [];
+    const groups = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const k = `${r.companyNorm}\u0000${r.titleNorm}`;
+      groups.set(k, [...(groups.get(k) ?? []), r]);
+    }
+    for (const g of groups.values()) {
+      if (!g.length || isAnonymousCompany(g[0]!.companyNorm)) continue; // nothing to compare
+      // clusters: jobs within the window of the cluster's first one
+      let i = 0;
+      while (i < g.length) {
+        const start = new Date(g[i]!.firstSeenAt).getTime();
+        const cluster = g.slice(i).filter((r) => (new Date(r.firstSeenAt).getTime() - start) / 86_400_000 <= windowDays);
+        i += cluster.length;
+        if (cluster.length < 2) continue;
+        const original = cluster.find(applied) ?? cluster.find((r) => !isAssistedSite(r.site)) ?? cluster[0]!;
+        for (const r of cluster) {
+          if (r.id === original.id || applied(r)) continue;
+          this.markDuplicate(r.id, original.id);
+          this.db.prepare(`UPDATE jobs SET duplicate_of=?, updated_at=? WHERE duplicate_of=?`).run(original.id, nowIso(), r.id);
+          marked.push({ id: r.id, of: original.id });
+        }
+      }
+    }
+    return marked;
+  }
+
+  /**
+   * Final check before any send: an application already sent (or "I applied") within the window for the same company
+   * + title, on any site, under another job id. Anonymous companies cannot be compared and pass.
+   */
+  sentSameJob(job: Pick<Job, 'id' | 'companyNorm' | 'titleNorm'>, windowDays: number, now = new Date()): { id: string; site: string; at: string } | null {
+    if (!job.companyNorm || isAnonymousCompany(job.companyNorm)) return null;
+    const since = new Date(now.getTime() - windowDays * 86_400_000).toISOString();
+    const row = this.db
+      .prepare(
+        `SELECT j.id, j.site, COALESCE(a.submitted_at, j.applied_manually_at) AS at
+           FROM jobs j LEFT JOIN applications a ON a.job_id = j.id AND a.status = 'submitted'
+          WHERE j.company_norm = ? AND j.title_norm = ? AND j.id != ?
+            AND (a.submitted_at >= ? OR (j.status = 'submitted_manual' AND j.applied_manually_at >= ?))
+          ORDER BY at LIMIT 1`,
+      )
+      .get(job.companyNorm, job.titleNorm, job.id, since, since) as { id: string; site: string; at: string } | undefined;
+    return row ?? null;
   }
 
   /** Every source link of a job: its own, then those of its copies on other sites / alert emails. */

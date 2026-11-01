@@ -36,6 +36,9 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   const app = Fastify({ logger: false });
   const repo = new Repo(db);
   syncSalaries(repo); // posted salary of jobs stored before this version (or whose text changed)
+  // one job per company + title within the window, on any site — also for jobs stored before this rule existed
+  const dups = repo.dedupeExisting(config.DEDUPE_WINDOW_DAYS);
+  if (dups.length) log.info({ jobs: dups.length, examples: dups.slice(0, 5) }, 'duplicates of the same company + title marked skipped_duplicate (open applications closed)');
   // a valid session again → jobs that failed only on "not logged in" go back to the queue
   const requeue = (site: string) => {
     const n = repo.requeueLoginFailures(site);

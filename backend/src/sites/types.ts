@@ -27,6 +27,8 @@ export const JOB_STATUSES = [
   'skipped_salary',
   /** the company is in filters.excludeCompanies */
   'skipped_company',
+  /** the same company + title as another job within the dedupe window (any site): duplicate_of → the original */
+  'skipped_duplicate',
 ] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 

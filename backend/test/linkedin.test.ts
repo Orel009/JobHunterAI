@@ -195,7 +195,7 @@ describe('"Apply on company website" links', () => {
     const d = repo.getJob((r as { jobId: string }).jobId)!;
     expect(d).toMatchObject({ site: 'drushim', externalId: '34567890', prefilterPass: true, detailsFetched: false, status: 'discovered' });
     expect(repo.jobsNeedingDetails('drushim').map((j) => j.id)).toContain(d.id);
-    expect(repo.getJob(job.id)).toMatchObject({ status: 'skipped', duplicateOf: d.id });
+    expect(repo.getJob(job.id)).toMatchObject({ status: 'skipped_duplicate', duplicateOf: d.id });
   });
 
   it('any other link goes to the review queue as an external application', () => {

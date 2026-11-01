@@ -62,7 +62,11 @@ export function normalizeCompany(company: string): string {
 }
 
 /** Confidential/empty company names must never be used for dedupe or cooldown matching. */
-export const isAnonymousCompany = (companyNorm: string): boolean => CONFIDENTIAL.has(companyNorm);
+export const isAnonymousCompany = (companyNorm: string): boolean =>
+  CONFIDENTIAL.has(companyNorm) ||
+  // placeholders recruiters use instead of a name: "חברה דיסקרטית", "HighTech Company", "חברת הייטק מובילה"…
+  /^(חברה|חברת)?\s*(דיסקרטית|דסקרטית|חסויה|מובילה|הייטק|היי טק|גדולה|ביטחונית|בינלאומית)(\s+(מובילה|גדולה))?$/.test(companyNorm) ||
+  /^(a\s+)?(leading\s+|big\s+|large\s+|global\s+|international\s+)?(high\s?tech|hardware|software|tech|technology|startup|start up|security|confidential|discreet)\s+company$/i.test(companyNorm);
 
 export function detectLanguage(text: string): 'he' | 'en' {
   const he = (text.match(/[א-ת]/g) ?? []).length;

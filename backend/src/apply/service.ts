@@ -332,6 +332,19 @@ function markLoggedIn(site: string): void {
   if (getSession(site).state !== 'logged_in') setSession(site, { state: 'logged_in', checkedAt: new Date().toISOString(), detail: 'job page opened' });
 }
 
+/**
+ * Last check right before the final click: no second application to the same company + title within the dedupe
+ * window, on any site. The job becomes skipped_duplicate, linked to the one already sent.
+ */
+function sentAlready(apps: Applications, repo: Repo, appId: number, job: StoredJob): string | null {
+  const s = repo.sentSameJob(job, config.DEDUPE_WINDOW_DAYS);
+  if (!s) return null;
+  const why = `not sent: an application to the same company and title was already sent on ${s.site} (${s.at.slice(0, 10)}) — duplicate of ${s.id}`;
+  repo.markDuplicate(job.id, s.id);
+  apps.update(appId, { status: 'skipped', error: why });
+  return why;
+}
+
 /** Last check right before the final click: an excluded company never gets an application, even if approved earlier. */
 function excludedNow(job: StoredJob): string | null {
   const match = excludedCompanyMatch(job.company, loadPrefs().filters.excludeCompanies);
@@ -364,6 +377,11 @@ async function autoSubmitPrepared(o: {
   if (excluded) {
     repo.closeForExcludedCompany(job.id, excluded);
     L.warn({ job: job.title }, `not sent: ${excluded}`);
+    return false;
+  }
+  const dup = sentAlready(apps, repo, appId, job);
+  if (dup) {
+    L.warn({ job: job.title }, dup);
     return false;
   }
   L.info({ job: job.title }, 'AUTO-SUBMIT: every gate condition passed');
@@ -452,6 +470,11 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
       repo.closeForExcludedCompany(job.id, excluded);
       L.warn({ job: job.title }, `not sent: ${excluded}`);
       return done('skipped', excluded);
+    }
+    const dup = sentAlready(apps, repo, appId, job); // e.g. the same job sent from another site earlier in this batch
+    if (dup) {
+      L.warn({ job: job.title }, dup);
+      return done('skipped', dup);
     }
     const r = await driver.submitPanel(page, job, `app${appId}`, app.plan.cv?.cvName);
     const res = recordSubmitResult(apps, repo, appId, job, before, r, L);
