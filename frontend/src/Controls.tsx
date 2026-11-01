@@ -72,7 +72,7 @@ export function Controls({ status, onChange, profileReady = true }: { status: St
             );
           })}
         <span className={status.pendingQuestions ? 'badge warn' : 'badge'}>pending answers: {status.pendingQuestions}</span>
-        <LlmBadge llm={status.llm} />
+        <LlmBadge llm={status.llm} onChange={onChange} />
         {Object.entries(status.counts).map(([k, v]) => (
           <span key={k} className={`badge status-${k}`}>
             {k}: {v}
@@ -145,6 +145,7 @@ export function Controls({ status, onChange, profileReady = true }: { status: St
             Last run #{lastRun.id} {lastRun.site}: <b>{lastRun.status}</b>
             {lastRun.reason ? ` — ${lastRun.reason}` : ''} · new {lastRun.stats.inserted ?? 0} · scored {lastRun.stats.scored ?? 0}
             {lastRun.stats.waitingForProfile ? ` · ${lastRun.stats.waitingForProfile} waiting for the profile` : ''}
+            {lastRun.stats.waitingForLlm ? ` · ${lastRun.stats.waitingForLlm} waiting for the model` : ''}
           </span>
         )}
       </div>
@@ -156,7 +157,8 @@ export function Controls({ status, onChange, profileReady = true }: { status: St
   );
 }
 
-function LlmBadge({ llm }: { llm: Status['llm'] }) {
+function LlmBadge({ llm, onChange }: { llm: Status['llm']; onChange: () => void }) {
+  const [starting, setStarting] = useState<string | null>(null);
   const label = (t: { provider: string; model: string }) => `${t.provider}:${t.model || '?'}`;
   const same = llm.analyze.provider === llm.write.provider && llm.analyze.model === llm.write.model;
   const text = same ? label(llm.analyze) : `analyze ${label(llm.analyze)} · write ${label(llm.write)}`;
@@ -167,6 +169,26 @@ function LlmBadge({ llm }: { llm: Status['llm'] }) {
       LLM: {text}
       {problem && ` — ${problem}`}
       {llm.cloud && !problem && ` · ${llm.tokensToday.toLocaleString()} tokens today`}
+      {llm.ollama && !llm.ollama.ok && (
+        <>
+          {' '}
+          <button
+            className="link"
+            disabled={starting === 'starting'}
+            onClick={() => {
+              setStarting('starting');
+              void api
+                .startOllama()
+                .then(() => setStarting(null))
+                .catch((e: Error) => setStarting(e.message))
+                .finally(onChange);
+            }}
+          >
+            {starting === 'starting' ? 'starting Ollama…' : 'Start Ollama'}
+          </button>
+          {starting && starting !== 'starting' && <span className="note"> {starting}</span>}
+        </>
+      )}
     </span>
   );
 }

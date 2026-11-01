@@ -43,6 +43,8 @@ export interface CompanySummary {
   postingsRead?: number;
   /** waiting for you in Assisted apply (scored, not skipped, not applied) */
   ready: number;
+  /** passed the filters, not scored yet (e.g. the model was not running) */
+  waiting: number;
   error: string | null;
   ms: number;
 }
@@ -55,6 +57,8 @@ export interface CompaniesRunProgress {
   done: number;
   total: number;
   companies: CompanySummary[];
+  /** why the run failed, or why scoring is waiting (e.g. "scoring waits: Ollama is not running") — null when all went well */
+  error?: string | null;
 }
 let progress: CompaniesRunProgress | null = null;
 export const companiesProgress = () => progress;
@@ -109,6 +113,7 @@ export function summarize(db: DB, c: Company, f: CompanyFetch | null, keptIds: S
     scored: jobs.filter((j) => j.score).length,
     answersPrepared,
     ready: jobs.filter((j) => j.score && !j.status.startsWith('skipped') && !/^submitted/.test(j.status) && j.status !== 'failed').length,
+    waiting: jobs.filter((j) => !j.score && j.status === 'discovered' && !j.duplicateOf).length,
     error: f?.blocked ?? f?.error ?? null,
     ms,
   };
@@ -123,6 +128,29 @@ export function startCompaniesRun(db: DB, opts: { fetch?: boolean; fetchImpl?: t
     p.runId = run.id;
     const prefs = loadPrefs();
     const fetched = new Map<string, { f: CompanyFetch | null; kept: Set<string>; added: number; ms: number; postingsRead?: number }>();
+    // SmartRecruiters: the list has no job text — the full ad is read only for jobs that pass your title (and location)
+    // filters and are not read yet, one request each with a pause before it; a refusal pauses SmartRecruiters for 48 hours
+    const readAds = async (c: Company, cands: Array<{ id: string; postingId: string; title: string }>): Promise<number> => {
+      const toRead = cands.filter((x) => !repo.getJob(x.id)?.detailsFetched);
+      let n = 0;
+      for (const [i, j] of toRead.entries()) {
+        if (run.controller.signal.aborted) break;
+        await pace(1000, 2500);
+        p.stage = run.stage = `reading ${c.name || c.board}: posting ${i + 1}/${toRead.length}`;
+        const d = await fetchSrPosting(c, j.postingId, opts.fetchImpl);
+        if (d.blocked) {
+          pauseSite(c.ats, d.blocked);
+          L.error({ company: c.name, reason: d.blocked }, 'SmartRecruiters refused — paused for 48 hours');
+          break;
+        }
+        if (d.job) {
+          repo.upsertJob(toJob(d.job));
+          n++;
+        } else L.warn({ company: c.name, job: j.title, err: d.error }, 'posting not read');
+      }
+      run.stats.postingsRead = (run.stats.postingsRead ?? 0) + n;
+      return n;
+    };
     if (opts.fetch !== false) {
       run.stats.companies = 0;
       let first = true;
@@ -166,63 +194,70 @@ export function startCompaniesRun(db: DB, opts: { fetch?: boolean; fetchImpl?: t
           run.stats.outsideLocations = (run.stats.outsideLocations ?? 0) + (f.jobs.length - kept.length);
           L.info({ company: c.name, ats: c.ats, total: f.total, israel: f.israel, kept: kept.length, requests: f.requests }, 'company list read');
         } else L.warn({ company: c.name, err: f.error }, 'company list not read');
-        // SmartRecruiters: the list has no job text — read the full posting only for jobs that pass your title (and
-        // location) filters and are not read yet, with a pause between requests
-        let postingsRead = 0;
-        if (c.ats === 'smartrecruiters' && !f.error) {
-          const toRead = kept.filter((j) => prefilter({ ...j, roleTypes: [] }, prefs).pass && !repo.getJob(toJob(j).id)?.detailsFetched);
-          for (const [i, j] of toRead.entries()) {
-            if (run.controller.signal.aborted) return;
-            await pace(1000, 2500);
-            p.stage = run.stage = `reading ${c.name || c.board}: posting ${i + 1}/${toRead.length}`;
-            const d = await fetchSrPosting(c, String((j.raw as { postingId: string }).postingId), opts.fetchImpl);
-            if (d.blocked) {
-              pauseSite(c.ats, d.blocked);
-              L.error({ company: c.name, reason: d.blocked }, 'SmartRecruiters refused — paused for 48 hours');
-              break;
-            }
-            if (d.job) {
-              repo.upsertJob(toJob(d.job));
-              postingsRead++;
-            } else L.warn({ company: c.name, job: j.title, err: d.error }, 'posting not read');
-          }
-          run.stats.postingsRead = (run.stats.postingsRead ?? 0) + postingsRead;
-        }
+        const postingsRead =
+          c.ats === 'smartrecruiters' && !f.error
+            ? await readAds(
+                c,
+                kept.filter((j) => prefilter({ ...j, roleTypes: [] }, prefs).pass).map((j) => ({ id: toJob(j).id, postingId: String((j.raw as { postingId: string }).postingId), title: j.title })),
+              )
+            : 0;
+        if (run.controller.signal.aborted) return;
         fetched.set(c.id, { f, kept: new Set(kept.map((j) => j.externalId)), added, ms: Date.now() - t0, postingsRead });
         p.done++;
       }
     }
-    for (const site of COMPANY_SOURCES) {
-      p.stage = run.stage = `prefilter and scoring (${site})`;
-      run.site = site; // prefilter and score() work on one site's jobs
-      applyPrefilter(repo, run, prefs);
-      await score(repo, run, L);
-    }
-    run.site = COMPANIES_RUN_SITE;
-    // Greenhouse: the form's questions read once per ready job and answered ahead (profile / bank), for the panel
-    const prepared = new Map<string, number>();
-    const ready = repo.listJobs({ site: 'greenhouse', status: 'scored', limit: 100_000 }).items.filter((j) => !j.duplicateOf);
-    let i = 0;
-    for (const j of ready) {
-      if (run.controller.signal.aborted) return;
-      const job = repo.getJob(j.id)!;
-      const cached = !!(job.raw as { questionsReadAt?: string } | null)?.questionsReadAt;
-      p.stage = run.stage = `preparing the Greenhouse answers ${++i}/${ready.length}`;
-      if (!cached && i > 1) await pace(500, 1500);
-      const a = await formAnswers(db, job, opts.fetchImpl).catch(() => null);
-      if (a && !a.error) {
-        const board = String((job.raw as { board?: string } | null)?.board ?? '');
-        prepared.set(board, (prepared.get(board) ?? 0) + 1);
+    // Score only: no list is read, but SmartRecruiters jobs that pass the filters now (e.g. after a new title keyword)
+    // and have no ad yet get it first — a job is never scored on its title alone
+    if (opts.fetch === false) {
+      for (const c of loadCompanies().filter((x) => x.enabled && x.ats === 'smartrecruiters' && isSupported(x) && !isPaused(x.ats))) {
+        const cands = repo
+          .listJobs({ site: 'smartrecruiters', limit: 100_000 })
+          .items.filter((j) => j.externalId.startsWith(`${c.board}:`) && !j.detailsFetched && j.status === 'discovered' && !j.duplicateOf && prefilter({ ...j, roleTypes: [] }, prefs).pass);
+        const n = await readAds(c, cands.map((j) => ({ id: j.id, postingId: j.externalId.slice(c.board!.length + 1), title: j.title })));
+        fetched.set(c.id, { f: null, kept: new Set(), added: 0, ms: 0, postingsRead: n });
+        if (run.controller.signal.aborted) return;
       }
     }
-    run.stats.answersPrepared = [...prepared.values()].reduce((a, b) => a + b, 0);
+    // the per-company summary is built even when scoring fails, with the reason
+    const prepared = new Map<string, number>();
+    let failure: unknown = null;
+    try {
+      for (const site of COMPANY_SOURCES) {
+        p.stage = run.stage = `prefilter and scoring (${site})`;
+        run.site = site; // prefilter and score() work on one site's jobs
+        applyPrefilter(repo, run, prefs);
+        await score(repo, run, L);
+      }
+      run.site = COMPANIES_RUN_SITE;
+      // Greenhouse: the form's questions read once per ready job and answered ahead (profile / bank), for the panel
+      const ready = repo.listJobs({ site: 'greenhouse', status: 'scored', limit: 100_000 }).items.filter((j) => !j.duplicateOf);
+      let i = 0;
+      for (const j of ready) {
+        if (run.controller.signal.aborted) return;
+        const job = repo.getJob(j.id)!;
+        const cached = !!(job.raw as { questionsReadAt?: string } | null)?.questionsReadAt;
+        p.stage = run.stage = `preparing the Greenhouse answers ${++i}/${ready.length}`;
+        if (!cached && i > 1) await pace(500, 1500);
+        const a = await formAnswers(db, job, opts.fetchImpl).catch(() => null);
+        if (a && !a.error) {
+          const board = String((job.raw as { board?: string } | null)?.board ?? '');
+          prepared.set(board, (prepared.get(board) ?? 0) + 1);
+        }
+      }
+      run.stats.answersPrepared = [...prepared.values()].reduce((a, b) => a + b, 0);
+    } catch (e) {
+      failure = e;
+    }
+    run.site = COMPANIES_RUN_SITE;
     p.companies = (opts.fetch === false ? loadCompanies().filter((c) => isSupported(c)) : list).map((c) => {
       const x = fetched.get(c.id);
       return { ...summarize(db, c, x?.f ?? null, x?.kept ?? new Set(), x?.added ?? 0, c.ats === 'greenhouse' ? (prepared.get(c.board ?? '') ?? 0) : 0, x?.ms ?? 0), ...(c.ats === 'smartrecruiters' ? { postingsRead: x?.postingsRead ?? 0 } : {}) };
     });
-    p.stage = 'done';
+    p.error = failure ? `failed: ${failure instanceof Error ? failure.message : String(failure)}` : run.llmProblem ? `scoring waits: ${run.llmProblem}` : null;
+    p.stage = failure ? 'failed' : 'done';
     p.current = null;
     p.finishedAt = new Date().toISOString();
+    if (failure) throw failure; // the run is recorded as failed, with its reason
   });
   p.runId = runId;
   progress = p;

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { listModels, getProvider, testConnection } from '../llm/llm.js';
 import { publicSettings, readSettingsFile, setApiKey, setTask, writeEnv, writeSettingsFile, KEY_VARS } from '../llm/settings.js';
 import { usageReport } from '../llm/usage.js';
+import { llmReachable, OLLAMA_HELP, startOllama } from '../llm/reachable.js';
 import { PROVIDER_IDS, type ProviderId } from '../llm/types.js';
 
 const Provider = z.enum(PROVIDER_IDS as [ProviderId, ...ProviderId[]]);
@@ -10,6 +11,15 @@ const TaskCfg = z.object({ provider: Provider, model: z.string().min(1) });
 
 export function registerLlmRoutes(app: FastifyInstance) {
   const providers = () => PROVIDER_IDS.map((id) => ({ id, label: getProvider(id).label, local: getProvider(id).local, needsKey: !!KEY_VARS[id] }));
+
+  /** Start Ollama as `npm start` does (the dashboard's offer when it is not running); waits up to 30 seconds. */
+  app.post('/api/llm/start-ollama', async (_req, reply) => {
+    const before = await llmReachable();
+    if (!before.canStart) return reply.status(409).send({ error: 'the scoring model is not a local Ollama — nothing to start' });
+    if (before.ok) return { ok: true, already: true };
+    const ok = await startOllama();
+    return ok ? { ok: true } : reply.status(503).send({ error: `Ollama did not start within 30 seconds — ${OLLAMA_HELP}` });
+  });
 
   /** Keys are only ever returned masked. */
   app.get('/api/llm/settings', async () => ({ ...publicSettings(), providers: providers() }));

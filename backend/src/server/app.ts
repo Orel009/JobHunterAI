@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import { z } from 'zod';
+import { llmGate } from './llm-gate.js';
 import { config } from '../config.js';
 import { log, logBus, recentLogs, type LogLine } from '../log.js';
 import type { DB } from '../db/index.js';
@@ -209,6 +210,8 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   app.post('/api/hunt', async (req, reply) => {
     const { trigger } = z.object({ trigger: z.enum(['manual', 'task']).default('manual') }).parse(req.body ?? {});
     if (huntRunning() || getActiveRun()) return reply.status(409).send({ error: 'a run is already active' });
+    // from the dashboard: the model checked first (a scheduled hunt starts Ollama by itself)
+    if (trigger === 'manual' && !(await llmGate(req.body, reply))) return reply;
     void runHunt(db, { trigger }).catch((e: unknown) => log.error({ err: e instanceof Error ? e.message : String(e) }, 'hunt failed'));
     return { started: true };
   });
@@ -292,6 +295,7 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
   const RunBody = z.object({ site: z.string(), kind: z.enum(['discover', 'score', 'full']).default('full') });
   app.post('/api/runs', async (req, reply) => {
     const body = RunBody.parse(req.body ?? {});
+    if (body.kind !== 'discover' && !(await llmGate(req.body, reply))) return reply;
     try {
       return { id: startRun(db, body.site, body.kind) };
     } catch (e) {

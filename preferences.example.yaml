@@ -25,7 +25,7 @@ roleTypes:
     label: Software Developer / Software Engineer
     tier: 1
     queries: [Software Developer, Software Engineer, מפתח תוכנה, מהנדס תוכנה]
-    titleKeywords: [software developer, software engineer, developer, programmer, מפתח, מפתחת, מתכנת, מתכנתת, מהנדס תוכנה, מהנדסת תוכנה]
+    titleKeywords: [software developer, software engineer, xEngineer, developer, programmer, מפתח, מפתחת, מתכנת, מתכנתת, מהנדס תוכנה, מהנדסת תוכנה]
   - id: junior
     label: Junior Developer
     tier: 1

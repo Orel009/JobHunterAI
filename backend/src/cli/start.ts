@@ -9,7 +9,7 @@
  *   --no-browser  for Windows Task Scheduler: no dashboard tab, the site browser headless, exit after the hunt;
  *                 if JobHunter is already running, ask it to run the hunt instead and exit
  */
-import { execSync, spawn } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
@@ -140,32 +140,12 @@ const providers = [...new Set([tasks.analyze.provider, tasks.write.provider])];
 console.log(`… LLM: analyze = ${tasks.analyze.provider}:${tasks.analyze.model || '(no model)'} · write = ${tasks.write.provider}:${tasks.write.model || '(no model)'}`);
 
 if (providers.includes('ollama')) {
-  const ollamaUp = async () => {
-    try {
-      return (await fetch(`${config.OLLAMA_URL}/api/version`, { signal: AbortSignal.timeout(2000) })).ok;
-    } catch {
-      return false;
-    }
-  };
+  const { ollamaUp, startOllama } = await import('../llm/reachable.js');
   let up = await ollamaUp();
   if (up) ok(`Ollama reachable at ${config.OLLAMA_URL}`);
   else if (!DOCTOR) {
-    const app = path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Ollama', 'ollama app.exe');
-    if (process.platform === 'win32' && fs.existsSync(app)) {
-      console.log('… Ollama not running → starting the Ollama app');
-      spawn(app, [], { detached: true, stdio: 'ignore' }).unref();
-    } else {
-      console.log('… Ollama not running → starting `ollama serve` (detached)');
-      try {
-        spawn('ollama', ['serve'], { detached: true, stdio: 'ignore', shell: process.platform === 'win32' }).unref();
-      } catch {
-        /* reported below */
-      }
-    }
-    for (let i = 0; i < 30 && !up; i++) {
-      await sleep(1000);
-      up = await ollamaUp();
-    }
+    console.log('… Ollama not running → starting it');
+    up = await startOllama();
     if (up) ok('Ollama started');
   }
   if (!up) {

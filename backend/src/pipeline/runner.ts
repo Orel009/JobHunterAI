@@ -14,6 +14,7 @@ import { effectiveLimits, loadPrefs, searchPlan } from '../core/prefs.js';
 import { experienceInput, extractRequiredYears } from '../core/experience.js';
 import { candidateContext, scoreJob } from '../llm/score.js';
 import { LlmPausedError } from '../llm/types.js';
+import { llmReachable } from '../llm/reachable.js';
 import { candidateGender, loadProfile, skillAliasGroups } from '../profile/facts.js';
 import { regionAccepted } from '../sites/jobnet/parse.js';
 
@@ -41,6 +42,8 @@ export interface ActiveRun {
   stage: string;
   stats: RunStats & Record<string, number>;
   controller: AbortController;
+  /** scoring could not run (e.g. "Ollama is not running"): the jobs wait; shown as the run's reason */
+  llmProblem?: string | null;
 }
 
 export type TaskFn = (run: ActiveRun, repo: Repo, L: typeof log) => Promise<void>;
@@ -131,7 +134,7 @@ async function execute(repo: Repo, run: ActiveRun, fn: TaskFn): Promise<void> {
   try {
     await fn(run, repo, L);
     const status = run.controller.signal.aborted ? 'stopped' : 'done';
-    repo.finishRun(run.id, status, run.stats);
+    repo.finishRun(run.id, status, run.stats, run.llmProblem ? `scoring waits: ${run.llmProblem}` : undefined);
     L.info({ stats: run.stats }, `run ${status}`);
   } catch (e) {
     if (e instanceof BlockedError) {
@@ -294,7 +297,10 @@ export async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<
   applyPrefilter(repo, run, prefs);
   // new or changed jobs, plus scored jobs that preferences now treat as another role type (judged for the wrong role)
   const roleChanged = repo.scoredWithRole(run.site).filter((j) => (scoringRole(j, prefs)?.id ?? null) !== j.scoredRole);
-  const todo = [...repo.jobsNeedingScore(run.site), ...roleChanged];
+  // a SmartRecruiters job is scored on its full ad, never on its title alone: it waits until the companies run reads it
+  const all = [...repo.jobsNeedingScore(run.site), ...roleChanged];
+  const todo = all.filter((j) => !(j.site === 'smartrecruiters' && !j.detailsFetched));
+  if (todo.length < all.length) run.stats.waitingForAd = all.length - todo.length;
   run.stats.roleChanged = roleChanged.length;
   let candidate: string;
   try {
@@ -303,6 +309,14 @@ export async function score(repo: Repo, run: ActiveRun, L: typeof log): Promise<
     // no approved profile: keep what was discovered; scoring starts by itself once the profile is approved
     run.stats.waitingForProfile = todo.length;
     L.warn({ jobs: todo.length }, `scoring skipped — ${(e as Error).message}`);
+    return;
+  }
+  // the model not there (Ollama not running): say so now and leave the jobs waiting — never fail at the first job
+  const reach = todo.length ? await llmReachable() : null;
+  if (reach && !reach.ok) {
+    run.stats.waitingForLlm = (run.stats.waitingForLlm ?? 0) + todo.length;
+    run.llmProblem = reach.reason;
+    L.warn({ jobs: todo.length }, `scoring skipped — ${reach.reason}; the jobs wait for the next run or "Score only"`);
     return;
   }
   const gender = candidateGender();

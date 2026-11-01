@@ -189,6 +189,7 @@ function RunSummary({ p }: { p: CompaniesProgress }) {
           {p.total ? ` · ${p.done}/${p.total} companies read` : ''}
         </p>
       )}
+      {p.error && <p className="note">{p.error}</p>}
       {p.companies.length > 0 && (
         <table className="edit-table">
           <thead>
@@ -200,6 +201,7 @@ function RunSummary({ p }: { p: CompaniesProgress }) {
               <th>New</th>
               <th>Skipped (by reason)</th>
               <th>Scored</th>
+              <th>Waiting for scoring</th>
               <th>Answers ready / postings read</th>
               <th>Ready in Assisted apply</th>
             </tr>
@@ -224,6 +226,7 @@ function RunSummary({ p }: { p: CompaniesProgress }) {
                   {!c.skipped.length && <span className="muted">none</span>}
                 </td>
                 <td>{c.scored}</td>
+                <td>{c.waiting ?? 0}</td>
                 <td>{c.ats === 'greenhouse' ? c.answersPrepared : c.ats === 'smartrecruiters' ? `${c.postingsRead ?? 0} postings read` : '—'}</td>
                 <td>
                   <b>{c.ready}</b>

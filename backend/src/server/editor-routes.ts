@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import YAML from 'yaml';
 import { z } from 'zod';
+import { llmGate } from './llm-gate.js';
 import { config } from '../config.js';
 import { loadPrefs, PrefsSchema } from '../core/prefs.js';
 import { listFacts, profilePath, skillYears } from '../profile/facts.js';
@@ -115,5 +116,5 @@ export function registerCvRoutes(app: FastifyInstance, deps: { cache: import('..
   app.delete('/api/profile/update', async () => ({ ok: discardPending() !== false }));
 
   /** After a profile change: re-score active (scored) jobs. */
-  app.post('/api/jobs/rescore', async () => deps.rescore());
+  app.post('/api/jobs/rescore', async (req, reply) => ((await llmGate(req.body, reply)) ? deps.rescore() : reply));
 }

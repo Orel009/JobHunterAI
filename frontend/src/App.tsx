@@ -15,6 +15,7 @@ import { MarketScreen } from './MarketScreen';
 import { HistoryScreen } from './HistoryScreen';
 import { AutoSubmitKillSwitch } from './AutoSubmit';
 import { RunAndSendButton, RunAndSendPanel } from './RunAndSend';
+import { LlmOffer } from './LlmOffer';
 
 const TABS = [
   { id: 'jobs', label: 'Jobs', enabled: true },
@@ -86,6 +87,7 @@ export function App() {
         {status && onboarding === false && <AutoSubmitKillSwitch status={status} onChange={refresh} openSettings={() => setTab('settings')} />}
       </header>
       {status && onboarding === false && <RunAndSendPanel status={status} />}
+      <LlmOffer onChange={refresh} />
       {status?.dryRun === false && <div className="banner live-banner">DRY_RUN is OFF — approving in the review queue submits real applications.</div>}
       {error && <div className="banner error">{error} — is JobHunter running (npm start)?</div>}
       {status?.sessions.drushim?.state === 'logged_out' && onboarding === false && (

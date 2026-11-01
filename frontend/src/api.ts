@@ -170,14 +170,32 @@ export interface RunRow {
   stats: Record<string, number>;
 }
 
-async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
+/**
+ * A run that scores, refused because the model is not there (Ollama not running): the app's offer decides —
+ * 'started' (Ollama was started: the same request again), 'without' (run anyway: the jobs wait for scoring), 'cancel'.
+ */
+export type LlmOfferChoice = 'started' | 'without' | 'cancel';
+let llmOffer: ((reason: string, canStart: boolean) => Promise<LlmOfferChoice>) | null = null;
+export const setLlmOffer = (f: typeof llmOffer) => {
+  llmOffer = f;
+};
+
+async function req<T>(method: string, url: string, body?: unknown, retried = false): Promise<T> {
   const res = await fetch(url, {
     method,
     headers: body ? { 'content-type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  const json = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new Error(json.error ?? res.statusText);
+  const json = (await res.json().catch(() => ({}))) as T & { error?: string; code?: string; canStart?: boolean };
+  if (!res.ok) {
+    if (json.code === 'llm_unreachable' && llmOffer && !retried) {
+      const choice = await llmOffer(json.error ?? 'the model is not reachable', !!json.canStart);
+      if (choice === 'started') return req<T>(method, url, body, true);
+      if (choice === 'without') return req<T>(method, url, { ...((body as object | undefined) ?? {}), withoutLlm: true }, true);
+      throw new Error('not started — the model is not running');
+    }
+    throw new Error(json.error ?? res.statusText);
+  }
   return json;
 }
 
@@ -201,6 +219,11 @@ export const api = {
   unskip: (id: string) => req('POST', `/api/jobs/${id}/unskip`),
   apply: (id: string) => req<{ note: string }>('POST', `/api/jobs/${id}/apply`),
   startRun: (site: string, kind: 'discover' | 'score' | 'full') => req<{ id: number }>('POST', '/api/runs', { site, kind }),
+  /** Run & send (one hunt) */
+  hunt: () => req<{ started: boolean }>('POST', '/api/hunt', {}),
+  rescore: () => req<{ runId: number; jobs: number }>('POST', '/api/jobs/rescore', {}),
+  /** start Ollama as `npm start` does (waits up to 30 s) */
+  startOllama: () => req<{ ok: boolean }>('POST', '/api/llm/start-ollama', {}),
   stopRun: () => req('POST', '/api/runs/stop'),
   runs: () => req<RunRow[]>('GET', '/api/runs'),
   checkSiteSession: (site: string) => req<{ runId: number }>('POST', '/api/session/check', { site }),
@@ -409,6 +432,7 @@ export interface CompanySummary {
   answersPrepared: number;
   postingsRead?: number;
   ready: number;
+  waiting: number;
   error: string | null;
   ms: number;
 }
@@ -421,6 +445,8 @@ export interface CompaniesProgress {
   done: number;
   total: number;
   companies: CompanySummary[];
+  /** why the run failed, or why scoring waits */
+  error?: string | null;
 }
 type CompaniesState = { companies: Company[]; progress: CompaniesProgress | null };
 type Detected = { ats: string; board: string | null; supported: boolean; how: string; evidence: string };

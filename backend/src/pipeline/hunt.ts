@@ -7,6 +7,7 @@
  * If the Drushim login has expired, the hunt stays discovery-only and its summary says to log in again.
  * Every hunt ends with a summary (stored for the dashboard, optionally a Windows toast).
  */
+import { llmReachable, startOllama } from '../llm/reachable.js';
 import type { DB } from '../db/index.js';
 import { nowIso } from '../db/index.js';
 import { Repo } from '../db/repo.js';
@@ -140,6 +141,15 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
   };
   beginBudgetSession('hunt'); // one page-load budget for the whole Run & send
   try {
+    // unattended (scheduled): nobody to ask — start Ollama as `npm start` does; still not there → the jobs wait for scoring
+    if (trigger === 'schedule' || trigger === 'task') {
+      const reach = await llmReachable();
+      if (!reach.ok && reach.canStart) {
+        L.warn(`${reach.reason} — starting it`);
+        if (await startOllama()) L.info('Ollama started');
+        else L.warn('Ollama did not start — scoring waits');
+      }
+    }
     const repo = new Repo(db);
     const before = repo.statusCounts();
     const lastRun = () => {

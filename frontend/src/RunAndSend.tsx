@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Status } from './api';
+import { api, type Status } from './api';
 
 /** The main action: one session run — discover all enabled sites → score → prepare → send what passes the gate. */
 export function RunAndSendButton({ status, onChange }: { status: Status; onChange: () => void }) {
@@ -7,8 +7,7 @@ export function RunAndSendButton({ status, onChange }: { status: Status; onChang
   const busy = status.huntRunning || !!status.activeRun;
   const start = async () => {
     setErr(null);
-    const r = await fetch('/api/hunt', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-    if (!r.ok) setErr(((await r.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${r.status}`);
+    await api.hunt().catch((e: Error) => setErr(e.message));
     onChange();
   };
   return (

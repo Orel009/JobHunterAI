@@ -70,6 +70,7 @@ If something is wrong, `npm run doctor` tells you what and how to fix it.
 - API keys are stored only in your local `.env`. They are never saved in the database or logged, and the UI only shows them masked.
 - Costs come from the per-token prices you enter; nothing is hard-coded. `DAILY_LLM_TOKEN_LIMIT` pauses model steps for the rest of the day once reached.
 - `npm start` and `npm run doctor` check the selected provider. With Ollama, they also check that the model fits your GPU memory.
+- Ollama not running: a run that scores says so before it starts and offers to start Ollama (dashboard: "Start Ollama and run" / "Run without scoring"; `npm run discover`: a y/n question; scheduled hunts start it themselves). Scoring never fails at the first job; the jobs wait, and the run shows the reason.
 - `npm run model:bench` compares models across providers. Set `BENCH_MODELS=gemma4:12b,anthropic:<model>,…` in `.env`.
 
 ## Updating your CV

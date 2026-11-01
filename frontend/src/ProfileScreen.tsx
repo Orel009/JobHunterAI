@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ProfileEditor } from './ProfileEditor';
 import { Issues } from './forms';
+import { api } from './api';
 
 type Lang = 'he' | 'en';
 interface CvInfo {
@@ -109,7 +110,7 @@ export function DiffReview({ onApplied }: { onApplied: () => void }) {
     return (
       <div className="banner ok-banner">
         {done}{' '}
-        <button className="secondary" onClick={() => void fetch('/api/jobs/rescore', { method: 'POST' }).then(() => setDone(`${done} Re-scoring active jobs…`))}>
+        <button className="secondary" onClick={() => void api.rescore().then(() => setDone(`${done} Re-scoring active jobs…`)).catch((e: Error) => setDone(`${done} ${e.message}`))}>
           Re-score active jobs
         </button>
       </div>

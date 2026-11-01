@@ -5,6 +5,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { llmGate } from './llm-gate.js';
 import type { DB } from '../db/index.js';
 import { ServiceError } from '../apply/service.js';
 import { detectAts, nameVariants, type Detected } from '../companies/detect.js';
@@ -88,8 +89,9 @@ export function registerCompaniesRoutes(app: FastifyInstance, db: DB): void {
   });
 
   /** The companies-only run: read the lists → prefilter → experience cap → score → prepare the Greenhouse answers. */
-  app.post('/api/companies/fetch', async (_req, reply) => {
+  app.post('/api/companies/fetch', async (req, reply) => {
     if (!loadCompanies().some((c) => c.enabled && isSupported(c))) return reply.status(409).send({ error: 'no company is turned on (Companies screen)' });
+    if (!(await llmGate(req.body, reply))) return reply;
     try {
       return { runId: startCompaniesRun(db) };
     } catch (e) {
@@ -97,7 +99,8 @@ export function registerCompaniesRoutes(app: FastifyInstance, db: DB): void {
     }
   });
   /** Score only: what is waiting (no list is read). */
-  app.post('/api/companies/score', async (_req, reply) => {
+  app.post('/api/companies/score', async (req, reply) => {
+    if (!(await llmGate(req.body, reply))) return reply;
     try {
       return { runId: startCompaniesRun(db, { fetch: false }) };
     } catch (e) {
