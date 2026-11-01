@@ -66,6 +66,45 @@ export async function readLogin(page: Page, timeout = 12_000): Promise<'logged_i
   return bootstrap ? 'logged_out' : 'unknown';
 }
 
+/** What the session check saw on the homepage (one load; nothing is sent). */
+export interface JkSessionEvidence {
+  /** the page's HTTP status */
+  status: number | null;
+  /** the bot-protection / refusal reason (detectBlock), null when the page is a normal one */
+  blocked: string | null;
+  /** the address the browser ended on (a redirect away from the homepage is reported) */
+  finalUrl: string;
+  /** JobKarov's login cookie (UserInfo) is in the browser profile */
+  loginCookie: boolean;
+  /** the page's user bootstrap is there (a normal JobKarov page) */
+  bootstrap: boolean;
+  /** the account lookup /User/UserInfo: not requested, or its HTTP status and whether it returned an account */
+  userInfo: { requested: false } | { requested: true; status: number; account: boolean };
+  /** window.User carries an account id */
+  userId: boolean;
+}
+
+/** The session verdict with the exact reason (the badge's tooltip and the login report show it). */
+export function jkSessionVerdict(e: JkSessionEvidence): { state: 'logged_in' | 'logged_out' | 'unknown'; detail: string } {
+  const cookie = e.loginCookie ? 'login cookie present' : 'login cookie (UserInfo) missing';
+  if (e.blocked) return { state: 'unknown', detail: `jobkarov: ${e.blocked}; ${cookie} — not bypassed; try again later (open www.jobkarov.com in your own browser to see when it is back)` };
+  let host = '';
+  let pathName = '/';
+  try {
+    ({ host, pathname: pathName } = new URL(e.finalUrl));
+  } catch {
+    /* no address */
+  }
+  if (!/(^|\.)jobkarov\.com$/i.test(host) || !/^\/?$/.test(pathName)) return { state: 'unknown', detail: `jobkarov: the homepage redirected to ${e.finalUrl} (HTTP ${e.status ?? '?'}); ${cookie}` };
+  if (e.userId) return { state: 'logged_in', detail: 'jobkarov: your account loaded' };
+  if (!e.bootstrap) return { state: 'unknown', detail: `jobkarov: the homepage (HTTP ${e.status ?? '?'}) is not JobKarov's normal page — its account script is missing; ${cookie}` };
+  if (!e.loginCookie) return { state: 'logged_out', detail: 'jobkarov: login cookie (UserInfo) missing — log in again' };
+  if (!e.userInfo.requested) return { state: 'unknown', detail: 'jobkarov: login cookie present, but the page never asked for your account (/User/UserInfo not requested)' };
+  if (e.userInfo.status >= 400) return { state: 'unknown', detail: `jobkarov: login cookie present, but the account lookup failed (HTTP ${e.userInfo.status})` };
+  if (e.userInfo.account) return { state: 'unknown', detail: 'jobkarov: the account lookup returned your account, but the page did not load it' };
+  return { state: 'logged_out', detail: 'jobkarov: login cookie present, but the account lookup found no user (the login expired or was signed out) — log in again' };
+}
+
 /** The site's own preview call (what clicking "הגשת מועמדות" asks first). Sends nothing. */
 async function fetchPreview(page: Page, id: string): Promise<JkPreview | null> {
   const text = await page.evaluate(async (siteId) => {

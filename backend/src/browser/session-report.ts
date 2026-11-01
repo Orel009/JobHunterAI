@@ -79,7 +79,7 @@ export function formatSessionReport(r: SessionReport): string {
   } else if (r.saved.length) out.push('✓ every saved cookie survived the restart');
   const s = r.session;
   out.push(
-    `session probe: ${s.detail} → ${s.state === 'logged_in' ? 'LOGGED IN' : s.state === 'logged_out' ? 'NOT logged in' : `UNKNOWN (${s.detail})`}`,
+    `session probe: ${s.detail} → ${s.state === 'logged_in' ? 'LOGGED IN' : s.state === 'logged_out' ? 'NOT logged in' : 'UNKNOWN'}`,
   );
   if (s.state === 'logged_out' && !auth(r.saved).some((c) => c.expires)) {
     out.push('  no login cookie was saved to disk: the site kept the login only for that browser session.');

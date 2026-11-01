@@ -101,6 +101,8 @@ const BLOCK_PATTERNS: Array<[RegExp, string]> = [
   // Radware Bot Manager (AllJobs, Drushim): a 200 page titled 'Radware Page' with 'Verifying your browser…'
   [/radware page|verifying your browser|radware bot manager|validate.perfdrive/i, 'radware bot protection'],
   [/too many requests|rate limit/i, 'rate limited'],
+  // JobKarov's refusal page (normally HTTP 402, caught above; this catches it when the status is not known)
+  [/Sorry!\s*This page cannot be found\.\s*צור קשר/,'refused by the site (JobKarov "site unavailable" page)'],
 ];
 
 /**
@@ -110,6 +112,11 @@ const BLOCK_PATTERNS: Array<[RegExp, string]> = [
 export async function detectBlock(page: Page, status?: number): Promise<string | null> {
   if (status === 429) return 'rate limited (HTTP 429)';
   if (status === 403) return 'forbidden (HTTP 403) — possible bot protection';
+  // JobKarov's refusal page: HTTP 402 with "Sorry! This page cannot be found" / "אתר לא זמין - מזהה מספר N"
+  if (status === 402) {
+    const ref = /מזהה מספר\s*-?\s*(\d+)/.exec(await page.content().catch(() => ''))?.[1];
+    return `refused by the site (HTTP 402${ref ? `, reference ${ref}` : ''}) — the site is not serving this browser / network right now`;
+  }
   // Invisible reCAPTCHA v3 (0x0 "aframe"/"anchor" iframes) is on many normal pages; only a *visible* challenge counts.
   const visibleChallenge = await page
     .evaluate(() =>

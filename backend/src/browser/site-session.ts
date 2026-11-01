@@ -10,7 +10,7 @@ import { JM_BASE, loginState as jmLoginState } from '../sites/jobmaster/parse.js
 import { JN_BASE, sendFormUrl as jnSendFormUrl } from '../sites/jobnet/parse.js';
 import { sendFormLoginState as jnLoginState } from '../sites/jobnet/apply.js';
 import { JK_BASE } from '../sites/jobkarov/parse.js';
-import { readLogin as jkReadLogin } from '../sites/jobkarov/apply.js';
+import { jkSessionVerdict, readLogin as jkReadLogin, type JkSessionEvidence } from '../sites/jobkarov/apply.js';
 
 export type LoginState = 'logged_in' | 'logged_out' | 'unknown';
 
@@ -169,26 +169,39 @@ export async function checkJobnetSession(onContext?: (ctx: BrowserContext) => Pr
 }
 
 /**
- * JobKarov: its pages load your account with a script (window.User, from /User/UserInfo — a read). Logged in = an
- * account id arrives; the page loaded normally and none came = logged out. One page load; nothing is sent.
+ * JobKarov: its pages load your account with a script (window.User, from /User/UserInfo — a read). One page load;
+ * nothing is sent. The verdict carries the exact reason: the site refused the page (HTTP 402 "site unavailable", bot
+ * protection), a redirect away from the homepage, the login cookie missing, the account lookup not run / failed /
+ * empty — or logged in.
  */
 export async function checkJobKarovSession(onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
   let info: SessionInfo;
   try {
     const ctx = await getContext({ headless: true });
     await onContext?.(ctx);
+    const loginCookie = (await ctx.cookies(`${JK_BASE}/`)).some((c) => c.name === 'UserInfo' && !!c.value);
     const page = await getPage();
+    let userInfo: JkSessionEvidence['userInfo'] = { requested: false };
+    page.on('response', (r) => {
+      if (!/\/User\/UserInfo(?:$|\?)/i.test(r.url())) return;
+      userInfo = { requested: true, status: r.status(), account: false };
+      void r
+        .json()
+        .then((j: unknown) => {
+          const u = j as { ID?: unknown; id?: unknown } | null;
+          if (u && Number(u.ID ?? u.id ?? 0) > 0) userInfo = { requested: true, status: r.status(), account: true };
+        })
+        .catch(() => undefined);
+    });
     const res = await page.goto(`${JK_BASE}/`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
     await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => undefined);
-    const now = new Date().toISOString();
     const blocked = await detectBlock(page, res?.status());
-    if (blocked) info = { state: 'unknown', checkedAt: now, detail: `jobkarov: ${blocked} — not bypassed; try again later` };
-    else {
-      const state = await jkReadLogin(page);
-      info = { state, checkedAt: now, detail: state === 'logged_in' ? 'jobkarov: your account loaded' : state === 'logged_out' ? 'jobkarov: no account on the page' : 'jobkarov: could not tell' };
-    }
+    const login = blocked ? 'unknown' : await jkReadLogin(page);
+    const bootstrap = await page.evaluate(() => 'UserFromJS' in window).catch(() => false);
+    const v = jkSessionVerdict({ status: res?.status() ?? null, blocked, finalUrl: page.url(), loginCookie, bootstrap, userInfo, userId: login === 'logged_in' });
+    info = { ...v, checkedAt: new Date().toISOString() };
   } catch (e) {
-    info = { state: 'unknown', checkedAt: new Date().toISOString(), detail: e instanceof Error ? e.message.split('\n')[0]! : String(e) };
+    info = { state: 'unknown', checkedAt: new Date().toISOString(), detail: `jobkarov: ${e instanceof Error ? e.message.split('\n')[0]! : String(e)}` };
   } finally {
     await closeContext();
   }

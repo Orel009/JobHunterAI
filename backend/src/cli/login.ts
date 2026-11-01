@@ -11,6 +11,7 @@ import { config } from '../config.js';
 import { SITES } from '../sites/registry.js';
 import { CHROME_MISSING_HELP, findChrome, profileInUse, PROFILE_IN_USE } from '../browser/chrome.js';
 import { formatSessionReport, sessionReport } from '../browser/session-report.js';
+import { checkLoginPage } from '../browser/login-page.js';
 
 const site = process.argv[2];
 const entry = SITES.find((s) => s.id === site);
@@ -25,6 +26,18 @@ if (profileInUse(profile)) {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// the address must answer with a real page before a window is opened on it (one plain request, no cookies)
+const pre = await checkLoginPage(entry.loginUrl);
+if (!pre.ok) {
+  console.error(`\n  ${entry.displayName}: ${entry.loginUrl} did not answer with a real page: ${pre.reason}`);
+  if (!process.argv.includes('--anyway')) {
+    console.error(`  Not opening it. Open ${entry.loginUrl} in your own browser to see when the site is back, then run this again`);
+    console.error(`  (or: npm run login -- ${entry.id} --anyway).\n`);
+    console.log(`SESSION_RESULT ${JSON.stringify({ site: entry.id, state: 'unknown', checkedAt: new Date().toISOString(), detail: `${entry.id}: login page not available — ${pre.reason}` })}`);
+    process.exit(2);
+  }
+} else console.log(`  ${entry.loginUrl}: ${pre.reason}`);
 const chrome = findChrome();
 
 if (chrome) {

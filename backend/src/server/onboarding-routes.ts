@@ -13,7 +13,7 @@ import type { DB } from '../db/index.js';
 import { loadPrefs } from '../core/prefs.js';
 import { AnswersBank, SEED_QUESTIONS } from '../apply/bank.js';
 import { closeContext } from '../browser/session.js';
-import { checkDrushimSession, setSession, type SessionInfo } from '../browser/site-session.js';
+import { checkSiteSession, setSession, type SessionInfo } from '../browser/site-session.js';
 import { profileInUse, PROFILE_IN_USE } from '../browser/chrome.js';
 import { getActiveRun, startTask } from '../pipeline/runner.js';
 import { scorePending } from '../pipeline/score-pending.js';
@@ -159,7 +159,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, db: DB) {
         return;
       }
       try {
-        startTask(db, site, 'session_check', async () => void (await checkDrushimSession()));
+        startTask(db, site, 'session_check', async () => void (await checkSiteSession(site)));
       } catch (e) {
         log.warn({ err: String(e) }, 'session check after login not started');
       }
