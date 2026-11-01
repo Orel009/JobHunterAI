@@ -596,6 +596,16 @@ export class Repo {
     ).n;
   }
 
+  /** real submissions since local midnight, per site (the daily limit is per site) */
+  submittedTodayBySite(): Record<string, number> {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const rows = this.db
+      .prepare(`SELECT site, COUNT(*) AS n FROM applications WHERE status='submitted' AND dry_run=0 AND submitted_at >= ? GROUP BY site`)
+      .all(start.toISOString()) as Array<{ site: string; n: number }>;
+    return Object.fromEntries(rows.map((r) => [r.site, r.n]));
+  }
+
   // ---- runs ----
   startRun(site: string, kind: string): number {
     const r = this.db.prepare(`INSERT INTO runs (site, kind, status, started_at) VALUES (?, ?, 'running', ?)`).run(site, kind, nowIso());

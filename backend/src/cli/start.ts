@@ -410,6 +410,10 @@ try {
   fail(`הפורט ${config.PORT} תפוס (אולי JobHunter כבר רץ?)`, `Port ${config.PORT} is busy (is JobHunter already running?)`, `יש לסגור את המופע הקודם או לשנות PORT ב-.env`, 'Close the other instance or change PORT in .env');
 }
 
+// the other sites' logins (Drushim was checked above), in the background
+const { startStartupSessionChecks } = await import('../pipeline/startup-checks.js');
+startStartupSessionChecks(db!);
+
 let shuttingDown = false;
 async function shutdown(code = 0) {
   if (shuttingDown) return;
@@ -439,7 +443,7 @@ console.log(line);
 const llmLabel = (t: { provider: string; model: string }) => `${t.provider}:${t.model || '(not set)'}`;
 console.log(`  model          ${llmLabel(tasks.analyze)}${llmLabel(tasks.write) !== llmLabel(tasks.analyze) ? ` (write: ${llmLabel(tasks.write)})` : ''}`);
 console.log(`  Drushim login  ${getSession('drushim').state === 'logged_in' ? c.green('yes') : c.red(getSession('drushim').state === 'logged_out' ? 'NO (applying disabled)' : 'unknown')}`);
-console.log(`  applied today  ${repo.submittedToday()} / ${limits.dailyApplyLimit}`);
+console.log(`  applied today  ${Object.entries(repo.submittedTodayBySite()).map(([s, n]) => `${s} ${n}/${limits.dailyApplyLimit}`).join(' · ') || `0 (limit ${limits.dailyApplyLimit} per site)`}`);
 console.log(`  pending answers ${pendingQ}`);
 console.log(`  dashboard      ${url}`);
 console.log(`${line}\nCtrl+C to stop / לעצירה Ctrl+C\n`);

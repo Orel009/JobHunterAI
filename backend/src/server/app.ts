@@ -5,6 +5,7 @@ import { log, logBus, recentLogs, type LogLine } from '../log.js';
 import type { DB } from '../db/index.js';
 import { Repo } from '../db/repo.js';
 import { SITES } from '../sites/registry.js';
+import { hasApplyFlow } from '../apply/drivers.js';
 import { JOB_STATUSES } from '../sites/types.js';
 import { pauseExpired, pausedText, sitePauses } from '../core/site-pause.js';
 import { resumeSiteNow } from '../pipeline/site-resume.js';
@@ -78,7 +79,14 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
     return {
       dryRun: config.DRY_RUN,
       activeRun: getActiveRun(),
-      today: { submitted: repo.submittedToday() },
+      /** the daily apply limit is per site: today's count per site with an apply flow (and the total) */
+      today: {
+        submitted: repo.submittedToday(),
+        bySite: (() => {
+          const by = repo.submittedTodayBySite();
+          return SITES.filter((s) => s.enabled && hasApplyFlow(s.id)).map((s) => ({ site: s.id, label: s.displayName, submitted: by[s.id] ?? 0 }));
+        })(),
+      },
       limits: effectiveLimits(prefs),
       counts: repo.statusCounts(),
       llm: {

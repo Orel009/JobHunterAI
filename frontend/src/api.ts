@@ -109,7 +109,8 @@ export interface RunInfo {
 export interface Status {
   dryRun: boolean;
   activeRun: RunInfo | null;
-  today: { submitted: number };
+  /** the daily apply limit is per site */
+  today: { submitted: number; bySite?: Array<{ site: string; label: string; submitted: number }> };
   limits: { dailyApplyLimit: number; autoSubmitMinScore: number; maxPagesPerRun: number };
   counts: Record<string, number>;
   llm: {

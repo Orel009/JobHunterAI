@@ -29,8 +29,11 @@ export function Controls({ status, onChange, profileReady = true }: { status: St
     <section className="controls">
       <div className="badges">
         <span className={status.dryRun ? 'badge dry' : 'badge live'}>{status.dryRun ? 'DRY RUN' : 'LIVE — real submissions'}</span>
-        <span className="badge">
-          Today: {status.today.submitted}/{status.limits.dailyApplyLimit} submitted
+        <span className="badge" title={`daily apply limit: ${status.limits.dailyApplyLimit} per site · ${status.today.submitted} submitted today in total`}>
+          Today:{' '}
+          {(status.today.bySite ?? []).length
+            ? status.today.bySite!.map((s) => `${s.label} ${s.submitted}/${status.limits.dailyApplyLimit}`).join(' · ')
+            : `${status.today.submitted}/${status.limits.dailyApplyLimit}`}
         </span>
         <span className={status.sessions.drushim?.state === 'logged_in' ? 'badge ok' : status.sessions.drushim?.state === 'logged_out' ? 'badge warn' : 'badge'} title={status.sessions.drushim?.detail}>
           Drushim: {status.sessions.drushim?.state === 'logged_in' ? 'logged in' : status.sessions.drushim?.state === 'logged_out' ? 'NOT logged in' : 'login unknown'}

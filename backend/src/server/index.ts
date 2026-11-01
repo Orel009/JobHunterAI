@@ -4,12 +4,15 @@ import { getDb } from '../db/index.js';
 import { Repo } from '../db/repo.js';
 import { buildApp } from './app.js';
 import { closeContext } from '../browser/session.js';
+import { startStartupSessionChecks } from '../pipeline/startup-checks.js';
 
 const db = await getDb();
 new Repo(db).failOrphanRuns();
 const app = buildApp(db);
 await app.listen({ host: '127.0.0.1', port: config.PORT });
 log.info({ url: `http://127.0.0.1:${config.PORT}`, dryRun: config.DRY_RUN }, 'JobHunter API listening');
+// each enabled site's login, checked in the background (the header shows it instead of "login unknown")
+startStartupSessionChecks(db);
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {

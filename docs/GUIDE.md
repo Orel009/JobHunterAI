@@ -262,9 +262,10 @@ npm run doctor
 |---|---|
 | **▶ Run & send** | הכפתור הראשי, בכותרת: [סשן אחד](#הפעלה-יומית-סשן-אחד) — גילוי, דירוג, הכנה, ושליחה של מה שעובר את השער. מתחת לכותרת מוצגים ההתקדמות ואחר כך הסיכום |
 | `DRY RUN` / `LIVE` | מצב ניסוי (צהוב) או שליחה אמיתית (אדום) |
-| `Today: x/y submitted` | הגשות אמיתיות היום מתוך המכסה |
+| `Today: Drushim x/y · JobMaster x/y · …` | הגשות אמיתיות היום **לכל אתר** מתוך המכסה היומית, שהיא לכל אתר בנפרד. ב-tooltip: הסך הכול |
 | `Drushim: logged in / NOT logged in` | מצב החיבור לדרושים |
 | `re-check login` | בודק שוב את החיבור לדרושים |
+| `JobMaster: logged in` / `Jobnet: …` | מצב ההתחברות של כל אתר. **בכל הפעלה** של המערכת נבדקת ההתחברות של כל אתר פעיל, אחד אחרי השני ברקע (חוץ מאתר מושהה). עד שהבדיקה מסתיימת מוצג `login unknown`. `re-check` ליד התג בודק שוב |
 | `pending answers` | כמה שאלות ממתינות לתשובה שלך במאגר |
 | `LLM` | הספק והמודל של כל משימה, ואם יש בעיה: Ollama כבוי, מודל לא מותקן, או שהמגבלה היומית הושגה. עם ספק API מוצגים גם הטוקנים של היום |
 | ספירות סטטוסים | כמה משרות יש בכל סטטוס |
@@ -689,7 +690,7 @@ JobKarov עובד כמו דרושים, JobMaster ו-Jobnet: גילוי, דירו
 | `OLLAMA_TIMEOUT_MS` | `180000` | זמן מקסימלי לקריאה ל-Ollama, במילישניות |
 | `BENCH_MODELS` | `gemma4:12b` | המודלים שמושווים ב-`npm run model:bench`, בפורמט `provider:model` מופרדים בפסיק (שם בלי ספק = Ollama) |
 | `MAX_PAGES_PER_RUN` | `3` | כמה פעמים ללחוץ "הצג עוד משרות" לכל חיפוש |
-| `DAILY_APPLY_LIMIT` | `15` | מכסת הגשות אמיתיות ליום |
+| `DAILY_APPLY_LIMIT` | `15` | מכסת הגשות אמיתיות ליום, **לכל אתר בנפרד** (15 = עד 15 בדרושים, עד 15 ב-JobMaster וכן הלאה) |
 | `AUTO_SUBMIT_MIN_RANK` | `90` | rank מינימלי לשליחה אוטומטית (כשהיא פעילה). אפשר לשנות במסך Settings |
 | `AUTO_SUBMIT_MIN_SCORE` | `80` | ציון מינימלי להכנת תוכנית ב-`--hunt` |
 | `MATCH_CONFIDENCE` | `0.85` | ביטחון מינימלי להתאמת שאלה לרשומה במאגר |
@@ -808,7 +809,7 @@ npm run doctor
 | **`No API key` / `Cannot reach …`** | במסך Settings: להזין מפתח, ואז `Test connection` |
 | **`daily LLM token limit reached`** | המגבלה היומית הושגה ושלבי המודל נעצרו. אפשר להמשיך מחר, או להגדיל את `Daily token limit` במסך Settings |
 | **`LLM provider not reachable`** | הספק לא ענה. יש לבדוק את החיבור לאינטרנט, או את Ollama |
-| **המכסה היומית מלאה** | המערכת מסרבת לאשר מעבר ל-`dailyApplyLimit`. לדרושים יש גם מכסה משלהם (`Drushim's daily submission limit reached`). ממשיכים מחר |
+| **המכסה היומית מלאה** | המערכת מסרבת לאשר באתר שהגיע ל-`dailyApplyLimit` (המכסה לכל אתר בנפרד; אתרים אחרים ממשיכים). לדרושים יש גם מכסה משלהם (`Drushim's daily submission limit reached`). ממשיכים מחר |
 | **CV לא נמצא** (`CV "…" not found in the panel`) | השם ב-`cv.he` / `cv.en` חייב להיות זהה לשם בחשבון. השמות הזמינים מופיעים בהערה ℹ בכרטיס ההגשה |
 | **האתר שינה מבנה** (`apply panel did not open`, `apply button not found`, או `the form changed since review`) | אם הטופס השתנה מאז שבדקת, ההגשה חוזרת לתור לבדיקה מחדש. אם החלון לא נפתח כלל, צריך לעדכן את `backend/src/sites/drushim/selectors.json`. אפשר להיעזר ב-`npm run investigate:apply -- apply <jobUrl>`, שבודק בלי לשלוח: כל בקשת שליחה נחסמת |
 | **ריצה `blocked`** | האתר הציג CAPTCHA או חסימה. המערכת לא עוקפת. אפשר לפתוח את האתר ידנית, לחכות, ולנסות מאוחר יותר |
