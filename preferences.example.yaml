@@ -142,7 +142,7 @@ roleTypes:
     excludeTitlesWhenDisabled: false
     neverAutoSubmit: true
     queries: [בודק תוכנה, QA ידני, Manual QA]
-    titleKeywords: [בודק/ת תוכנה, בודקת תוכנה, QA ידני, בדיקות ידניות, manual QA, manual tester]
+    titleKeywords: [בודק/ת תוכנה, בודקת תוכנה, QA ידני, בדיקות ידניות, manual QA, manual tester, בודק ידני, בודקת ידנית, בודק/ת ידני/ת]
     # "Manager" is a seniority word everywhere else; here it is the role's name
     allowSeniorityWords: [Technical Account Manager]
     devContentCap: false

@@ -145,13 +145,13 @@ const QA = PrefsSchema.parse(
     (await import('yaml')).parse(`
 roleTypes:
   - { id: automation, tier: 2, queries: [QA Automation], titleKeywords: [automation, אוטומציה, Playwright, QA automation] }
-  - { id: manual-qa, tier: 3, neverAutoSubmit: true, queries: [בודק תוכנה], titleKeywords: [בודק/ת תוכנה, בודקת תוכנה, QA ידני, בדיקות ידניות, manual QA, manual tester] }
+  - { id: manual-qa, tier: 3, neverAutoSubmit: true, queries: [בודק תוכנה], titleKeywords: [בודק/ת תוכנה, בודקת תוכנה, QA ידני, בדיקות ידניות, manual QA, manual tester, בודק ידני, בודקת ידנית, בודק/ת ידני/ת] }
 `),
 );
 describe('manual QA (tier 3, never auto-submit)', () => {
   const role = (title: string) => primaryRole({ title, roleTypes: [] }, QA)?.id ?? null;
   it('manual testing titles are manual-qa; a title with automation keeps automation', () => {
-    expect(['דרוש/ה בודק/ת תוכנה', 'בודקת תוכנה', 'QA ידני', 'מהנדס/ת בדיקות ידניות', 'Manual QA Engineer', 'Manual Tester'].map(role)).toEqual(Array(6).fill('manual-qa'));
+    expect(['דרוש/ה בודק/ת תוכנה', 'בודקת תוכנה', 'QA ידני', 'מהנדס/ת בדיקות ידניות', 'Manual QA Engineer', 'Manual Tester', 'בודק/ת ידני/ת מנוסה', 'בודקת ידנית'].map(role)).toEqual(Array(8).fill('manual-qa'));
     expect(['דרוש/ה בודק/ת תוכנה ידני ואוטומציה', 'Manual & Automation QA', 'QA Automation Engineer'].map(role)).toEqual(['automation', 'automation', 'automation']);
     expect(QA.roleTypes.find((r) => r.id === 'manual-qa')).toMatchObject({ tier: 3, neverAutoSubmit: true });
   });
