@@ -14,6 +14,7 @@ import { ghListUrl, ghToRawJob, type GhJob } from './greenhouse.js';
 import { comeetPageUrl, comeetPositionsUrl, comeetToken, comeetToRawJob, type ComeetPosition } from './comeet.js';
 import { srListToRawJob, srListUrl, srPostingToRawJob, srPostingUrl, type SrListItem, type SrPosting } from './smartrecruiters.js';
 import { pace } from '../browser/session.js';
+import { wkJobToRawJob, wkJobUrl, wkListToRawJob, wkListUrl, type WkJob, type WkListJob } from './workable.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const get = (fetchImpl: typeof fetch, url: string, accept = 'application/json') =>
@@ -58,6 +59,21 @@ export async function fetchSrPosting(c: Company, postingId: string, fetchImpl: t
     return { job: null, blocked: null, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+/** One Workable job's full ad (one request). */
+export async function fetchWkPosting(c: Company, shortcode: string, fetchImpl: typeof fetch = fetch): Promise<{ job: RawJob | null; blocked: string | null; error: string | null }> {
+  try {
+    const r = await get(fetchImpl, wkJobUrl(c.board!, shortcode));
+    if (refused(r.status)) return { job: null, blocked: `Workable refused the request (HTTP ${r.status})`, error: null };
+    if (!r.ok) return { job: null, blocked: null, error: `HTTP ${r.status}` };
+    return { job: wkJobToRawJob(c.board!, c.name, (await r.json()) as WkJob), blocked: null, error: null };
+  } catch (e) {
+    return { job: null, blocked: null, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** The full ad of one job on an ATS whose list has no job text (SmartRecruiters, Workable). */
+export const fetchCompanyPosting = (c: Company, id: string, fetchImpl: typeof fetch = fetch) => (c.ats === 'workable' ? fetchWkPosting(c, id, fetchImpl) : fetchSrPosting(c, id, fetchImpl));
 
 export async function fetchCompanyJobs(c: Company, fetchImpl: typeof fetch = fetch, now = new Date()): Promise<CompanyFetch> {
   const out: CompanyFetch = { jobs: [], total: null, israel: null, error: null, blocked: null, requests: [] };
@@ -115,6 +131,15 @@ export async function fetchCompanyJobs(c: Company, fetchImpl: typeof fetch = fet
       // SmartRecruiters answers for any name: a company with no postings at all is most likely the wrong id
       if (!total) return { ...out, error: `no SmartRecruiters postings for "${c.board}" (check the company id in one of its job links)` };
       out.jobs = items.map((p) => srListToRawJob(c.board!, c.name, p));
+    } else if (c.ats === 'workable') {
+      // the widget list: title, location and shortcode (no job text), one request; the ads are read later, for jobs that pass
+      out.requests.push('workable widget');
+      const r = await get(fetchImpl, wkListUrl(c.board));
+      if (refused(r.status)) return { ...out, blocked: `Workable refused the request (HTTP ${r.status})` };
+      if (r.status === 404) return { ...out, error: `no Workable account "${c.board}" (check the account in one of its job links: apply.workable.com/{account}/j/…)` };
+      if (!r.ok) return { ...out, error: `Workable answered HTTP ${r.status}` };
+      const w = (await r.json()) as { name?: string; jobs?: WkListJob[] };
+      out.jobs = (w.jobs ?? []).map((j) => wkListToRawJob(c.board!, c.name || w.name || '', j));
     } else {
       return { ...out, error: `${c.ats}: not supported yet` };
     }

@@ -122,7 +122,8 @@ describe('SmartRecruiters "Easy apply" (web components, shadow DOM)', () => {
     expect(r.pending.some((p) => /no draft: draft cites no facts/.test(p))).toBe(true);
     const off = await open(fx('form-smartrecruiters.html'));
     const r2 = await fill(off, { ...DATA, fillCoverLetters: false, draft: undefined });
-    expect(r2.pending.some((p) => /cover letter/.test(p))).toBe(false);
+    // cover letters off: the field is still listed, with the reason (never silently skipped)
+    expect(r2.pending.some((p) => /cover letters are OFF/.test(p))).toBe(true);
     expect(await off.evaluate(() => (document.querySelector('#hiring-manager-message-input') as HTMLElement).shadowRoot!.querySelector('textarea')!.value)).toBe('');
   });
 });

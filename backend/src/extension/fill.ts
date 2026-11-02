@@ -94,6 +94,8 @@ export interface FillData {
   education: Array<{ institution: string; institutionAlt: string; degree: string; field: string; city: string; start: string | null; end: string | null }>;
   /** Settings → JobHunter Fill: fill cover letters / messages to the hiring team with an AI draft (default on) */
   fillCoverLetters: boolean;
+  /** Settings → JobHunter Fill: optional cover / bio / summary fields get drafts too (default on) */
+  draftOptionalFields: boolean;
 }
 
 const siteLabel = (site: string) => (isAssistedSite(site) ? SITE_LABEL[site] : isCompanySource(site) ? COMPANY_SOURCE_LABEL[site] : (SITES.find((s) => s.id === site)?.displayName ?? site));
@@ -125,6 +127,7 @@ export function jobIdsInUrl(u: string): string[] {
   m(/ashbyhq\.com\/[^/]+\/([0-9a-f-]{36})/i);
   m(/smartrecruiters\.com\/(?!oneclick-ui)[^/]+\/(\d{6,})/i);
   m(/smartrecruiters\.com\/oneclick-ui\/company\/[^/]+\/publication\/([0-9a-f-]{36})/i);
+  m(/workable\.com\/(?:[^/]+\/)?j\/([A-Za-z0-9]{8,12})/i);
   m(/linkedin\.com\/jobs\/view\/(?:[^/?]*-)?(\d{6,})/i);
   m(/[?&]currentJobId=(\d{6,})/);
   m(/[?&](?:v?jk)=([0-9a-f]{10,})/i);
@@ -139,7 +142,7 @@ export function matchJob(db: DB, pageUrl: string): StoredJob | null {
   const rows = db
     .prepare(
       `SELECT id, url, apply_target AS applyTarget, external_id AS externalId, status FROM jobs
-        WHERE site IN ('linkedin','indeed','greenhouse','comeet','smartrecruiters') OR status = 'needs_manual' OR (apply_type = 'external' AND apply_target != '')`,
+        WHERE site IN ('linkedin','indeed','greenhouse','comeet','smartrecruiters','workable') OR status = 'needs_manual' OR (apply_type = 'external' AND apply_target != '')`,
     )
     .all() as Array<{ id: string; url: string; applyTarget: string; externalId: string; status: string }>;
   const score = (r: (typeof rows)[number]) => {
@@ -199,6 +202,7 @@ export async function fillData(db: DB, job: StoredJob | null, pageLang?: 'he' | 
     experience: experienceEntries(profile, lang),
     education: educationEntries(profile, lang),
     fillCoverLetters: extensionSettings().fillCoverLetters,
+    draftOptionalFields: extensionSettings().draftOptionalFields,
   };
 }
 

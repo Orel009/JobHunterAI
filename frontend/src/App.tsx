@@ -170,7 +170,7 @@ export function App() {
       {onboarding === false && tab === 'prefs' && <PreferencesEditor onSaved={refresh} />}
       {onboarding === false && tab === 'linkedin' && (status?.emailAlerts.enabled || !!status?.needsManual || !!status?.companies?.listed) && (
         <LinkedInScreen
-          sources={[...(status.emailAlerts.enabled ? status.emailAlerts.sources : []), ...(status.companies?.listed ? ['greenhouse', 'comeet', 'smartrecruiters'] : [])]}
+          sources={[...(status.emailAlerts.enabled ? status.emailAlerts.sources : []), ...(status.companies?.listed ? ['greenhouse', 'comeet', 'smartrecruiters', 'workable'] : [])]}
           alertsOn={status.emailAlerts.enabled}
           openJobId={assistedJob}
           onOpened={() => setAssistedJob(null)}

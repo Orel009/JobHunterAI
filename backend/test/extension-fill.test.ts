@@ -89,7 +89,7 @@ describe('field mapping (extension/fill-core.js)', () => {
     // cover letters: the AI draft when there is one; yellow without; left alone when the setting is off
     expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, { ...DATA, draft: { text: 'Hello.' } })).toEqual({ draft: 'Hello.', flaggedClaims: [] });
     expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, DATA)).toMatchObject({ pending: 'no cover letter draft: none was requested for this field' });
-    expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, { ...DATA, fillCoverLetters: false })).toMatchObject({ skip: expect.stringMatching(/off/) });
+    expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, { ...DATA, fillCoverLetters: false })).toMatchObject({ pending: expect.stringMatching(/cover letters are OFF/) });
     expect(F.answerFor({ label: 'GitHub URL', type: 'url' }, DATA)).toMatchObject({ pending: 'no github in your profile' });
     expect(F.answerFor({ label: 'Why us?', type: 'textarea', required: true }, DATA)).toMatchObject({ pending: 'no cover letter draft: none was requested for this field' });
     expect(F.answerFor({ label: 'Describe a challenge you solved', type: 'textarea', required: true }, DATA)).toMatchObject({ pending: 'no answer on file' });
@@ -211,6 +211,8 @@ describe('job addresses', () => {
     // SmartRecruiters: a job page (its posting id) and the "Easy apply" form (its uuid, which the stored apply target holds)
     expect(jobIdsInUrl('https://jobs.smartrecruiters.com/Wix2/744000158971809-technical-support-team-lead-customer-care')).toEqual(['744000158971809']);
     expect(jobIdsInUrl('https://jobs.smartrecruiters.com/oneclick-ui/company/Wix2/publication/8563a7fa-d926-41a8-9ece-49e1501d03bf?dcr_ci=Wix2')).toEqual(['8563a7fa-d926-41a8-9ece-49e1501d03bf']);
+    expect(jobIdsInUrl('https://apply.workable.com/goarc/j/E822F93FB5/apply/')).toEqual(['E822F93FB5']);
+    expect(jobIdsInUrl('https://apply.workable.com/j/E822F93FB5')).toEqual(['E822F93FB5']);
   });
 });
 

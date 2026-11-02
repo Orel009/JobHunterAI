@@ -16,7 +16,7 @@ import { isPaused, pauseSite } from '../core/site-pause.js';
 import { COMPANY_SOURCES } from '../alerts/assisted.js';
 import { Repo } from '../db/repo.js';
 import { applyPrefilter, score, startTask, waitIdle } from '../pipeline/runner.js';
-import { fetchCompanyJobs, fetchSrPosting, keepCompanyJob, type CompanyFetch } from './fetch.js';
+import { fetchCompanyJobs, fetchCompanyPosting, keepCompanyJob, type CompanyFetch } from './fetch.js';
 import { prefilter } from '../core/prefilter.js';
 import { formAnswers } from './answers.js';
 import { isSupported, loadCompanies, updateCompany, type Company } from './store.js';
@@ -39,7 +39,7 @@ export interface CompanySummary {
   scored: number;
   /** Greenhouse: jobs whose form answers were prepared */
   answersPrepared: number;
-  /** SmartRecruiters: full postings read (only for jobs that passed the title and location filters) */
+  /** SmartRecruiters / Workable: full postings read (only for jobs that passed the title and location filters) */
   postingsRead?: number;
   /** waiting for you in Assisted apply (scored, not skipped, not applied) */
   ready: number;
@@ -62,6 +62,10 @@ export interface CompaniesRunProgress {
 }
 let progress: CompaniesRunProgress | null = null;
 export const companiesProgress = () => progress;
+
+/** the ATSs whose list has no job text: the full ad is read per job (for jobs that pass the filters) */
+const READS_ADS = new Set<string>(['smartrecruiters', 'workable']);
+const postingIdOf = (raw: unknown) => String((raw as { postingId?: string; shortcode?: string }).postingId ?? (raw as { shortcode?: string }).shortcode ?? '');
 
 /** Records a fetch on the company (counts, error, a Comeet token read or rejected, the ATS's company name). */
 export function recordCheck(c: Company, f: CompanyFetch, kept: number | null): void {
@@ -129,8 +133,8 @@ export function startCompaniesRun(db: DB, opts: { fetch?: boolean; fetchImpl?: t
     p.runId = run.id;
     const prefs = loadPrefs();
     const fetched = new Map<string, { f: CompanyFetch | null; kept: Set<string>; added: number; ms: number; postingsRead?: number }>();
-    // SmartRecruiters: the list has no job text — the full ad is read only for jobs that pass your title (and location)
-    // filters and are not read yet, one request each with a pause before it; a refusal pauses SmartRecruiters for 48 hours
+    // SmartRecruiters / Workable: the list has no job text — the full ad is read only for jobs that pass your title (and
+    // location) filters and are not read yet, one request each with a pause before it; a refusal pauses that ATS for 48 hours
     const readAds = async (c: Company, cands: Array<{ id: string; postingId: string; title: string }>): Promise<number> => {
       const toRead = cands.filter((x) => !repo.getJob(x.id)?.detailsFetched);
       let n = 0;
@@ -138,10 +142,10 @@ export function startCompaniesRun(db: DB, opts: { fetch?: boolean; fetchImpl?: t
         if (run.controller.signal.aborted) break;
         await pace(1000, 2500);
         p.stage = run.stage = `reading ${c.name || c.board}: posting ${i + 1}/${toRead.length}`;
-        const d = await fetchSrPosting(c, j.postingId, opts.fetchImpl);
+        const d = await fetchCompanyPosting(c, j.postingId, opts.fetchImpl);
         if (d.blocked) {
           pauseSite(c.ats, d.blocked);
-          L.error({ company: c.name, reason: d.blocked }, 'SmartRecruiters refused — paused for 48 hours');
+          L.error({ company: c.name, ats: c.ats, reason: d.blocked }, 'ATS refused — paused for 48 hours');
           break;
         }
         if (d.job) {
@@ -196,10 +200,10 @@ export function startCompaniesRun(db: DB, opts: { fetch?: boolean; fetchImpl?: t
           L.info({ company: c.name, ats: c.ats, total: f.total, israel: f.israel, kept: kept.length, requests: f.requests }, 'company list read');
         } else L.warn({ company: c.name, err: f.error }, 'company list not read');
         const postingsRead =
-          c.ats === 'smartrecruiters' && !f.error
+          READS_ADS.has(c.ats) && !f.error
             ? await readAds(
                 c,
-                kept.filter((j) => prefilter({ ...j, roleTypes: [] }, prefs).pass).map((j) => ({ id: toJob(j).id, postingId: String((j.raw as { postingId: string }).postingId), title: j.title })),
+                kept.filter((j) => prefilter({ ...j, roleTypes: [] }, prefs).pass).map((j) => ({ id: toJob(j).id, postingId: postingIdOf(j.raw), title: j.title })),
               )
             : 0;
         if (run.controller.signal.aborted) return;
@@ -207,12 +211,12 @@ export function startCompaniesRun(db: DB, opts: { fetch?: boolean; fetchImpl?: t
         p.done++;
       }
     }
-    // Score only: no list is read, but SmartRecruiters jobs that pass the filters now (e.g. after a new title keyword)
-    // and have no ad yet get it first — a job is never scored on its title alone
+    // Score only: no list is read, but SmartRecruiters / Workable jobs that pass the filters now (e.g. after a new title
+    // keyword) and have no ad yet get it first — a job is never scored on its title alone
     if (opts.fetch === false) {
-      for (const c of loadCompanies().filter((x) => x.enabled && x.ats === 'smartrecruiters' && isSupported(x) && !isPaused(x.ats))) {
+      for (const c of loadCompanies().filter((x) => x.enabled && READS_ADS.has(x.ats) && isSupported(x) && !isPaused(x.ats))) {
         const cands = repo
-          .listJobs({ site: 'smartrecruiters', limit: 100_000 })
+          .listJobs({ site: c.ats, limit: 100_000 })
           .items.filter((j) => j.externalId.startsWith(`${c.board}:`) && !j.detailsFetched && j.status === 'discovered' && !j.duplicateOf && prefilter({ ...j, roleTypes: [] }, prefs).pass);
         const n = await readAds(c, cands.map((j) => ({ id: j.id, postingId: j.externalId.slice(c.board!.length + 1), title: j.title })));
         fetched.set(c.id, { f: null, kept: new Set(), added: 0, ms: 0, postingsRead: n });
@@ -252,7 +256,7 @@ export function startCompaniesRun(db: DB, opts: { fetch?: boolean; fetchImpl?: t
     run.site = COMPANIES_RUN_SITE;
     p.companies = (opts.fetch === false ? loadCompanies().filter((c) => isSupported(c)) : list).map((c) => {
       const x = fetched.get(c.id);
-      return { ...summarize(db, c, x?.f ?? null, x?.kept ?? new Set(), x?.added ?? 0, c.ats === 'greenhouse' ? (prepared.get(c.board ?? '') ?? 0) : 0, x?.ms ?? 0), ...(c.ats === 'smartrecruiters' ? { postingsRead: x?.postingsRead ?? 0 } : {}) };
+      return { ...summarize(db, c, x?.f ?? null, x?.kept ?? new Set(), x?.added ?? 0, c.ats === 'greenhouse' ? (prepared.get(c.board ?? '') ?? 0) : 0, x?.ms ?? 0), ...(READS_ADS.has(c.ats) ? { postingsRead: x?.postingsRead ?? 0 } : {}) };
     });
     p.error = failure ? `failed: ${failure instanceof Error ? failure.message : String(failure)}` : run.llmProblem ? `scoring waits: ${run.llmProblem}` : null;
     p.stage = failure ? 'failed' : 'done';

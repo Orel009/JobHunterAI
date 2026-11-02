@@ -18,6 +18,8 @@ import { ROOT_DIR } from '../config.js';
 import { isIndeedHost } from '../alerts/assisted.js';
 import { isLinkedInHost } from '../linkedin/parse.js';
 import { llmReachable } from '../llm/reachable.js';
+import { fetchJobContext } from '../extension/job-context.js';
+import { AnswersBank, type BankType } from '../apply/bank.js';
 import { log } from '../log.js';
 import path from 'node:path';
 
@@ -104,6 +106,31 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
     }
   });
 
+  /**
+   * The job ad for an application page that does not show it: the ATS's public job endpoint (Workable, Greenhouse,
+   * SmartRecruiters, Comeet) or the same address without "/apply". Plain GETs from JobHunter; never LinkedIn / Indeed.
+   */
+  app.post('/api/fill/job-context', async (req) => {
+    const { url } = z.object({ url: z.string().max(4000) }).parse(req.body ?? {});
+    const t0 = Date.now();
+    const r = await fetchJobContext(url);
+    log.info({ url: url.slice(0, 200), ok: r.ok, source: r.ok ? r.context.source : null, chars: r.ok ? r.context.text.length : 0, error: r.ok ? null : r.error, ms: Date.now() - t0 }, 'extension: job context');
+    return r.ok ? { ok: true, ...r.context, error: null } : { ok: false, title: '', company: '', text: '', source: null, error: r.error };
+  });
+
+  /** Questions a form asked that have no answer on file (yes / no, a choice): into your answers bank as pending, once. */
+  app.post('/api/fill/pending', async (req) => {
+    const { questions } = z
+      .object({ questions: z.array(z.object({ question: z.string().trim().min(4).max(500), type: z.enum(['text', 'yes_no', 'choice', 'number']).default('text'), options: z.array(z.string().max(200)).max(40).optional() })).max(20) })
+      .parse(req.body ?? {});
+    const bank = new AnswersBank(db);
+    const before = new Set(bank.list().map((e) => e.id));
+    const entries = questions.map((q) => bank.addPending(q.question, q.type as BankType, q.options ?? null));
+    const added = entries.filter((e) => !before.has(e.id)).length;
+    if (added) log.info({ added, questions: entries.filter((e) => !before.has(e.id)).map((e) => e.question) }, 'extension: questions added to the answers bank (pending)');
+    return { added, pending: entries.filter((e) => e.status === 'pending').length };
+  });
+
   /** What one fill did (field labels, kinds, draft outcomes and reasons; no values typed into the page), for the log. */
   app.post('/api/fill/report', async (req) => {
     const b = z
@@ -114,6 +141,7 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
         fields: z.array(z.object({ label: cut(120), type: cut(30), required: z.boolean().default(false), rule: z.string().nullable().default(null), planned: z.string().nullable().default(null) })).max(150).default([]),
         drafts: z.array(z.object({ label: cut(120), kind: cut(10), ok: z.boolean(), error: z.string().nullable().default(null), ms: z.number().default(0) })).max(20).default([]),
         problems: z.array(cut(300)).max(20).default([]),
+        questions: z.array(cut(300)).max(20).default([]),
         result: z.object({ filled: z.number(), drafts: z.number(), needYou: z.number(), pending: z.array(cut(300)).max(60).default([]), notes: z.array(cut(400)).max(30).default([]) }).nullable().default(null),
       })
       .parse(req.body ?? {});
@@ -124,7 +152,7 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
         return 'unknown';
       }
     })();
-    log.info({ host, linked: b.linked, jobContext: b.jobContext, fields: b.fields, drafts: b.drafts, problems: b.problems, result: b.result }, 'extension: fill report');
+    log.info({ host, linked: b.linked, jobContext: b.jobContext, fields: b.fields, drafts: b.drafts, problems: b.problems, questions: b.questions, result: b.result }, 'extension: fill report');
     return { ok: true };
   });
 
@@ -175,7 +203,7 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
   });
   app.put('/api/extension/settings', async (req, reply) => {
     if (fromWebPage(req) && !String(req.headers.origin).startsWith(`http://127.0.0.1:`) && !String(req.headers.origin).startsWith('http://localhost:')) return reply.status(403).send({ error: 'dashboard only' });
-    const patch = z.object({ fillCoverLetters: z.boolean().optional(), styleSample: z.string().max(4000).optional() }).parse(req.body ?? {});
+    const patch = z.object({ fillCoverLetters: z.boolean().optional(), styleSample: z.string().max(4000).optional(), draftOptionalFields: z.boolean().optional() }).parse(req.body ?? {});
     return saveExtensionSettings(patch);
   });
   app.post('/api/extension/token', async (req, reply) => {

@@ -1,5 +1,5 @@
 /**
- * Target companies (Greenhouse, Comeet, SmartRecruiters): ATS detection from a careers URL / job link / page, the two readers (sanitized
+ * Target companies (Greenhouse, Comeet, SmartRecruiters, Workable): ATS detection from a careers URL / job link / page, the two readers (sanitized
  * real API answers, 2026-11-01), Comeet's request discipline (one positions request per company per run; the token only
  * from the company's public page; a rejected token is not retried; never stored on a job), the run (only your locations,
  * prefilter + scoring, a Drushim copy wins for applying, a refusal pauses that ATS), the Companies routes, the Greenhouse
@@ -31,6 +31,7 @@ import { detectAts, detectFromHtml, detectFromUrl, nameVariants } from '../src/c
 import { ghQuestionFields, ghToRawJob, type GhJob } from '../src/companies/greenhouse.js';
 import { comeetToken, comeetToRawJob, type ComeetPosition } from '../src/companies/comeet.js';
 import { srListToRawJob, srPostingToRawJob, type SrListItem, type SrPosting } from '../src/companies/smartrecruiters.js';
+import { wkJobToRawJob, wkListToRawJob, type WkJob, type WkListJob } from '../src/companies/workable.js';
 import { fetchCompanyJobs, isIsraelLocation, keepCompanyJob } from '../src/companies/fetch.js';
 import { addCompany, cleanUrl, companiesFile, companyId, loadCompanies, saveCompanies, seedCompanies, updateCompany, type Company } from '../src/companies/store.js';
 import { runCompaniesToCompletion } from '../src/companies/run.js';
@@ -50,6 +51,8 @@ const COMEET_PAGE = fx('comeet-page.html');
 const TOKEN = '0000FIXTURE0000TOKEN0000000000000000';
 const SR = JSON.parse(fx('smartrecruiters-postings.json')) as { totalFound: number; content: SrListItem[] };
 const SR1 = JSON.parse(fx('smartrecruiters-posting.json')) as SrPosting;
+const WKL = JSON.parse(fx('workable-widget.json')) as { name: string; jobs: WkListJob[] };
+const WK1 = JSON.parse(fx('workable-job.json')) as WkJob;
 
 fs.mkdirSync(path.dirname(config.paths.preferences), { recursive: true });
 fs.writeFileSync(
@@ -460,9 +463,80 @@ describe('SmartRecruiters', () => {
   });
 });
 
+describe('Workable', () => {
+  const goarc = (o: Partial<Company> = {}) => company({ ats: 'workable', board: 'goarc', name: 'GOARC', ...o });
+  const wkFetch = (o: { status?: number; detailStatus?: number } = {}) =>
+    fakeFetch([
+      [/apply\.workable\.com\/api\/v1\/widget\/accounts\/goarc$/, () => ({ status: o.status ?? 200, body: o.status ? 'no' : WKL })],
+      [/apply\.workable\.com\/api\/v2\/accounts\/goarc\/jobs\/([A-Z0-9]+)$/, (u) => ({ status: o.detailStatus ?? 200, body: o.detailStatus ? 'no' : { ...WK1, shortcode: u.split('/').pop() } })],
+    ]);
+  const details = (calls: string[]) => calls.filter((u) => /\/api\/v2\/accounts\/goarc\/jobs\//.test(u));
+
+  it('detection: the apply page, a job page, the careers page and the account subdomain give the account; "j" / "api" never do', () => {
+    for (const u of ['https://apply.workable.com/goarc/j/30E379F87B/apply/', 'https://apply.workable.com/goarc/j/E822F93FB5/', 'https://apply.workable.com/goarc/', 'https://goarc.workable.com/'])
+      expect(detectFromUrl(u), u).toMatchObject({ ats: 'workable', board: 'goarc' });
+    expect(detectFromUrl('https://apply.workable.com/j/E822F93FB5')?.board ?? null).toBeNull();
+    expect(detectFromUrl('https://apply.workable.com/api/v2/accounts/goarc/jobs/E822F93FB5')).toMatchObject({ ats: 'workable', board: 'goarc' });
+  });
+
+  it('the probe by name: the widget list of a real account with jobs', async () => {
+    const some = fakeFetch([[/widget\/accounts\/goarc$/, () => ({ body: WKL })], [/careers\.example/, () => ({ body: '<html>script</html>' })]]);
+    expect(await detectAts('https://careers.example/jobs', some.f, 'GOARC')).toMatchObject({ ats: 'workable', board: 'goarc', how: 'probe' });
+    const none = fakeFetch([[/widget\/accounts\//, () => ({ status: 404, body: 'no' })], [/careers\.example/, () => ({ body: '<html>script</html>' })]]);
+    expect((await detectAts('https://careers.example/jobs', none.f, 'Nobody')).ats).toBe('unknown');
+  });
+
+  it('readers: the list has title / location / shortcode only (Israel, Remote); the job gives description and requirements as text', () => {
+    const l = wkListToRawJob('goarc', 'GOARC', WKL.jobs[0]!);
+    expect(l).toMatchObject({ site: 'workable', externalId: 'goarc:E822F93FB5', company: 'GOARC', title: 'Full Stack Developer', location: 'Israel, Remote', detailsFetched: false, descriptionText: '' });
+    expect(l.applyTarget).toBe('https://apply.workable.com/goarc/j/E822F93FB5/apply/');
+    expect(l.url).toBe('https://apply.workable.com/goarc/j/E822F93FB5/');
+    const d = wkJobToRawJob('goarc', 'GOARC', WK1);
+    expect(d).toMatchObject({ detailsFetched: true, location: 'Israel, Remote' });
+    expect(d.requirementsText).toMatch(/^What We're Looking For/);
+    expect(d.requirementsText).toMatch(/6\+ years of experience/);
+    expect(d.descriptionText).toMatch(/GOARC is an AI-native B2B SaaS company/);
+    expect(d.descriptionText).not.toMatch(/<p>|<h3>/);
+    expect(JSON.stringify(d)).not.toMatch(/accountUid/);
+  });
+
+  it('the list: one widget request, no ad; a missing account → "check the account"; 429 → refusal', async () => {
+    const ok = wkFetch();
+    const r = await fetchCompanyJobs(goarc(), ok.f);
+    expect(ok.calls).toHaveLength(1);
+    expect(r).toMatchObject({ total: 3, israel: 1, error: null, blocked: null }); // the other two are in Tennessee
+    expect(details(ok.calls)).toEqual([]);
+    expect((await fetchCompanyJobs(goarc(), wkFetch({ status: 404 }).f)).error).toMatch(/no Workable account "goarc"/);
+    expect((await fetchCompanyJobs(goarc(), wkFetch({ status: 429 }).f)).blocked).toMatch(/HTTP 429/);
+  });
+
+  it('the run reads the full ad only for jobs that pass the title and location filters (a pause before each); not again next time', async () => {
+    saveCompanies([goarc()]);
+    const a = wkFetch();
+    const p = (await runCompaniesToCompletion(db, { fetchImpl: a.f }))!;
+    const jobs = repo.listJobs({ site: 'workable', limit: 100 }).items;
+    expect(jobs).toHaveLength(1); // Israel (remote) only
+    const read = details(a.calls).map((u) => u.split('/').pop()!);
+    const passed = jobs.filter((j) => j.detailsFetched).map((j) => j.externalId.split(':')[1]!);
+    expect(read.length).toBeGreaterThan(0);
+    expect([...read].sort()).toEqual([...passed].sort());
+    expect(h.pace).toHaveBeenCalledTimes(read.length);
+    expect(p.companies[0]).toMatchObject({ name: 'GOARC', ats: 'workable', read: 3, israel: 1, inLocations: 1, postingsRead: read.length });
+    const b = wkFetch();
+    await runCompaniesToCompletion(db, { fetchImpl: b.f });
+    expect(details(b.calls)).toEqual([]);
+  });
+
+  it('a refused ad pauses Workable for 48 hours', async () => {
+    saveCompanies([goarc()]);
+    await runCompaniesToCompletion(db, { fetchImpl: wkFetch({ detailStatus: 403 }).f });
+    expect(isPaused('workable')).toBe(true);
+  });
+});
+
 describe('never in the automated browser', () => {
   it('ATS careers pages and apply forms are blocked like LinkedIn / Indeed', () => {
-    for (const u of ['https://job-boards.greenhouse.io/x/jobs/1', 'https://boards.greenhouse.io/x', 'https://www.comeet.com/jobs/x/17.008', 'https://www.comeet.co/careers-api/2.0/company/x', 'https://jobs.lever.co/x', 'https://jobs.ashbyhq.com/x', 'https://jobs.smartrecruiters.com/oneclick-ui/company/Wix2/publication/x', 'https://api.smartrecruiters.com/v1/companies/Wix2/postings'])
+    for (const u of ['https://job-boards.greenhouse.io/x/jobs/1', 'https://boards.greenhouse.io/x', 'https://www.comeet.com/jobs/x/17.008', 'https://www.comeet.co/careers-api/2.0/company/x', 'https://jobs.lever.co/x', 'https://jobs.ashbyhq.com/x', 'https://jobs.smartrecruiters.com/oneclick-ui/company/Wix2/publication/x', 'https://api.smartrecruiters.com/v1/companies/Wix2/postings', 'https://apply.workable.com/goarc/j/E822F93FB5/apply/', 'https://goarc.workable.com/'])
       expect(isAssistedOnlyHost(u)).toBe(true);
     expect(isAssistedOnlyHost('https://www.drushim.co.il/job/1/')).toBe(false);
   });

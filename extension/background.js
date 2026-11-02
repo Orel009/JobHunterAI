@@ -55,8 +55,21 @@ async function fillTab(tabId) {
   // what went wrong on the way is shown in the overlay
   data.problems = [];
   data.frames = page.frames || [];
-  data.hasJobContext = !!job || (page.jobText || '').length >= 200;
-  data.jobContext = job ? 'the JobHunter job' : data.hasJobContext ? 'from page' : 'the page title only (no job ad found on the page)';
+  // the job ad: the stored job; the page's own; else fetched by JobHunter (the ATS's public job endpoint, or the same
+  // address without "/apply") — plain GETs, same site, never LinkedIn / Indeed
+  let hasAd = !!job || (page.jobText || '').length >= 200;
+  data.jobContext = job ? 'the JobHunter job' : hasAd ? 'from page' : '';
+  if (!hasAd) {
+    const ctx = await api('/api/fill/job-context', { method: 'POST', body: JSON.stringify({ url: tab.url }) }, 60000).catch((e) => ({ ok: false, error: e.message }));
+    if (ctx.ok) {
+      page.jobText = ctx.text;
+      if (ctx.title && !page.title) page.title = ctx.title;
+      if (ctx.company) page.company = ctx.company;
+      hasAd = true;
+      data.jobContext = `fetched from ${ctx.source}`;
+    } else data.jobContext = `the page title only (no job ad on the page; ${ctx.error || 'none fetched'})`;
+  }
+  data.hasJobContext = hasAd;
   const title = String(page.title || '').slice(0, 300);
   const company = String(page.company || '').slice(0, 200);
 
@@ -84,7 +97,11 @@ async function fillTab(tabId) {
       continue;
     }
     if (!data.fillCoverLetters) {
-      data.draftNotes[f.key] = 'cover letters are off (JobHunter → Settings → JobHunter Fill)';
+      data.draftNotes[f.key] = 'cover letters are OFF (JobHunter → Settings → JobHunter Fill → "Fill cover letters in the extension")';
+      continue;
+    }
+    if (!f.required && data.draftOptionalFields === false) {
+      data.draftNotes[f.key] = 'an optional field, and "draft optional cover / bio fields" is off (JobHunter → Settings → JobHunter Fill)';
       continue;
     }
     const t0 = Date.now();
@@ -118,10 +135,19 @@ async function fillTab(tabId) {
           ),
         onFillAgain: () =>
           new Promise((resolve, reject) => chrome.runtime.sendMessage({ type: 'fillAgain' }, (r) => (r && r.ok ? resolve(r) : reject(new Error((r && r.error) || 'no answer'))))),
-      }).then((s) => ({ filled: s.filled, drafts: s.drafts, needYou: s.needYou, cv: s.cv, refused: s.refused || null, pending: s.pending, notes: s.notes })),
+      }).then((s) => ({ filled: s.filled, drafts: s.drafts, needYou: s.needYou, cv: s.cv, refused: s.refused || null, pending: s.pending, notes: s.notes, questions: s.questions || [] })),
     args: [data],
   });
   if (res?.result?.refused) throw new Error(res.result.refused);
+  // questions the form asked with no answer on file (yes / no, a choice): into your answers bank as pending, once
+  const questions = (res?.result?.questions || []).slice(0, 20);
+  if (questions.length) {
+    const r = await api('/api/fill/pending', { method: 'POST', body: JSON.stringify({ questions }) }).catch(() => null);
+    const text = r
+      ? `${questions.length} question${questions.length > 1 ? 's' : ''} sent to your answers bank${r.added ? ` (${r.added} new)` : ''}: answer ${questions.length > 1 ? 'them' : 'it'} in JobHunter → Answers, then Fill again`
+      : 'the questions could not be sent to your answers bank';
+    await chrome.scripting.executeScript({ target: { tabId }, func: (t) => globalThis.JobHunterFill.notice(document, t), args: [text] }).catch(() => undefined);
+  }
   // what happened, in JobHunter's log (no values: field labels, kinds and reasons only)
   api('/api/fill/report', {
     method: 'POST',
@@ -131,6 +157,7 @@ async function fillTab(tabId) {
       jobContext: data.jobContext,
       fields: page.fields.map((f) => ({ label: f.label || f.placeholder, type: f.type, required: f.required, rule: f.dict, planned: data.plan[f.key] || null })),
       drafts: report,
+      questions: questions.map((q) => q.question),
       problems: data.problems,
       result: res?.result ? { filled: res.result.filled, drafts: res.result.drafts, needYou: res.result.needYou, pending: res.result.pending, notes: res.result.notes } : null,
     }),

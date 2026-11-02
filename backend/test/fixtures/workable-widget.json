@@ -1,0 +1,93 @@
+{
+ "name": "GOARC",
+ "description": "<p>GOARC is the AI-native platform that guides and guards the industrial workforce — bringing real-time visibility,</p><p>risk mitigation and operational intelligence to every permit, shift and task. The platform unifies the work that</p><p>determines whether an industrial asset performs safely and ",
+ "jobs": [
+  {
+   "title": "Full Stack Developer",
+   "shortcode": "E822F93FB5",
+   "code": "",
+   "employment_type": "Full-time",
+   "telecommuting": true,
+   "department": null,
+   "url": "https://apply.workable.com/j/E822F93FB5",
+   "shortlink": "https://apply.workable.com/j/E822F93FB5",
+   "application_url": "https://apply.workable.com/j/E822F93FB5/apply",
+   "published_on": "2026-07-28",
+   "created_at": "2026-07-28",
+   "country": "Israel",
+   "city": "",
+   "state": "",
+   "education": "",
+   "experience": "",
+   "function": "Engineering",
+   "industry": "Computer Software",
+   "locations": [
+    {
+     "country": "Israel",
+     "countryCode": "IL",
+     "city": "",
+     "region": null,
+     "hidden": false
+    }
+   ]
+  },
+  {
+   "title": "Go-to-Market Engineer",
+   "shortcode": "F16F97D9A1",
+   "code": "",
+   "employment_type": "Full-time",
+   "telecommuting": false,
+   "department": "Customer Acquisition",
+   "url": "https://apply.workable.com/j/F16F97D9A1",
+   "shortlink": "https://apply.workable.com/j/F16F97D9A1",
+   "application_url": "https://apply.workable.com/j/F16F97D9A1/apply",
+   "published_on": "2026-07-09",
+   "created_at": "2026-07-09",
+   "country": "United States",
+   "city": "Franklin",
+   "state": "Tennessee",
+   "education": "Bachelor's Degree",
+   "experience": "Mid-Senior level",
+   "function": "Marketing",
+   "industry": "Computer Software",
+   "locations": [
+    {
+     "country": "United States",
+     "countryCode": "US",
+     "city": "Franklin",
+     "region": "Tennessee",
+     "hidden": false
+    }
+   ]
+  },
+  {
+   "title": "Senior Solutions Consultant",
+   "shortcode": "1B798A0A5C",
+   "code": "",
+   "employment_type": "Full-time",
+   "telecommuting": true,
+   "department": null,
+   "url": "https://apply.workable.com/j/1B798A0A5C",
+   "shortlink": "https://apply.workable.com/j/1B798A0A5C",
+   "application_url": "https://apply.workable.com/j/1B798A0A5C/apply",
+   "published_on": "2026-07-10",
+   "created_at": "2026-07-08",
+   "country": "United States",
+   "city": "Franklin",
+   "state": "Tennessee",
+   "education": "Bachelor's Degree",
+   "experience": "Mid-Senior level",
+   "function": "Sales",
+   "industry": "Computer Software",
+   "locations": [
+    {
+     "country": "United States",
+     "countryCode": "US",
+     "city": "Franklin",
+     "region": "Tennessee",
+     "hidden": false
+    }
+   ]
+  }
+ ]
+}

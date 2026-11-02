@@ -66,7 +66,7 @@ export function CompaniesScreen({ busy, onChanged }: { busy: boolean; onChanged:
     <section className="companies">
       <div className="banner info">
         <div>
-          Target companies: JobHunter reads their <b>public</b> job lists (Greenhouse, Comeet, SmartRecruiters), keeps the jobs in Israel and your locations, and scores them like any other
+          Target companies: JobHunter reads their <b>public</b> job lists (Greenhouse, Comeet, SmartRecruiters, Workable), keeps the jobs in Israel and your locations, and scores them like any other
           job. Applying is done <b>by you</b> in Assisted apply (their forms have CAPTCHA). Careers pages and apply forms are never opened by the automated browser. Lever
           and Ashby are detected but not supported yet.
         </div>
@@ -75,7 +75,7 @@ export function CompaniesScreen({ busy, onChanged }: { busy: boolean; onChanged:
       <fieldset className="card">
         <legend>Add a company</legend>
         <div className="row">
-          <input dir="ltr" style={{ minWidth: 380 }} value={url} placeholder="careers page or job link: job-boards.greenhouse.io/…, comeet.com/jobs/…, jobs.smartrecruiters.com/…" onChange={(e) => setUrl(e.target.value)} />
+          <input dir="ltr" style={{ minWidth: 380 }} value={url} placeholder="careers page or job link: job-boards.greenhouse.io/…, comeet.com/jobs/…, jobs.smartrecruiters.com/…, apply.workable.com/…" onChange={(e) => setUrl(e.target.value)} />
           <input dir="auto" value={name} placeholder="name (helps the detection)" onChange={(e) => setName(e.target.value)} />
           <button
             disabled={!!working || url.trim().length < 8}
@@ -95,7 +95,7 @@ export function CompaniesScreen({ busy, onChanged }: { busy: boolean; onChanged:
         </div>
         <p className="muted">
           If the careers page is built by script, JobHunter asks the ATS APIs with the company's name; if that finds nothing either, paste <b>one job link</b> from that
-          company (a job-boards.greenhouse.io or comeet.com/jobs address). Companies on your excluded list are refused.
+          company (a job-boards.greenhouse.io, comeet.com/jobs, jobs.smartrecruiters.com or apply.workable.com address). Companies on your excluded list are refused.
         </p>
         {note && <p className="note">{note}</p>}
       </fieldset>
@@ -227,7 +227,7 @@ function RunSummary({ p }: { p: CompaniesProgress }) {
                 </td>
                 <td>{c.scored}</td>
                 <td>{c.waiting ?? 0}</td>
-                <td>{c.ats === 'greenhouse' ? c.answersPrepared : c.ats === 'smartrecruiters' ? `${c.postingsRead ?? 0} postings read` : '—'}</td>
+                <td>{c.ats === 'greenhouse' ? c.answersPrepared : c.postingsRead !== undefined ? `${c.postingsRead} postings read` : '—'}</td>
                 <td>
                   <b>{c.ready}</b>
                 </td>

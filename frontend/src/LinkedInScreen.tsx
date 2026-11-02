@@ -190,7 +190,7 @@ function HelperTable({ title, items }: { title: string; items: HelperItem[] }) {
 }
 
 const TODO = ['discovered', 'scored', 'queued', 'needs_review', 'needs_manual'];
-const SOURCE_LABEL: Record<string, string> = { linkedin: 'LinkedIn', indeed: 'Indeed', drushim: 'Drushim', jobmaster: 'JobMaster', jobnet: 'Jobnet', jobkarov: 'JobKarov', greenhouse: 'Greenhouse', comeet: 'Comeet', smartrecruiters: 'SmartRecruiters' };
+const SOURCE_LABEL: Record<string, string> = { linkedin: 'LinkedIn', indeed: 'Indeed', drushim: 'Drushim', jobmaster: 'JobMaster', jobnet: 'Jobnet', jobkarov: 'JobKarov', greenhouse: 'Greenhouse', comeet: 'Comeet', smartrecruiters: 'SmartRecruiters', workable: 'Workable' };
 const ASSISTED = ['linkedin', 'indeed'];
 
 /**
@@ -275,9 +275,9 @@ export function LinkedInScreen({
           LinkedIn and Indeed are assisted-only: JobHunter never logs in to them or clicks anything there (to keep your accounts safe). Open the job in your own browser, apply
           yourself with the details below, then click “I applied”. Never tick or state anything that isn't true.
         </div>
-        {jobs.some((j) => j.site === 'greenhouse' || j.site === 'comeet' || j.site === 'smartrecruiters') && (
+        {jobs.some((j) => ['greenhouse', 'comeet', 'smartrecruiters', 'workable'].includes(j.site)) && (
           <div>
-            Company jobs (Greenhouse / Comeet / SmartRecruiters, from the Companies screen) are applied to by you on the company's form: open it in your browser, attach the CV and copy the
+            Company jobs (Greenhouse / Comeet / SmartRecruiters / Workable, from the Companies screen) are applied to by you on the company's form: open it in your browser, attach the CV and copy the
             answers below. For Greenhouse jobs the form's questions are read once and answered ahead from your profile and answers bank.
           </div>
         )}

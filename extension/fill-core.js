@@ -99,6 +99,7 @@
   const BIO_RULE = /\bbio(graphy)?\b|\babout (you|yourself|me)\b|tell us about|\bsummary\b|קצת על|ספר.{0,3}על עצמ|על עצמך|על עצמי/;
   const COVER_RULE = /\bmessage\b|\bcover\b|\bnote\b|\bwhy\b|motivation|מכתב|הודעה|מוטיבציה|למה|מדוע/;
   function freeTextRule(f) {
+    if (f.entry && (f.type === 'textarea' || entryKey('experience', f.label || f.placeholder) || entryKey('education', f.label || f.placeholder))) return 'entryText'; // an entry's own field: filled with the entry, never a draft
     if (f.type !== 'textarea') return null;
     for (const text of [f.label, f.placeholder]) {
       const t = norm(text);
@@ -117,9 +118,11 @@
       if (AUTOCOMPLETE[ac] === 'email' && classify(`${f.label} ${words(f.id)} ${words(f.name)}`) === 'confirmEmail') return 'confirmEmail';
       return AUTOCOMPLETE[ac];
     }
+    const entry = freeTextRule(f);
+    if (entry === 'entryText') return entry; // before the dictionary: an entry's "Start date" is not your notice period
     const byText = classify(f.label);
     if (byText) return byText;
-    return freeTextRule(f) || classify(`${words(f.controlName)} ${words(f.name)} ${words(f.id)} ${words(f.dataTest)}`) || classify(f.placeholder) || null;
+    return entry || classify(`${words(f.controlName)} ${words(f.name)} ${words(f.id)} ${words(f.dataTest)}`) || classify(f.placeholder) || null;
   }
 
   /** the form planner's kinds → field types ("draft:cover" is a cover letter / message, "draft:bio" a bio) */
@@ -234,8 +237,9 @@
     if (sameQuestion && type !== 'never' && type !== 'cv') return { value: sameQuestion.answer, from: 'answers bank' };
     if (type === 'never') return { skip: 'never filled' };
     if (type === 'social') return { skip: 'no such profile on file' };
+    if (type === 'entryText') return { skip: 'part of an experience / education entry (filled with the entry)' };
     if (type === 'coverLetter' || type === 'bio') {
-      if (data.fillCoverLetters === false) return { skip: 'cover letters are off (Settings)' };
+      if (data.fillCoverLetters === false) return { pending: `no ${type === 'bio' ? 'bio' : 'cover letter'} draft: cover letters are OFF (JobHunter → Settings → JobHunter Fill → "Fill cover letters in the extension")` };
       // this field's own draft (written for this job), else the page's one cover-letter draft
       const d = (data.drafts && f.key && data.drafts[f.key]) || (type === 'coverLetter' ? data.draft : null);
       if (d && d.text) return { draft: d.text, flaggedClaims: d.flaggedClaims || [] };
@@ -372,10 +376,35 @@
     const out = [];
     const host = outer(el);
     const form = host.closest('form');
-    for (const scope of [form && form.previousElementSibling, form && form.querySelector('h1, h2, h3, h4, legend, p'), host.previousElementSibling]) {
+    const section = host.closest('section, fieldset, [data-ui="section"]');
+    for (const scope of [section && section.querySelector('h1, h2, h3, h4, legend'), form && form.previousElementSibling, form && form.querySelector('h1, h2, h3, h4, legend, p'), host.previousElementSibling]) {
       if (scope && !scope.contains(host) && !/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(scope.tagName)) out.push(textOf(scope).slice(0, 200));
     }
     return [...new Set(out.filter(Boolean))].join(' | ').slice(0, 350);
+  }
+
+  /** what an entry field is for: a work entry (company / title) or an education entry (school / degree / field) */
+  const nameKindOf = (x) => {
+    const t = labelFor(x) || words(x.name || x.id || '');
+    const w = entryKey('experience', t);
+    if (w === 'company' || w === 'title') return 'work';
+    const e = entryKey('education', t);
+    return e === 'institution' || e === 'degree' || e === 'field' ? 'edu' : null;
+  };
+  /**
+   * Inside one experience OR education entry: the closest container (not the whole form) that holds a company / title
+   * field or a school / degree field, but not both kinds — a section with both is the list of entries, not an entry.
+   */
+  function inEntry(el) {
+    let n = el.parentElement;
+    for (let i = 0; i < 7 && n && n.tagName !== 'FORM' && n.tagName !== 'BODY'; i++, n = n.parentElement) {
+      const fields = [...n.querySelectorAll('input:not([type=hidden]), textarea, select')];
+      if (fields.length > 12) return false;
+      const kinds = new Set(fields.filter((x) => x !== el).map(nameKindOf).filter(Boolean));
+      if (kinds.size > 1) return false;
+      if (kinds.size === 1 && fields.length >= 3) return true;
+    }
+    return false;
   }
 
   /** The fields JobHunter may fill, each with a key that is the same in the scan and in the fill. */
@@ -386,6 +415,7 @@
       .filter((el) => isEditor(el) || (!['hidden', 'submit', 'button', 'reset', 'image', 'password', 'search'].includes(el.type) && !el.disabled && !el.readOnly && !inCaptcha(el) && !isPickerSearch(el) && (visible(el) || el.type === 'file')))
       .map((el) => {
         const f = info(el);
+        f.entry = inEntry(el);
         const base = `${el.tagName.toLowerCase()}:${f.type}:${f.name || f.id || norm(f.label || f.placeholder).slice(0, 60)}`;
         const n = seen.get(base) ?? 0;
         seen.set(base, n + 1);
@@ -454,10 +484,42 @@
     el.blur();
   }
 
+  /** A masked input (MM/YYYY, a phone mask): the value set; if the mask dropped it, typed as keystrokes would be. */
+  function typeInto(el, value) {
+    setValue(el, value);
+    if (String(el.value ?? '') === value) return;
+    const masked = el.tagName === 'INPUT' && (/^(tel|numeric|decimal)$/.test(el.getAttribute('inputmode') || '') || /[md]{2}|yyyy|\d{2}\/\d{2}/i.test(el.placeholder || '') || el.hasAttribute('data-mask'));
+    if (!masked) return;
+    const w = win(el);
+    el.focus();
+    try {
+      el.select();
+      // insertText goes through beforeinput / input like typing does (what masks listen to)
+      if (!w.document.execCommand('insertText', false, value)) throw new Error('insertText refused');
+    } catch {
+      for (const ch of value) {
+        el.dispatchEvent(new w.KeyboardEvent('keydown', { key: ch, bubbles: true, composed: true }));
+        el.dispatchEvent(new w.InputEvent('beforeinput', { bubbles: true, composed: true, data: ch, inputType: 'insertText' }));
+        el.dispatchEvent(new w.InputEvent('input', { bubbles: true, composed: true, data: ch, inputType: 'insertText' }));
+        el.dispatchEvent(new w.KeyboardEvent('keyup', { key: ch, bubbles: true, composed: true }));
+      }
+    }
+    fire(el, 'change');
+    fire(el, 'blur');
+  }
+
   /** Only ever called on a radio / checkbox input (never a button, link or submit). */
   function tick(input) {
     if (!input || input.tagName !== 'INPUT' || (input.type !== 'radio' && input.type !== 'checkbox')) throw new Error('JobHunter Fill: refusing to click a non-choice element');
-    if (!input.checked) input.click();
+    if (input.checked) return;
+    // a hidden input behind a button-styled option (Workable's YES / NO): its own label or option wrapper is what you would click
+    const hidden = input.getAttribute('aria-hidden') === 'true' || !(input.offsetWidth || input.offsetHeight || input.getClientRects().length);
+    const proxy = hidden ? input.closest('label') || input.closest('[role="radio"], [role="checkbox"]') : null;
+    if (proxy && !FORBIDDEN.test(textOf(proxy)) && !proxy.closest('button, [type=submit]')) {
+      proxy.click();
+      if (input.checked) return;
+    }
+    input.click();
   }
 
   /** a field that needs you: outlined yellow, counted once, and listed */
@@ -471,7 +533,8 @@
 
   function mark(el, kind, title) {
     const base = outer(el);
-    const target = el.type === 'radio' || el.type === 'checkbox' ? base.closest('fieldset, [role="radiogroup"], [class*="question"], div') || base : base;
+    // a choice: its whole group (fieldset / radiogroup), else the nearest wrapper
+    const target = el.type === 'radio' || el.type === 'checkbox' ? base.closest('fieldset, [role="radiogroup"], [role="group"]') || base.closest('[class*="question"], div') || base : base;
     target.setAttribute(MARK, kind);
     target.style.outline = STYLE[kind];
     target.style.outlineOffset = '2px';
@@ -587,9 +650,16 @@
   };
   const entryKey = (section, label) => (ENTRY[section].find(([, re]) => re.test(norm(label))) || [null])[0];
 
-  /** "2021-03" / "2021" → the field's own format (month / date input, or the placeholder's MM/YYYY, MM/YY, YYYY). */
+  /** does the field want a month (a month / date input, or a placeholder with MM or DD)? */
+  function wantsMonth(el) {
+    if (el.type === 'month' || el.type === 'date') return true;
+    const ph = `${el.placeholder || ''} ${el.getAttribute('aria-label') || ''}`.toLowerCase();
+    return /mm|dd/.test(ph);
+  }
+  /** "2021-03" / "2021" → the field's own format (month / date input, or the placeholder's MM/YYYY, MM/YY, YYYY); null when the field wants a month the date lacks. */
   function dateFor(el, d) {
     if (!d) return null;
+    if (!/^\d{4}-\d{2}/.test(String(d)) && wantsMonth(el)) return null;
     const [y, m = '01'] = String(d).split('-');
     if (el.type === 'month') return `${y}-${m}`;
     if (el.type === 'date') return `${y}-${m}-01`;
@@ -603,25 +673,58 @@
   /** A profile entry already on the page (its company / institution shows somewhere)? */
   const onPage = (doc, name) => !!name && allRoots(doc).some((r) => norm(textOf(r.body || r)).includes(norm(name)) || [...r.querySelectorAll('input, textarea')].some((i) => norm(i.value) === norm(name)));
 
-  /** One new entry per section per click: Add, then fill the fields that appeared. You click its Save. */
+  /**
+   * An entry form already open on the page (its own container with a name field and a date or description field), with
+   * something still empty: its fields, and the profile entry it is for (by the name typed in it, else the next one).
+   */
+  function openEntry(doc, section, list) {
+    const nameKey = section === 'experience' ? 'company' : 'institution';
+    const nameOf = (e) => (section === 'experience' ? e.company : e.institution);
+    for (const el of deepAll(doc, 'input, textarea, select')) {
+      if (!visible(el) || el.type === 'hidden' || el.type === 'file') continue;
+      if (entryKey(section, labelFor(el) || el.name || el.placeholder) !== nameKey) continue;
+      let box = el.parentElement;
+      for (let i = 0; i < 7 && box && box.tagName !== 'FORM' && box.tagName !== 'BODY'; i++, box = box.parentElement) {
+        const fields = [...box.querySelectorAll('input:not([type=hidden]), textarea, select')].filter((x) => visible(x) && x.type !== 'file');
+        if (fields.length > 14) break;
+        const keys = fields.map((x) => entryKey(section, labelFor(x) || x.name || x.placeholder));
+        if (keys.filter(Boolean).length >= 2 && keys.some((k) => k === 'start' || k === 'description' || k === 'degree' || k === 'title')) {
+          const typed = String(el.value || '').trim();
+          const entry = (typed && list.find((e) => norm(nameOf(e)) === norm(typed))) || list.find((e) => !onPage(doc, nameOf(e))) || (typed ? null : list[0]);
+          if (!entry) return null;
+          // only when something in it is still empty AND the profile entry has a value for it (a finished entry does not block "Add")
+          const has = (k) => (k === 'location' ? !!entry.city : k === 'end' ? !!entry.end && !entry.current : k === 'current' ? false : !!entry[k]);
+          const open = fields.some((x, i) => keys[i] && has(keys[i]) && empty(x) && (x.tagName !== 'SELECT' || x.selectedIndex <= 0));
+          return open ? { fields, entry } : null;
+        }
+      }
+    }
+    return null;
+  }
+
+  /** One new entry per section per click: Add, then fill the fields that appeared (an entry already open: its empty fields). You click its Save. */
   async function fillEntries(doc, data, out) {
     for (const section of ['experience', 'education']) {
       const list = section === 'experience' ? data.experience ?? [] : data.education ?? [];
       const nameOf = (e) => (section === 'experience' ? e.company : e.institution);
-      const next = list.find((e) => !onPage(doc, nameOf(e)));
+      if (!list.length) continue;
+      const open = openEntry(doc, section, list);
+      let next = open ? open.entry : list.find((e) => !onPage(doc, nameOf(e)));
       if (!next) continue;
-      const btn = addButton(doc, section);
-      if (!btn) continue;
-      const before = new Set(deepAll(doc, 'input, textarea, select'));
-      btn.click(); // "Add" inside the Experience / Education section only
-      let fresh = [];
-      for (let i = 0; i < 12 && !fresh.length; i++) {
-        await wait(250);
-        fresh = deepAll(doc, 'input, textarea, select').filter((el) => !before.has(el) && visible(el) && el.type !== 'hidden' && el.type !== 'file');
-      }
-      if (!fresh.length) {
-        out.notes.push(`${section}: "Add" opened nothing JobHunter can fill — add it yourself`);
-        continue;
+      let fresh = open ? open.fields : [];
+      if (!open) {
+        const btn = addButton(doc, section);
+        if (!btn) continue;
+        const before = new Set(deepAll(doc, 'input, textarea, select'));
+        btn.click(); // "Add" inside the Experience / Education section only
+        for (let i = 0; i < 12 && !fresh.length; i++) {
+          await wait(250);
+          fresh = deepAll(doc, 'input, textarea, select').filter((el) => !before.has(el) && visible(el) && el.type !== 'hidden' && el.type !== 'file');
+        }
+        if (!fresh.length) {
+          out.notes.push(`${section}: "Add" opened nothing JobHunter can fill — add it yourself`);
+          continue;
+        }
       }
       let filled = 0;
       for (const el of fresh) {
@@ -629,6 +732,11 @@
         if (!key) continue;
         if (key === 'current') {
           if (el.type === 'checkbox' && next.current) tick(el);
+          continue;
+        }
+        // a date the field wants with a month, when the profile has only the year: left to you, with the reason
+        if ((key === 'start' || key === 'end') && !(key === 'end' && next.current) && next[key] && empty(el) && !dateFor(el, next[key])) {
+          needYou(out, el, labelFor(el) || key, 'month missing in profile — add it in Profile (e.g. 2021-10)');
           continue;
         }
         // a location: the institution's city when the profile has one, else left empty (never the institution's name)
@@ -647,13 +755,18 @@
           const i = chooseOption([...el.options].map((o) => o.text), v);
           if (i < 0) continue;
           setValue(el, el.options[i].value);
-        } else setValue(el, String(v));
+        } else typeInto(el, String(v));
+        if (empty(el)) {
+          needYou(out, el, labelFor(el) || key, `the field did not accept "${v}" — type it yourself`);
+          continue;
+        }
         mark(el, 'filled');
         filled++;
       }
       out.filled += filled;
       const left = list.filter((e) => e !== next && !onPage(doc, nameOf(e))).length;
-      out.notes.push(`${section}: added "${nameOf(next)}" (${filled} fields) — check it and click its Save${left > 0 ? `, then JobHunter Fill again for the next (${left} left)` : ''}`);
+      if (open && !filled) continue;
+      out.notes.push(`${section}: ${open ? 'the open entry' : 'added'} "${nameOf(next)}" (${filled} fields) — check it and click its Save${left > 0 ? `, then JobHunter Fill again for the next (${left} left)` : ''}`);
     }
   }
 
@@ -706,6 +819,7 @@
         required: !!f.required,
         near: nearText(el),
         empty: empty(el),
+        entry: !!f.entry,
         dict: dictType(f),
       }));
     // the older shape, still read by tests and older workers
@@ -713,7 +827,8 @@
     const h1 = doc.querySelector('h1');
     // the page's own job title and company (for a page JobHunter does not know): the heading, og:site_name / the tab title's last part
     const parts = String(doc.title || '').split(/\s+[-|–]\s+/).map((x) => x.trim()).filter(Boolean);
-    const company = doc.querySelector('meta[property="og:site_name"]')?.getAttribute('content') || (parts.length > 1 ? parts[parts.length - 1] : '');
+    const named = parts.filter((x) => !/^(application|apply|careers?|jobs?|job application|הגשת מועמדות|משרות|קריירה)$/i.test(x));
+    const company = doc.querySelector('meta[property="og:site_name"]')?.getAttribute('content') || (named.length > 1 ? named[named.length - 1] : '');
     return {
       fields: fields.slice(0, 120),
       unknown: [...new Set(unknown)].slice(0, 40),
@@ -728,6 +843,7 @@
 
   /** The draft a field gets (pure, also used by the background worker): its planned / dictionary type, if a draft. */
   function draftKindOf(field, plan, hasJobContext = false) {
+    if (field.entry) return null;
     const t = field.dict || draftOnly(field, plan, hasJobContext);
     return t === 'bio' ? 'bio' : t === 'coverLetter' ? 'cover' : null;
   }
@@ -752,7 +868,7 @@
     // defense in depth: the popup and the background worker never get here on LinkedIn / Indeed
     if (manualOnlyHost((opts.location ?? doc.location).href)) return { refused: MANUAL_ONLY_MESSAGE, filled: 0, drafts: 0, needYou: 0, pending: [], cv: null, cvFields: 0, skipped: 0, details: [], notes: [], flaggedClaims: [] };
     clearMarks(doc);
-    const out = { filled: 0, drafts: 0, needYou: 0, pending: [], cv: data.cv?.file ?? null, cvFields: 0, skipped: 0, details: [], notes: [], flaggedClaims: (data.draft && data.draft.flaggedClaims) || [] };
+    const out = { filled: 0, drafts: 0, needYou: 0, pending: [], cv: data.cv?.file ?? null, cvFields: 0, skipped: 0, details: [], notes: [], questions: [], flaggedClaims: (data.draft && data.draft.flaggedClaims) || [] };
     const done = new Set();
     for (const { el, f } of formFields(doc)) {
       if (done.has(el)) continue;
@@ -776,7 +892,12 @@
           }
         }
         if (a.pending || a.value !== undefined || f.required) {
-          needYou(out, el, f.label, a.pending ?? 'no matching option for your answer');
+          needYou(out, el, gl, a.pending ?? 'no matching option for your answer');
+          // a question with no answer on file: into your answers bank as pending (you answer it once, in JobHunter)
+          if (a.value === undefined && gl && norm(gl).length >= 4 && !/never filled/.test(a.skip || '')) {
+            const options = group.map((g) => labelFor(g) || g.value).filter(Boolean);
+            out.questions.push({ question: gl, type: options.length === 2 && options.every((o) => YES.test(norm(o)) || NO.test(norm(o))) ? 'yes_no' : 'choice', options });
+          }
         }
         continue;
       }
@@ -798,6 +919,11 @@
       if (a.pending) {
         if (empty(el)) {
           needYou(out, el, f.label, a.pending);
+          // a choice with no answer on file: into your answers bank as pending
+          if (el.tagName === 'SELECT' && norm(f.label).length >= 4 && /no answer on file|^no \w+ in your profile/.test(a.pending)) {
+            const options = [...el.options].map((o) => o.text.trim()).filter((t) => t && !/^(select|choose|בחר|בחרי|--)/i.test(t)).slice(0, 40);
+            if (options.length) out.questions.push({ question: f.label, type: 'choice', options });
+          }
         }
         continue;
       }
@@ -872,6 +998,7 @@
     for (const el of deepAll(doc, '[aria-required="true"], [required]')) {
       const host = outer(el);
       if (host.hasAttribute(MARK) || host.closest(`[${MARK}]`) || el.hasAttribute(MARK) || !visible(el) || inCaptcha(el) || el.type === 'file' || el.type === 'hidden') continue;
+      if (/^(radio|checkbox|option)$/.test(el.getAttribute('role') || '') || el.querySelector('input[type=radio], input[type=checkbox]')) continue; // a choice's wrapper: handled with its group
       if (el.shadowRoot && el.shadowRoot.querySelector('input, textarea, select')) continue; // its inner field was handled
       if (('value' in el && typeof el.value === 'string' && el.value.trim()) || el.type === 'radio' || el.type === 'checkbox') continue;
       const text = el.tagName === 'TEXTAREA' || el.isContentEditable || el.getAttribute('role') === 'textbox' || el.querySelector?.('textarea, [contenteditable]');
@@ -904,7 +1031,8 @@
         ${out.drafts ? `<div class="m">The purple text is an AI draft from your profile: read and edit it before submitting.${claims ? ` Check these claims: <ul>${claims}</ul>` : ''}</div>` : ''}
         ${out.pending.length ? `<div class="m"><span class="y">need you</span><ul>${out.pending.slice(0, 12).map((x) => `<li>${escapeHtml(x)}</li>`).join('')}${out.pending.length > 12 ? `<li>… ${out.pending.length - 12} more (outlined yellow)</li>` : ''}</ul></div>` : ''}
         ${(data.problems || []).map((n) => `<div class="m">⚠ ${escapeHtml(n)}</div>`).join('')}
-        ${out.notes.map((n) => `<div class="m">${escapeHtml(n)}</div>`).join('')}
+        ${(data.frames || []).map((src) => `<div class="m">Part of the form is inside a frame from ${escapeHtml(hostOf(src))}, which JobHunter cannot fill from this page: <a href="${escapeHtml(src)}" target="_blank" rel="noopener noreferrer">Open form in a new tab</a>, then click JobHunter Fill there.</div>`).join('')}
+        ${out.notes.filter((n) => !/^part of the form is inside a frame/.test(n)).map((n) => `<div class="m">${escapeHtml(n)}</div>`).join('')}
         <div class="m">Check everything, attach the CV, then submit yourself.</div>
         <div class="r">${job ? '<button class="p" id="applied">I applied</button>' : ''}${opts.onFillAgain ? '<button id="again" title="fills only the fields that are still empty (new fields, the next step)">Fill again</button>' : ''}<button id="close">Close</button></div>
         <div class="m" id="msg"></div>
@@ -946,6 +1074,12 @@
     if (!/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && !el.isContentEditable) return `a custom ${el.getAttribute('role') || el.tagName.toLowerCase()} element JobHunter cannot type into`;
     return 'JobHunter could not read it as a form field';
   }
+  /** a line added to the overlay after the fill (e.g. questions sent to your answers bank) */
+  function notice(doc, text) {
+    const o = doc.getElementById('jobhunter-fill-overlay');
+    const msg = o && o.shadowRoot && o.shadowRoot.getElementById('msg');
+    if (msg) msg.textContent = `${msg.textContent ? `${msg.textContent} · ` : ''}${text}`;
+  }
   const hostOf = (u) => {
     try {
       return new URL(u).hostname;
@@ -955,5 +1089,5 @@
   };
   const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
-  root.JobHunterFill = { norm, classify, dictType, freeTextRule, fieldType, draftKindOf, noDraftReason, bucketOption, nameQueries, pageJobText, bankAnswer, chooseOption, exactPlace, closeMatch, localPhone, answerFor, dateFor, entryKey, run, scan, clearMarks, manualOnlyHost, MANUAL_ONLY_MESSAGE, FORBIDDEN };
+  root.JobHunterFill = { norm, classify, dictType, freeTextRule, fieldType, draftKindOf, noDraftReason, notice, wantsMonth, bucketOption, nameQueries, pageJobText, bankAnswer, chooseOption, exactPlace, closeMatch, localPhone, answerFor, dateFor, entryKey, run, scan, clearMarks, manualOnlyHost, MANUAL_ONLY_MESSAGE, FORBIDDEN };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

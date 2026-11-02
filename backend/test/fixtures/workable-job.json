@@ -1,0 +1,32 @@
+{
+ "shortcode": "E822F93FB5",
+ "title": "Full Stack Developer",
+ "remote": true,
+ "location": {
+  "city": "",
+  "country": "Israel",
+  "countryCode": "IL",
+  "region": null
+ },
+ "locations": [
+  {
+   "city": "",
+   "country": "Israel",
+   "countryCode": "IL",
+   "hidden": false,
+   "region": null
+  }
+ ],
+ "state": "published",
+ "isInternal": false,
+ "code": "",
+ "published": "2026-07-28T00:00:00.000Z",
+ "type": "full",
+ "language": "en",
+ "department": [],
+ "approvalStatus": "approved",
+ "workplace": "remote",
+ "description": "<h3>About us</h3><p>GOARC is an AI-native B2B SaaS company helping industrial organizations protect their people, improve frontline execution, and reduce operational risk.</p><p>Our platform brings intelligence, automation, and real-time visibility to some of the world's most complex industrial environments, helping organizations move beyond reactive operations toward a smarter, AI-driven way of working.</p><p>We're building the future of industrial operations with a leadership team that has successfully built category-defining companies before. As our platform and engineering organization continue to grow, we're looking for people who want to shape not only what we build—but how we build it.</p><h3>The Opportunity</h3><p>We're looking for a Senior Full Stack Developer to join our growing Engineering team and help build the next generation of GOARC's platform.</p><p>This is a hands-on, high-impact role where you'll own features end-to-end from design and implementation to deployment and continuous improvement. You'll work across the full technology stack, collaborate closely with Product and Engineering, and help shape technical decisions that directly influence the future of our platform.</p><p>If you enjoy solving complex technical challenges, building scalable systems, and working in a fast-moving environment where ownership is valued, we'd love to meet you.</p><h3>What You'll Do</h3><ul><li>Design, develop, and maintain scalable full-stack features across frontend, backend, APIs, and databases.</li><li>Build high-quality, maintainable software with a strong focus on performance, reliability, and scalability.</li><li>Collaborate closely with Product, Design, and Engineering teams to deliver end-to-end customer value.</li><li>Participate in technical design discussions, architecture decisions, and code reviews.</li><li>Troubleshoot complex issues, optimize application performance, and continuously improve code quality.</li><li>Contribute to modern engineering practices and help evolve our development processes as the platform grows.</li></ul>",
+ "requirements": "<h3>What We're Looking For</h3><ul><li>6+ years of experience developing modern web applications using a frontend framework (React preferred, Typescript) and a backend technology such as .NET.</li><li>Deep expertise in SQL Server (or equivalent), including query optimization, indexing, execution plans, and performance tuning.</li><li>Experience building scalable, maintainable software in an Agile development environment.</li><li>Experience participating in code reviews and writing clean, maintainable code.</li><li>Strong analytical and problem-solving skills.</li><li>Excellent collaboration and communication skills.</li><li>Willingness to work in a remote-first environment with a high level of ownership and autonomy.</li></ul><h3>What Success Looks Like</h3><p>Success in this role means delivering high-quality features independently while contributing to the long-term evolution of the platform. You'll build reliable, maintainable software, help improve architecture and engineering practices, and collaborate closely across teams to solve complex technical challenges.</p><p>This role requires curiosity, ownership, and a builder's mindset. You'll be joining a growing engineering team where your ideas will influence technical decisions, development processes, and product direction. The ideal candidate is comfortable working in a fast-paced environment, embraces continuous learning, and enjoys taking responsibility beyond writing code.</p><h3>Why You'll Love Working at GOARC</h3><ul><li>Build technology that helps protect workers and improve safety across industrial organizations worldwide.</li><li>Work remotely in a flexible, remote-first environment.</li><li>Join a small, collaborative engineering team where your ideas have real impact.</li><li>Work with a modern technology stack including React, .NET, SQL Server, Azure, Microservices, Kubernetes, and CI/CD.</li><li>Own meaningful features from concept to production and influence architecture and technical direction.</li><li>Grow your career as the company scales, with opportunities to expand your technical leadership and responsibilities.</li></ul>",
+ "benefits": ""
+}

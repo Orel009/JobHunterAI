@@ -1,10 +1,10 @@
 /**
  * Which ATS a company uses, from a careers URL or a job link: first the address itself, then (only if needed) ONE plain
  * request to that page (no browser, no cookies) and its HTML scanned for the ATS's links and embeds.
- * Supported for reading jobs: Greenhouse, Comeet, SmartRecruiters. Detected only: Lever, Ashby, Workable.
+ * Supported for reading jobs: Greenhouse, Comeet, SmartRecruiters, Workable. Detected only: Lever, Ashby.
  */
 export type Ats = 'greenhouse' | 'comeet' | 'lever' | 'ashby' | 'workable' | 'smartrecruiters' | 'unknown';
-export const SUPPORTED_ATS: readonly Ats[] = ['greenhouse', 'comeet', 'smartrecruiters'];
+export const SUPPORTED_ATS: readonly Ats[] = ['greenhouse', 'comeet', 'smartrecruiters', 'workable'];
 export const ATS_LABEL: Record<Ats, string> = {
   greenhouse: 'Greenhouse',
   comeet: 'Comeet',
@@ -39,7 +39,9 @@ const PATTERNS: Array<{ ats: Ats; re: RegExp; board: (m: RegExpMatchArray) => st
   { ats: 'comeet', re: new RegExp(`"company_uid"\\s*:\\s*"(${COMEET_UID})"`, 'i'), board: (m) => m[1]!.toUpperCase() },
   { ats: 'lever', re: /(?:jobs(?:\.eu)?\.lever\.co|api(?:\.eu)?\.lever\.co\/v0\/postings)\/([A-Za-z0-9_.-]+)/i, board: (m) => m[1]! },
   { ats: 'ashby', re: /(?:jobs\.ashbyhq\.com|api\.ashbyhq\.com\/posting-api\/job-board)\/([A-Za-z0-9_.%-]+)/i, board: (m) => decodeURIComponent(m[1]!) },
-  { ats: 'workable', re: /apply\.workable\.com\/([a-z0-9-]+)/i, board: (m) => m[1]! },
+  // Workable: apply.workable.com/{account}/ (and its job / apply pages), {account}.workable.com
+  { ats: 'workable', re: /apply\.workable\.com\/(?:api\/v\d\/(?:widget\/)?accounts\/)?([a-z0-9-]+)(?=\/|$|\?)/i, board: (m) => (/^(j|api|jobs)$/i.test(m[1]!) ? null : m[1]!.toLowerCase()) },
+  { ats: 'workable', re: /^https?:\/\/([a-z0-9-]+)\.workable\.com/i, board: (m) => (/^(apply|www|jobs|careers|help|resources)$/i.test(m[1]!) ? null : m[1]!.toLowerCase()) },
   // SmartRecruiters: the "Easy apply" link (…/oneclick-ui/company/{id}/…), the API, a job page or the careers page
   { ats: 'smartrecruiters', re: /smartrecruiters\.com\/oneclick-ui\/company\/([A-Za-z0-9_-]+)/i, board: (m) => m[1]! },
   { ats: 'smartrecruiters', re: /api\.smartrecruiters\.com\/v1\/companies\/([A-Za-z0-9_-]+)/i, board: (m) => m[1]! },
@@ -111,8 +113,8 @@ export function nameVariants(name: string, url: string): string[] {
 
 /**
  * When neither the address nor the page shows the ATS: the public APIs asked directly, by name variant — Greenhouse
- * first (its board endpoint answers yes / no), then Lever and Ashby (detected only), then SmartRecruiters (it answers for
- * any name, so only a company with postings counts). At most 8 light requests; Comeet cannot be asked by name (its API
+ * first (its board endpoint answers yes / no), then Lever and Ashby (detected only), then Workable and SmartRecruiters
+ * (only an account with jobs counts). At most 10 light requests; Comeet cannot be asked by name (its API
  * needs the company UID). A SmartRecruiters id often differs from the name (Wix is "Wix2"): one job link finds it.
  */
 export async function probeAts(name: string, url: string, fetchImpl: typeof fetch = fetch): Promise<Detected | null> {
@@ -121,6 +123,12 @@ export async function probeAts(name: string, url: string, fetchImpl: typeof fetc
     { ats: 'greenhouse', url: (v) => `https://boards-api.greenhouse.io/v1/boards/${v}`, ok: async (r) => r.status === 200 },
     { ats: 'lever', url: (v) => `https://api.lever.co/v0/postings/${v}?limit=1&mode=json`, ok: async (r) => r.status === 200 && Array.isArray(await r.json().catch(() => null)) },
     { ats: 'ashby', url: (v) => `https://api.ashbyhq.com/posting-api/job-board/${v}`, ok: async (r) => r.status === 200 },
+    // Workable: the widget list of a real account (404 otherwise); only an account with jobs counts
+    {
+      ats: 'workable',
+      url: (v) => `https://apply.workable.com/api/v1/widget/accounts/${v}`,
+      ok: async (r) => r.status === 200 && (((await r.json().catch(() => null)) as { jobs?: unknown[] } | null)?.jobs?.length ?? 0) > 0,
+    },
     // SmartRecruiters answers 200 for any name: only a company with jobs counts
     { ats: 'smartrecruiters', url: (v) => `https://api.smartrecruiters.com/v1/companies/${v}/postings?limit=1`, ok: async (r) => r.status === 200 && Number(((await r.json().catch(() => null)) as { totalFound?: number } | null)?.totalFound ?? 0) > 0 },
   ];

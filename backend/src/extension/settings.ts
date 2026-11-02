@@ -9,12 +9,14 @@ export interface ExtensionSettings {
   fillCoverLetters: boolean;
   /** 2–3 messages you wrote yourself: the style reference for the drafts ('' = none) */
   styleSample: string;
+  /** optional cover-letter / bio / summary fields get drafts too (default on); off: only required ones */
+  draftOptionalFields: boolean;
 }
 type WithExt = { extension?: Partial<ExtensionSettings> };
 
 export function extensionSettings(): ExtensionSettings {
   const s = (readSettingsFile() as WithExt).extension ?? {};
-  return { fillCoverLetters: s.fillCoverLetters !== false, styleSample: typeof s.styleSample === 'string' ? s.styleSample : '' };
+  return { fillCoverLetters: s.fillCoverLetters !== false, styleSample: typeof s.styleSample === 'string' ? s.styleSample : '', draftOptionalFields: s.draftOptionalFields !== false };
 }
 
 export function saveExtensionSettings(patch: Partial<ExtensionSettings>): ExtensionSettings {

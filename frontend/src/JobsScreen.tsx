@@ -6,7 +6,7 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString('he-IL
 
 const ASSISTED = ['linkedin', 'indeed'];
 /** target-company jobs (Companies screen): applied to by you, from their Assisted apply card */
-const COMPANY: Record<string, string> = { greenhouse: 'Greenhouse', comeet: 'Comeet', smartrecruiters: 'SmartRecruiters' };
+const COMPANY: Record<string, string> = { greenhouse: 'Greenhouse', comeet: 'Comeet', smartrecruiters: 'SmartRecruiters', workable: 'Workable' };
 
 export function JobsScreen({
   refreshKey,

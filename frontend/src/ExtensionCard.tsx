@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 /** Settings: the JobHunter Fill extension (your regular Chrome) — where it is, the token to paste, a new token. */
 export function ExtensionCard() {
-  const [info, setInfo] = useState<{ token: string; folder: string; settings?: { fillCoverLetters: boolean; styleSample?: string } } | null>(null);
+  const [info, setInfo] = useState<{ token: string; folder: string; settings?: { fillCoverLetters: boolean; styleSample?: string; draftOptionalFields?: boolean } } | null>(null);
   const [shown, setShown] = useState(false);
   const [sample, setSample] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -20,6 +20,11 @@ export function ExtensionCard() {
     const r = (await (await fetch('/api/extension/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fillCoverLetters: on }) })).json()) as { fillCoverLetters: boolean };
     setInfo((i) => (i ? { ...i, settings: r } : i));
     setNote(on ? 'cover letters: the extension fills an AI draft (purple) for you to review' : 'cover letters: the extension leaves them empty');
+  };
+  const setOptional = async (on: boolean) => {
+    const r = (await (await fetch('/api/extension/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ draftOptionalFields: on }) })).json()) as NonNullable<NonNullable<typeof info>['settings']>;
+    setInfo((i) => (i ? { ...i, settings: r } : i));
+    setNote(on ? 'optional cover / bio / summary fields get drafts too' : 'only required cover / bio fields get drafts; optional ones are listed yellow with the reason');
   };
   const saveSample = async () => {
     const r = (await (await fetch('/api/extension/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ styleSample: sample ?? '' }) })).json()) as {
@@ -55,6 +60,13 @@ export function ExtensionCard() {
               <b>Fill cover letters in the extension</b> — a short AI draft from your profile facts (2–4 plain sentences in the job&apos;s language: 1–2 facts that match the job
               and one reason from the ad; no clichés, no em dashes, no lists), marked purple for you to review and edit before you submit. The automated sites keep cover letters
               empty.
+            </span>
+          </label>
+          <label className="row" title="a cover letter, message, bio or summary the form marks optional">
+            <input type="checkbox" checked={info.settings?.draftOptionalFields !== false} onChange={(e) => void setOptional(e.target.checked)} />
+            <span>
+              <b>Draft optional cover / bio fields</b> — a cover letter, message, bio or summary gets its draft even when the form marks it optional (default on). Off: only
+              required ones; the optional ones are outlined yellow with the reason.
             </span>
           </label>
           <label>
