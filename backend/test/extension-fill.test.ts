@@ -88,10 +88,10 @@ describe('field mapping (extension/fill-core.js)', () => {
     expect(F.answerFor({ label: 'Resume/CV', type: 'file' }, DATA)).toEqual({ cv: true });
     // cover letters: the AI draft when there is one; yellow without; left alone when the setting is off
     expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, { ...DATA, draft: { text: 'Hello.' } })).toEqual({ draft: 'Hello.', flaggedClaims: [] });
-    expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, DATA)).toMatchObject({ pending: 'cover letter: no draft was written — write it yourself' });
+    expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, DATA)).toMatchObject({ pending: 'no cover letter draft: none was requested for this field' });
     expect(F.answerFor({ label: 'Cover Letter', type: 'textarea' }, { ...DATA, fillCoverLetters: false })).toMatchObject({ skip: expect.stringMatching(/off/) });
     expect(F.answerFor({ label: 'GitHub URL', type: 'url' }, DATA)).toMatchObject({ pending: 'no github in your profile' });
-    expect(F.answerFor({ label: 'Why us?', type: 'textarea', required: true }, DATA)).toMatchObject({ pending: 'cover letter: no draft was written — write it yourself' });
+    expect(F.answerFor({ label: 'Why us?', type: 'textarea', required: true }, DATA)).toMatchObject({ pending: 'no cover letter draft: none was requested for this field' });
     expect(F.answerFor({ label: 'Describe a challenge you solved', type: 'textarea', required: true }, DATA)).toMatchObject({ pending: 'no answer on file' });
     expect(F.answerFor({ label: 'Favourite colour', type: 'text', required: false }, DATA)).toMatchObject({ skip: expect.any(String) });
   });
