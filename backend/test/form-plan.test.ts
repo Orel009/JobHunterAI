@@ -79,4 +79,28 @@ describe('the form planner', () => {
     // never from a web page
     expect((await app.inject({ method: 'POST', url: '/api/fill/plan', payload: { url: 'x', fields: [] } })).statusCode).toBe(401);
   });
+
+  it('each fill is reported to the log: fields (labels, rule, plan), drafts with their outcome, and what was left to you', async () => {
+    const app = buildApp(openDb(':memory:'));
+    const hdr = { 'x-jobhunter-token': extensionToken() };
+    const { log } = await import('../src/log.js');
+    const spy = vi.spyOn(log, 'info');
+    const r = await app.inject({
+      method: 'POST',
+      url: '/api/fill/report',
+      headers: hdr,
+      payload: {
+        url: 'https://www.example.test/careers/1',
+        linked: false,
+        jobContext: 'from page',
+        fields: [{ label: 'Bio *', type: 'textarea', required: true, rule: 'bio', planned: null }],
+        drafts: [{ label: 'Bio *', kind: 'bio', ok: false, error: 'timed out after 180 s', ms: 180000 }],
+        problems: [],
+        result: { filled: 3, drafts: 0, needYou: 1, pending: ['Bio *: no draft: timed out after 180 s'], notes: [] },
+      },
+    });
+    expect(r.json()).toEqual({ ok: true });
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ host: 'www.example.test', drafts: [expect.objectContaining({ kind: 'bio', ok: false, error: 'timed out after 180 s' })] }), 'extension: fill report');
+    spy.mockRestore();
+  });
 });

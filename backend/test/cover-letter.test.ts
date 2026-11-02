@@ -25,7 +25,7 @@ vi.mock('../src/llm/reachable.js', async (orig) => ({ ...(await orig<typeof impo
 
 import fs from 'node:fs';
 import { config } from '../src/config.js';
-import { coverLetterProblem, makeDrafter, sentenceCount } from '../src/apply/draft.js';
+import { coverLetterProblem, makeDrafter, sentenceCount, yearsProblem } from '../src/apply/draft.js';
 import { ProfileSchema } from '../src/profile/schema.js';
 import { profilePath } from '../src/profile/facts.js';
 import { openDb } from '../src/db/index.js';
@@ -34,6 +34,7 @@ import { extensionToken } from '../src/extension/token.js';
 
 const PROFILE = ProfileSchema.parse({
   contact: { name: { en: 'Test Person' }, city: {} },
+  declaredExperience: { totalDevYears: 2, basis: 'test' },
   experience: [{ id: 'exp.matrix', company: { en: 'Matrix' }, title: { en: 'Developer' }, start: '2023', end: 'present', highlights: { en: ['Built an API platform for internal teams'] } }],
 });
 const field = { key: 'coverLetter', label: 'Message to the hiring team', type: 'textarea', required: false } as never;
@@ -112,6 +113,26 @@ describe('a fresh text for every job, and the bio', () => {
   });
 });
 
+describe('years the ad asks for, never claimed', () => {
+  it('a number of years above your declared total is a problem; your own total, or none, is fine', () => {
+    expect(yearsProblem('I have 3+ years of experience with React.', 2)).toBe('a claim of 3+ years of experience (your profile: 2)');
+    expect(yearsProblem('I bring 5 yrs of Node.js work.', 2)).toMatch(/5 yrs/);
+    expect(yearsProblem('יש לי 4 שנות ניסיון בפיתוח.', 2)).toMatch(/4 שנות/);
+    expect(yearsProblem('I have 2 years of professional experience building React apps.', 2)).toBeNull();
+    expect(yearsProblem('I built REST APIs with Node.js at Matrix (2025).', 2)).toBeNull();
+    expect(yearsProblem('I have 3 years of experience.', null, '[exp.a] 3 years at Acme')).toBeNull();
+    expect(yearsProblem('I have 3 years of experience.', null, '[exp.a] Developer at Acme')).toMatch(/3 years/);
+  });
+
+  it('an ad asking for 3+ years: a draft claiming it is sent back with the reason; the rewrite focuses on the work', async () => {
+    h.drafts.push('I have 3+ years of experience with React and Node.js.', 'I build React dashboards and REST APIs in Node.js at Matrix.');
+    const d = await makeDrafter(PROFILE, { mode: 'bio' })(field, { ...ctx, jobText: 'Requirements: 3+ years of experience with React, JavaScript, REST and Node.js.' });
+    expect(d.text).toBe('I build React dashboards and REST APIs in Node.js at Matrix.');
+    expect(h.calls[1]!.at(-1)!.content).toMatch(/^Rejected: it has a claim of 3\+ years of experience \(your profile: 2\)/);
+    expect(h.calls[0]![0]!.content).toMatch(/Years: never state or imply a number of years of experience the facts do not give/);
+  });
+});
+
 describe('the extension asks for a draft', () => {
   it('the model not running: the reason comes back for the overlay (no error deep in the call)', async () => {
     fs.mkdirSync(config.dataDir, { recursive: true });
@@ -123,6 +144,9 @@ describe('the extension asks for a draft', () => {
       expect(r.statusCode).toBe(200);
       expect(r.json()).toMatchObject({ text: null, error: 'Ollama is not running (http://127.0.0.1:11434): start it (JobHunter → the LLM badge → Start Ollama), then fill again' });
       h.reach = { ok: true, reason: null, canStart: true };
+      // a very long page title is cut, never a reason to refuse the draft
+      h.drafts.push(CLEAN);
+      expect((await app.inject({ method: 'POST', url: '/api/fill/draft', headers: { 'x-jobhunter-token': extensionToken() }, payload: { title: 'x'.repeat(2000), company: 'Wix', lang: 'en' } })).json()).toMatchObject({ text: CLEAN });
       h.drafts.push(CLEAN);
       expect((await app.inject({ method: 'POST', url: '/api/fill/draft', headers: { 'x-jobhunter-token': extensionToken() }, payload: { title: 'Full Stack Engineer', company: 'Wix', lang: 'en' } })).json()).toMatchObject({ text: CLEAN, error: null });
     } finally {

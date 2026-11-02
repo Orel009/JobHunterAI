@@ -91,6 +91,18 @@ export const sentenceCount = (t: string): number =>
     .split(/[.!?]+(?:\s|$)/)
     .filter((x) => x.trim().length > 1).length;
 
+/**
+ * A claim of more years of experience than you have ("3+ years of React" with 2 years declared): the ad may ask for 3+,
+ * the draft must not say it. maxYears: your declared total (null: any number of years not in the facts).
+ */
+export function yearsProblem(text: string, maxYears: number | null, factsText = ''): string | null {
+  for (const m of text.matchAll(/(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?|שנים|שנות|שנה)/gi)) {
+    const n = Number(m[1]);
+    if (maxYears !== null ? n > maxYears : !factsText.includes(m[1]!)) return `a claim of ${m[0].trim()} of experience (your profile: ${maxYears ?? 'no total declared'})`;
+  }
+  return null;
+}
+
 /** Why a cover-letter / bio draft breaks the style rules (null = fine): a banned phrase, an em dash, a list, too many sentences. */
 export function coverLetterProblem(text: string, maxSentences = 4): string | null {
   const banned = COVER_BANNED.filter(([re]) => re.test(text)).map(([, name]) => `"${name}"`);
@@ -110,6 +122,7 @@ const COVER_SYSTEM: Record<'he' | 'en', string> = {
     'בחר 1-2 דרישות מהמודעה שהעובדות ברשימה באמת עונות עליהן, והראה את זה דרך העובדות האלה. הוסף סיבה קונקרטית אחת שקשורה לחברה או לתפקיד (משהו שכתוב במודעה).',
     'אסור: קלישאות ("נלהב", "אשמח מאוד להצטרף", "מאתגר ודינמי", "תשוקה"), מחמאות לחברה, קו מפריד ארוך (—), רשימות או תבליטים.',
     'מותר להשתמש אך ורק בעובדות שברשימה (כל עובדה עם מזהה בסוגריים מרובעים). אסור להוסיף שום פרט שלא מופיע בהן.',
+    'שנים: אסור לציין או לרמוז על מספר שנות ניסיון שלא מופיע בעובדות. אם המודעה דורשת יותר שנים ממה שהעובדות מראות, אל תטען זאת; התמקד במה שהעובדות כן מראות.',
     'אם אי אפשר לכתוב מתוך העובדות: unanswerable=true ו-text ריק. usedFactIds: מזהי העובדות שההודעה נשענת עליהן.',
   ].join('\n'),
   en: [
@@ -118,6 +131,7 @@ const COVER_SYSTEM: Record<'he' | 'en', string> = {
     'Pick 1-2 requirements from the job ad that the listed facts really meet, and show it through those facts. Add one concrete reason tied to this company or role (something the ad actually says).',
     'Never: clichés ("excited", "passionate", "thrilled", "I am confident", "leverage", "dynamic", "fast-paced", "I believe I would be a great fit"), flattery of the company, em dashes (—), lists or bullet points.',
     'Use ONLY the facts listed (each has an id in square brackets). Do not add any detail that is not in them.',
+    'Years: never state or imply a number of years of experience the facts do not give. If the ad asks for more years than the facts show, do not claim it; focus on what the facts do show (the work, the stack, the projects).',
     'If it cannot be written from the facts: unanswerable=true and empty text. usedFactIds: ids of every fact the message relies on.',
   ].join('\n'),
 };
@@ -130,6 +144,7 @@ const BIO_SYSTEM: Record<'he' | 'en', string> = {
     '2-3 משפטים קצרים ופשוטים: התפקיד הנוכחי, הטכנולוגיות המרכזיות, ופרויקט אחד. התאם קלות לטכנולוגיות של המשרה (הדגש את מה שמשותף).',
     'אסור: קלישאות ("נלהב", "תשוקה", "מאתגר ודינמי"), קו מפריד ארוך (—), רשימות או תבליטים.',
     'מותר להשתמש אך ורק בעובדות שברשימה (כל עובדה עם מזהה בסוגריים מרובעים). אסור להוסיף שום פרט שלא מופיע בהן.',
+    'שנים: אסור לציין מספר שנות ניסיון שלא מופיע בעובדות, גם אם המודעה דורשת אותו; תאר את העבודה במקום.',
     'אם אי אפשר לכתוב מתוך העובדות: unanswerable=true ו-text ריק. usedFactIds: מזהי העובדות שהטקסט נשען עליהן.',
   ].join('\n'),
   en: [
@@ -137,6 +152,7 @@ const BIO_SYSTEM: Record<'he' | 'en', string> = {
     '2-3 short plain sentences: the current role, the key stack, and one project. Lightly tailored to the job: lead with what its stack shares with the facts.',
     'Never: clichés ("excited", "passionate", "thrilled", "I am confident", "leverage", "dynamic", "fast-paced"), em dashes (—), lists or bullet points.',
     'Use ONLY the facts listed (each has an id in square brackets). Do not add any detail that is not in them.',
+    'Years: never state or imply a number of years of experience the facts do not give, even when the ad asks for them; describe the work instead.',
     'If it cannot be written from the facts: unanswerable=true and empty text. usedFactIds: ids of every fact the text relies on.',
   ].join('\n'),
 };
@@ -164,15 +180,21 @@ export function makeDrafter(profile: Profile | null, opts: { cache?: LlmCache; n
     // cover letters and bios: a fresh text each time (no cache, more variety); form answers: stable and cached
     const write = { task: 'write' as const, schema: DraftSchema, temperature: styled ? 0.7 : 0.2, cache: styled ? undefined : opts.cache };
     let { data } = await chatJson({ ...write, messages });
-    // a text that breaks the style rules is sent back once, with the reason
+    // a text that breaks the style rules (or claims years you do not have) is sent back once, with the reason
+    const maxYears = profile.declaredExperience?.totalDevYears ?? null;
+    const check = (t: string) => coverLetterProblem(t, maxSentences) ?? yearsProblem(t, maxYears, factBlock);
     if (styled && !data.unanswerable && data.text.trim()) {
-      const problem = coverLetterProblem(data.text, maxSentences);
+      const problem = check(data.text);
       if (problem) {
         ({ data } = await chatJson({
           ...write,
-          messages: [...messages, { role: 'assistant' as const, content: JSON.stringify(data) }, { role: 'user' as const, content: `Rejected: it has ${problem}. Rewrite it following every rule: 2-${maxSentences} short plain sentences, none of the banned phrases, no em dashes, no lists.` }],
+          messages: [
+            ...messages,
+            { role: 'assistant' as const, content: JSON.stringify(data) },
+            { role: 'user' as const, content: `Rejected: it has ${problem}. Rewrite it following every rule: 2-${maxSentences} short plain sentences, none of the banned phrases, no em dashes, no lists, no years of experience the facts do not give.` },
+          ],
         }));
-        const again = data.text.trim() ? coverLetterProblem(data.text, maxSentences) : null;
+        const again = data.text.trim() ? check(data.text) : null;
         if (again) return { text: null, usedFactIds: data.usedFactIds, unanswerable: false, flaggedClaims: [], rejectedReason: `style check failed twice (${again})` };
       }
     }

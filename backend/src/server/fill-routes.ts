@@ -24,6 +24,13 @@ import path from 'node:path';
 /** A browser page's request (any http/https origin) — the dashboard is same-origin and sends none for GET. */
 const fromWebPage = (req: FastifyRequest) => /^https?:\/\//i.test(String(req.headers.origin ?? ''));
 
+/** a string cut to n characters (a long title or label is shortened, never refused) */
+const cut = (n: number) =>
+  z
+    .string()
+    .default('')
+    .transform((s) => s.slice(0, n));
+
 export function registerFillRoutes(app: FastifyInstance, db: DB): void {
   const repo = new Repo(db);
 
@@ -97,19 +104,44 @@ export function registerFillRoutes(app: FastifyInstance, db: DB): void {
     }
   });
 
+  /** What one fill did (field labels, kinds, draft outcomes and reasons; no values typed into the page), for the log. */
+  app.post('/api/fill/report', async (req) => {
+    const b = z
+      .object({
+        url: cut(500),
+        linked: z.boolean().default(false),
+        jobContext: cut(120),
+        fields: z.array(z.object({ label: cut(120), type: cut(30), required: z.boolean().default(false), rule: z.string().nullable().default(null), planned: z.string().nullable().default(null) })).max(150).default([]),
+        drafts: z.array(z.object({ label: cut(120), kind: cut(10), ok: z.boolean(), error: z.string().nullable().default(null), ms: z.number().default(0) })).max(20).default([]),
+        problems: z.array(cut(300)).max(20).default([]),
+        result: z.object({ filled: z.number(), drafts: z.number(), needYou: z.number(), pending: z.array(cut(300)).max(60).default([]), notes: z.array(cut(400)).max(30).default([]) }).nullable().default(null),
+      })
+      .parse(req.body ?? {});
+    const host = (() => {
+      try {
+        return new URL(b.url).hostname;
+      } catch {
+        return 'unknown';
+      }
+    })();
+    log.info({ host, linked: b.linked, jobContext: b.jobContext, fields: b.fields, drafts: b.drafts, problems: b.problems, result: b.result }, 'extension: fill report');
+    return { ok: true };
+  });
+
   /** A cover letter / message / bio: an AI draft from your profile facts, for you to review on the form. */
   app.post('/api/fill/draft', async (req) => {
     const b = z
       .object({
         jobId: z.string().max(80).optional(),
-        title: z.string().max(300).default(''),
-        company: z.string().max(200).default(''),
-        label: z.string().max(300).default(''),
+        // a long page title is cut, never a reason to refuse the draft
+        title: cut(300),
+        company: cut(200),
+        label: cut(300),
         lang: z.enum(['he', 'en']).default('en'),
         /** cover: a cover letter / message / note; bio: about you */
         kind: z.enum(['cover', 'bio']).default('cover'),
         /** the job ad as the page shows it (a page JobHunter does not know) */
-        jobText: z.string().max(8000).default(''),
+        jobText: cut(8000),
       })
       .parse(req.body ?? {});
     if (!extensionSettings().fillCoverLetters) throw new ServiceError(409, 'cover letters are off (Settings → JobHunter Fill)');

@@ -21,11 +21,15 @@ function localOnly(base) {
   if (!['127.0.0.1', 'localhost'].includes(u.hostname)) throw new Error('JobHunter Fill only talks to your own computer (127.0.0.1 / localhost)');
 }
 
-async function api(path, init = {}) {
+async function api(path, init = {}, timeoutMs = 0) {
   const { base, token } = await settings();
   localOnly(base);
   if (!token) throw new Error('no token yet: open the extension options and paste it from JobHunter → Settings → JobHunter Fill');
-  const r = await fetch(`${base}${path}`, { ...init, headers: { ...(init.headers || {}), 'X-JobHunter-Token': token, 'content-type': 'application/json' } });
+  const signal = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
+  const r = await fetch(`${base}${path}`, { ...init, signal, headers: { ...(init.headers || {}), 'X-JobHunter-Token': token, 'content-type': 'application/json' } }).catch((e) => {
+    if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) throw new Error(`timed out after ${Math.round(timeoutMs / 1000)} s`);
+    throw new Error(`JobHunter did not answer (${e.message}) — is it running?`);
+  });
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(body.error || `JobHunter answered HTTP ${r.status}`);
   return body;
@@ -51,37 +55,56 @@ async function fillTab(tabId) {
   // what went wrong on the way is shown in the overlay
   data.problems = [];
   data.frames = page.frames || [];
-  data.jobContext = job ? 'the JobHunter job' : (page.jobText || '').length >= 200 ? 'from page' : 'the page title only (no job ad found on the page)';
+  data.hasJobContext = !!job || (page.jobText || '').length >= 200;
+  data.jobContext = job ? 'the JobHunter job' : data.hasJobContext ? 'from page' : 'the page title only (no job ad found on the page)';
+  const title = String(page.title || '').slice(0, 300);
+  const company = String(page.company || '').slice(0, 200);
 
-  // the form planner (cached per site + form by JobHunter)
+  // the form planner, only for the fields the rules do not recognize (cached per site + form by JobHunter)
   data.plan = {};
-  if (page.fields.length) {
-    const p = await api('/api/fill/plan', {
-      method: 'POST',
-      body: JSON.stringify({ url: tab.url, fields: page.fields.map(({ empty, dict, ...f }) => f), job: { title: page.title || '', company: page.company || '', text: job ? '' : page.jobText || '' } }),
-    }).catch((e) => ({ plan: {}, error: e.message }));
+  const unknown = page.fields.filter((f) => !f.dict);
+  if (unknown.length) {
+    const p = await api(
+      '/api/fill/plan',
+      { method: 'POST', body: JSON.stringify({ url: tab.url, fields: unknown.map(({ empty, dict, ...f }) => f), job: { title, company, text: job ? '' : page.jobText || '' } }) },
+      120000,
+    ).catch((e) => ({ plan: {}, error: e.message }));
     data.plan = p.plan || {};
-    if (p.error) data.problems.push(`the form was not planned (the dictionary only): ${p.error}`);
+    if (p.error) data.problems.push(`the form planner failed (${p.error}); the rules only`);
   }
 
-  // the drafts: every empty cover-letter / message / bio field, one by one
+  // the drafts: every empty cover-letter / message / bio field, one by one; for every other free-text field, why not
   data.drafts = {};
-  const wanted = page.fields.filter((f) => f.empty).map((f) => ({ f, kind: F.draftKindOf(f, data.plan) })).filter((x) => x.kind);
-  if (wanted.length && data.fillCoverLetters) {
-    for (const { f, kind } of wanted) {
-      data.drafts[f.key] = await api('/api/fill/draft', {
+  data.draftNotes = {};
+  const report = [];
+  for (const f of page.fields.filter((x) => x.empty)) {
+    const kind = F.draftKindOf(f, data.plan, data.hasJobContext);
+    if (!kind) {
+      if (f.type === 'textarea') data.draftNotes[f.key] = F.noDraftReason(f, data.plan);
+      continue;
+    }
+    if (!data.fillCoverLetters) {
+      data.draftNotes[f.key] = 'cover letters are off (JobHunter → Settings → JobHunter Fill)';
+      continue;
+    }
+    const t0 = Date.now();
+    data.drafts[f.key] = await api(
+      '/api/fill/draft',
+      {
         method: 'POST',
         body: JSON.stringify({
           jobId: job ? job.id : undefined,
           kind,
-          title: page.title || '',
-          company: page.company || '',
-          label: (f.label || f.placeholder || (kind === 'bio' ? 'Bio' : 'Message to the hiring team')).slice(0, 300),
+          title,
+          company,
+          label: String(f.label || f.placeholder || (kind === 'bio' ? 'Bio' : 'Message to the hiring team')).slice(0, 300),
           lang: page.lang,
-          jobText: job ? '' : (page.jobText || '').slice(0, 8000),
+          jobText: job ? '' : String(page.jobText || '').slice(0, 8000),
         }),
-      }).catch((e) => ({ text: null, error: e.message }));
-    }
+      },
+      180000,
+    ).catch((e) => ({ text: null, error: e.message }));
+    report.push({ label: f.label || f.placeholder, kind, ok: !!data.drafts[f.key].text, error: data.drafts[f.key].error || null, ms: Date.now() - t0 });
   }
 
   const [res] = await chrome.scripting.executeScript({
@@ -95,10 +118,23 @@ async function fillTab(tabId) {
           ),
         onFillAgain: () =>
           new Promise((resolve, reject) => chrome.runtime.sendMessage({ type: 'fillAgain' }, (r) => (r && r.ok ? resolve(r) : reject(new Error((r && r.error) || 'no answer'))))),
-      }).then((s) => ({ filled: s.filled, drafts: s.drafts, needYou: s.needYou, cv: s.cv, refused: s.refused || null })),
+      }).then((s) => ({ filled: s.filled, drafts: s.drafts, needYou: s.needYou, cv: s.cv, refused: s.refused || null, pending: s.pending, notes: s.notes })),
     args: [data],
   });
   if (res?.result?.refused) throw new Error(res.result.refused);
+  // what happened, in JobHunter's log (no values: field labels, kinds and reasons only)
+  api('/api/fill/report', {
+    method: 'POST',
+    body: JSON.stringify({
+      url: tab.url,
+      linked: !!job,
+      jobContext: data.jobContext,
+      fields: page.fields.map((f) => ({ label: f.label || f.placeholder, type: f.type, required: f.required, rule: f.dict, planned: data.plan[f.key] || null })),
+      drafts: report,
+      problems: data.problems,
+      result: res?.result ? { filled: res.result.filled, drafts: res.result.drafts, needYou: res.result.needYou, pending: res.result.pending, notes: res.result.notes } : null,
+    }),
+  }).catch(() => undefined);
   return res?.result ?? null;
 }
 

@@ -8,7 +8,12 @@
  *   - "Fill again" fills only what is still empty (a field added after the first fill);
  *   - a form in a same-origin frame is filled; another site's frame is named in the overlay (open it yourself);
  *   - an institution list that finds nothing for the full name: the next query ("ORT Hermelin") is tried;
- *   - a form with more steps: this step only, a note to click Next yourself. Nothing is ever submitted.
+ *   - a form with more steps: this step only, a note to click Next yourself. Nothing is ever submitted;
+ *   - free-text fields decided by rules first (bio / note / message / why…), the planner only for the rest; a required
+ *     textarea nobody recognized, on a page with a job ad, is a cover note; a rich-text editor (contenteditable) is
+ *     filled like a textarea; a free-text field without a draft always says why;
+ *   - the real Comeet application form (saved, sanitized): the "Personal note" gets its draft; an apply frame whose
+ *     address mentions linkedin.com (as the referrer) is still named for you to open.
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
@@ -75,8 +80,8 @@ const fill = (page: Page, data: unknown, overlay = false) =>
     ([d, o]) => (window as unknown as { JobHunterFill: { run: (doc: Document, x: unknown, opts: unknown) => Promise<Out> } }).JobHunterFill.run(document, d, o ? { onFillAgain: async () => undefined } : { overlay: false }),
     [data, overlay] as const,
   );
-const kindOf = (page: Page, f: Field, plan: Record<string, string>) =>
-  page.evaluate(([x, p]) => (window as unknown as { JobHunterFill: { draftKindOf: (f: unknown, p: unknown) => string | null } }).JobHunterFill.draftKindOf(x, p), [f, plan] as const);
+const kindOf = (page: Page, f: Field, plan: Record<string, string>, hasJob = false) =>
+  page.evaluate(([x, p, j]) => (window as unknown as { JobHunterFill: { draftKindOf: (f: unknown, p: unknown, j: boolean) => string | null } }).JobHunterFill.draftKindOf(x, p, j), [f, plan, hasJob] as const);
 const overlayText = (page: Page) => page.evaluate(() => document.getElementById('jobhunter-fill-overlay')!.shadowRoot!.textContent ?? '');
 const BIO = 'I build full-stack features with Node.js, TypeScript and React at Acme. One of them is an API platform used by internal teams.';
 const NOTE = 'Your ad asks for REST APIs in Node.js and payment integrations, which is the API work I do at Acme. Moving money reliably is a problem I want to work on.';
@@ -86,7 +91,7 @@ describe('the scan: the fields as the planner sees them, and the job ad on the p
     const page = await open(fx('form-bio.html'));
     const s = await scan(page);
     expect(s).toMatchObject({ title: 'Full Stack Developer', company: 'Example Logistics', lang: 'en', frames: [] });
-    expect(s.jobText).toMatch(/2\+ years of experience building web applications with Node\.js and TypeScript/);
+    expect(s.jobText).toMatch(/3\+ years of experience as a full stack developer.*REST APIs with Node\.js/);
     expect(s.jobText).not.toMatch(/Contact sales|All rights reserved|Privacy policy|Submit application/);
     const bio = s.fields.find((f) => f.name === 'bio')!;
     expect(bio).toMatchObject({ label: 'Bio *', type: 'textarea', required: true, empty: true, dict: 'bio' });
@@ -98,10 +103,10 @@ describe('the scan: the fields as the planner sees them, and the job ad on the p
     const page = await open(fx('form-placeholder.html'));
     const s = await scan(page);
     const msg = s.fields.find((f) => f.name === 'msg')!;
-    expect(msg).toMatchObject({ label: 'Message', placeholder: 'Message', type: 'textarea', dict: null });
+    // a free-text "Message" is a cover note by the rules alone (no planner needed)
+    expect(msg).toMatchObject({ label: 'Message', placeholder: 'Message', type: 'textarea', dict: 'coverLetter' });
     expect(msg.near).toMatch(/Please send us a note on why you want to be part of our team/);
-    expect(await kindOf(page, msg, {})).toBeNull();
-    expect(await kindOf(page, msg, { [msg.key]: 'draft:cover' })).toBe('cover'); // the planner's mapping
+    expect(await kindOf(page, msg, {})).toBe('cover');
     const country = s.fields.find((f) => f.name === 'country')!;
     expect(country).toMatchObject({ type: 'select-one', dict: 'country' });
     expect(country.options).toEqual(['Country', 'Germany', 'Israel', 'United Kingdom', 'United States']);
@@ -206,5 +211,78 @@ describe('complex forms', () => {
     expect(await page.locator('#e').inputValue()).toBe('test@example.com');
     expect(r.notes.some((n) => /more steps: .*click Next yourself/.test(n))).toBe(true);
     expect(await page.evaluate(() => (window as unknown as { __next?: number }).__next)).toBeUndefined();
+  });
+});
+
+describe('free-text fields: rules first, the planner for the rest, never a silent "fill it yourself"', () => {
+  it('rules: bio / about you / tell us about / summary / קצת עליי / ספר/י על עצמך → bio; message / cover / note / why / motivation / מכתב → cover', async () => {
+    const page = await open('<!DOCTYPE html><html><body></body></html>');
+    const kinds = await page.evaluate(() => {
+      const J = (window as unknown as { JobHunterFill: { freeTextRule: (f: unknown) => string | null } }).JobHunterFill;
+      const t = (label: string, placeholder = '') => J.freeTextRule({ type: 'textarea', label, placeholder });
+      return {
+        bio: ['Bio *', 'About you', 'Tell us about yourself', 'Professional summary', 'קצת עליי', 'ספר/י על עצמך'].map((l) => t(l)),
+        cover: ['Message', 'Cover letter', 'Personal note', 'Why us?', 'Motivation', 'מכתב מקדים', 'הודעה'].map((l) => t(l)),
+        placeholder: t('', 'Write a short note'),
+        input: J.freeTextRule({ type: 'text', label: 'Message' }),
+      };
+    });
+    expect(kinds.bio).toEqual(Array(6).fill('bio'));
+    expect(kinds.cover).toEqual(Array(7).fill('coverLetter'));
+    expect(kinds.placeholder).toBe('coverLetter');
+    expect(kinds.input).toBeNull(); // the rules are for free-text fields
+  });
+
+  it('a REQUIRED textarea nobody recognized: a cover note on a page with a job ad; otherwise the reason', async () => {
+    const page = await open('<!DOCTYPE html><html><body><form><label for="x">Anything else? *</label><textarea id="x" required></textarea></form></body></html>');
+    const f = (await scan(page)).fields[0]!;
+    expect(f).toMatchObject({ type: 'textarea', required: true, dict: null });
+    expect(await kindOf(page, f, {}, true)).toBe('cover');
+    expect(await kindOf(page, f, { [f.key]: 'unknown' }, true)).toBe('cover');
+    expect(await kindOf(page, f, {}, false)).toBeNull();
+    const why = await page.evaluate((x) => (window as unknown as { JobHunterFill: { noDraftReason: (f: unknown, p: unknown) => string } }).JobHunterFill.noDraftReason(x, { [x.key]: 'unknown' }), f);
+    expect(why).toBe('the form planner said "unknown"');
+    const r = await fill(page, { ...DATA, draftNotes: { [f.key]: why } });
+    // no job context here, so no draft: the field says why (never just "fill it yourself")
+    expect(r.pending).toEqual(['Anything else? *: no draft: the form planner said "unknown"']);
+  });
+
+  it('a rich-text editor (contenteditable) labelled "Bio *" gets the bio draft, purple', async () => {
+    const page = await open('<!DOCTYPE html><html><body><form><div class="field"><label id="bl">Bio *</label><div id="ed" contenteditable="true" role="textbox" aria-labelledby="bl" aria-required="true" style="min-height:60px;border:1px solid #ccc"></div></div></form></body></html>');
+    const f = (await scan(page)).fields.find((x) => x.type === 'textarea')!;
+    expect(f).toMatchObject({ label: 'Bio *', required: true, dict: 'bio', empty: true });
+    const r = await fill(page, { ...DATA, drafts: { [f.key]: { text: BIO, flaggedClaims: [], error: null } } });
+    expect(await page.locator('#ed').textContent()).toBe(BIO);
+    expect(await page.locator('#ed').getAttribute('data-jobhunter-fill')).toBe('draft');
+    expect(r).toMatchObject({ drafts: 1, needYou: 0 });
+  });
+
+  it('a required custom element JobHunter cannot type into: the real reason, not "fill it yourself"', async () => {
+    const page = await open('<!DOCTYPE html><html><body><form><label id="l">Bio *</label><div role="textbox" aria-labelledby="l" aria-required="true" style="height:40px"></div></form></body></html>');
+    const r = await fill(page, DATA);
+    expect(r.pending).toEqual(['Bio *: required text, not filled: a custom textbox element JobHunter cannot type into']);
+  });
+});
+
+describe('the real Comeet application form (saved, sanitized)', () => {
+  it('"Personal note" gets its cover-note draft; your details filled; the CV marked; nothing submitted', async () => {
+    const page = await open(fx('form-comeet-apply.html'));
+    const s = await scan(page);
+    const note = s.fields.find((f) => f.name === 'comment')!;
+    expect(note).toMatchObject({ label: 'Personal note', type: 'textarea', dict: 'coverLetter' });
+    expect(s.fields.filter((f) => !f.dict).map((f) => f.label)).toEqual([]); // nothing for the planner: the rules know every field
+    const r = await fill(page, { ...DATA, drafts: { [note.key]: { text: NOTE, flaggedClaims: [], error: null } } });
+    expect(await page.locator('#inputNote').inputValue()).toBe(NOTE);
+    expect([await page.locator('#inputFirstName').inputValue(), await page.locator('#inputLastName').inputValue(), await page.locator('#inputEmail').inputValue()]).toEqual(['Test', 'Person', 'test@example.com']);
+    expect(r.drafts).toBe(1);
+    expect(r.pending.some((p) => /Personal note/.test(p))).toBe(false);
+    expect(await page.evaluate(() => (window as unknown as { __submits: number }).__submits)).toBe(0);
+  });
+
+  it('the job page around it: the apply frame (another site, its address mentions linkedin.com as the referrer) is named for you', async () => {
+    const src = 'http://www.comeet.test/jobs/B7.006/4C.C25/apply?company-name=inManage&referrer=https:%2F%2Fwww.linkedin.com%2F';
+    const page = await open(`<!DOCTYPE html><html><body><h1>Junior React Developer</h1><iframe src="${src}" style="width:600px;height:500px"></iframe></body></html>`, { [src]: '<form><input name="x"></form>' });
+    await page.waitForTimeout(300);
+    expect((await scan(page)).frames).toEqual([src]);
   });
 });

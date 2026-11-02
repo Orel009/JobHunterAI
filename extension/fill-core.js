@@ -91,7 +91,25 @@
     return null;
   }
 
-  /** The dictionary's type: autocomplete → label → form-control name / name / id → placeholder. */
+  /**
+   * A free-text field (textarea / editor) that is plainly a bio or a cover note, by its label or placeholder — decided
+   * here, never left to the planner: bio / about you / about yourself / tell us about / summary / קצת עליי / ספר/י על
+   * עצמך → a bio; message / cover / note / why / motivation / מכתב / הודעה → a cover note.
+   */
+  const BIO_RULE = /\bbio(graphy)?\b|\babout (you|yourself|me)\b|tell us about|\bsummary\b|קצת על|ספר.{0,3}על עצמ|על עצמך|על עצמי/;
+  const COVER_RULE = /\bmessage\b|\bcover\b|\bnote\b|\bwhy\b|motivation|מכתב|הודעה|מוטיבציה|למה|מדוע/;
+  function freeTextRule(f) {
+    if (f.type !== 'textarea') return null;
+    for (const text of [f.label, f.placeholder]) {
+      const t = norm(text);
+      if (!t) continue;
+      if (BIO_RULE.test(t)) return 'bio';
+      if (COVER_RULE.test(t)) return 'coverLetter';
+    }
+    return null;
+  }
+
+  /** The dictionary's type: autocomplete → label → form-control name / name / id → placeholder; free-text rules. */
   function dictType(f) {
     const ac = String(f.autocomplete || '').toLowerCase().split(/\s+/).pop();
     if (AUTOCOMPLETE[ac]) {
@@ -99,27 +117,29 @@
       if (AUTOCOMPLETE[ac] === 'email' && classify(`${f.label} ${words(f.id)} ${words(f.name)}`) === 'confirmEmail') return 'confirmEmail';
       return AUTOCOMPLETE[ac];
     }
-    return classify(f.label) || classify(`${words(f.controlName)} ${words(f.name)} ${words(f.id)} ${words(f.dataTest)}`) || classify(f.placeholder) || null;
+    const byText = classify(f.label);
+    if (byText) return byText;
+    return freeTextRule(f) || classify(`${words(f.controlName)} ${words(f.name)} ${words(f.id)} ${words(f.dataTest)}`) || classify(f.placeholder) || null;
   }
 
   /** the form planner's kinds → field types ("draft:cover" is a cover letter / message, "draft:bio" a bio) */
   const PLANNED = { 'draft:cover': 'coverLetter', 'draft:bio': 'bio' };
   const DRAFT_TYPES = ['coverLetter', 'bio'];
   /**
-   * A field's type: the dictionary, then the form plan (data.plan, by the field's key). A planned draft wins over the
-   * dictionary (a "Message" under "send us a note on why…" is a cover note) except where the dictionary says never /
-   * CV / social. Then the cached label classification.
+   * A field's type: the rules (dictionary + free-text rules) decide what they recognize; the form plan (data.plan, by
+   * the field's key) only what they don't; then the cached label classification. Last: on a page with a job ad, a
+   * REQUIRED free-text field nobody recognized is a cover note (it must not stay empty).
    */
   function fieldType(f, data) {
     const d = dictType(f);
-    if (d === 'never' || d === 'cv' || d === 'social') return d;
+    if (d) return d;
     const raw = data && data.plan && f.key ? data.plan[f.key] : undefined;
     const planned = raw ? PLANNED[raw] || raw : undefined;
-    if (DRAFT_TYPES.includes(planned) && (f.type === 'textarea' || f.type === 'text' || !f.type)) return planned;
-    if (d) return d;
-    if (planned && planned !== 'unknown') return planned;
+    if (planned && planned !== 'unknown' && (!DRAFT_TYPES.includes(planned) || f.type === 'textarea' || f.type === 'text')) return planned;
     const learned = data && data.labelTypes ? data.labelTypes[norm(f.label)] : undefined;
-    return learned && learned !== 'unknown' ? learned : null;
+    if (learned && learned !== 'unknown') return learned;
+    if (data && data.hasJobContext && f.required && f.type === 'textarea') return 'coverLetter';
+    return null;
   }
 
   /** An answer from the bank for a question label: the same question, or one clearly containing the other. */
@@ -219,7 +239,9 @@
       // this field's own draft (written for this job), else the page's one cover-letter draft
       const d = (data.drafts && f.key && data.drafts[f.key]) || (type === 'coverLetter' ? data.draft : null);
       if (d && d.text) return { draft: d.text, flaggedClaims: d.flaggedClaims || [] };
-      return { pending: d && d.error ? `no draft: ${d.error}` : `${type === 'bio' ? 'bio' : 'cover letter'}: no draft was written — write it yourself` };
+      if (d && d.error) return { pending: `no draft: ${d.error}` };
+      const why = data.draftNotes && f.key ? data.draftNotes[f.key] : null;
+      return { pending: `no ${type === 'bio' ? 'bio' : 'cover letter'} draft: ${why || 'none was requested for this field'}` };
     }
     const simple = {
       firstName: c.firstName,
@@ -247,6 +269,9 @@
     const b = bankAnswer(f.label, data.bank ?? []) ?? (type ? bankByType(type, data.bank ?? []) : null);
     if (b) return { value: b.answer, from: 'answers bank' };
     if (type === 'salary' || type === 'noticePeriod' || type === 'address') return { pending: `${type}: no answer on file` };
+    // a free-text field that got no draft: why (what the rules / the planner said), never just "no answer"
+    const why = f.type === 'textarea' && data.draftNotes && f.key ? data.draftNotes[f.key] : null;
+    if (why && f.required) return { pending: `no draft: ${why}` };
     return f.required ? { pending: 'no answer on file' } : { skip: 'not one of your details' };
   }
 
@@ -283,7 +308,10 @@
           same = false;
         }
         const src = f.src || '';
-        return !same && /^https?:/.test(src) && visible(f) && f.offsetWidth >= 300 && f.offsetHeight >= 200 && !/recaptcha|hcaptcha|turnstile|challenges\.cloudflare|youtube|vimeo|google\.com\/maps|doubleclick|googletagmanager|facebook|twitter|instagram|linkedin/i.test(src);
+        // the frame's own host (an apply frame's address may carry "referrer=linkedin.com" and is still a form)
+        const host = /^https?:/.test(src) ? hostOf(src) : '';
+        const path = /^https?:/.test(src) ? src.replace(/[?#].*$/, '') : '';
+        return !same && !!host && visible(f) && f.offsetWidth >= 300 && f.offsetHeight >= 200 && !/recaptcha|hcaptcha|turnstile|cloudflare|youtube|vimeo|doubleclick|googletagmanager|facebook|twitter|instagram|linkedin/i.test(host) && !/google\.com\/maps/.test(path);
       })
       .map((f) => f.src);
   }
@@ -335,6 +363,10 @@
     return el.getAttribute('placeholder') || words(el.name || el.id || '');
   }
 
+  /** a rich-text editor (contenteditable, or a textbox role that is editable): filled like a textarea */
+  const isEditor = (el) => !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && (el.isContentEditable || (el.getAttribute('role') === 'textbox' && el.getAttribute('contenteditable') !== 'false' && !!el.isContentEditable));
+  const FIELD_SELECTOR = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="textbox"][contenteditable]';
+
   /** the text just before the field and the form's heading ("Please send us a note on why you want to be part of our team") */
   function nearText(el) {
     const out = [];
@@ -349,8 +381,9 @@
   /** The fields JobHunter may fill, each with a key that is the same in the scan and in the fill. */
   function formFields(doc) {
     const seen = new Map();
-    return deepAll(doc, 'input, textarea, select')
-      .filter((el) => !['hidden', 'submit', 'button', 'reset', 'image', 'password', 'search'].includes(el.type) && !el.disabled && !el.readOnly && !inCaptcha(el) && !isPickerSearch(el) && (visible(el) || el.type === 'file'))
+    return deepAll(doc, FIELD_SELECTOR)
+      .filter((el) => (isEditor(el) ? !inCaptcha(el) && visible(el) && !el.closest('[contenteditable]:not([contenteditable="false"]) [contenteditable]') : true))
+      .filter((el) => isEditor(el) || (!['hidden', 'submit', 'button', 'reset', 'image', 'password', 'search'].includes(el.type) && !el.disabled && !el.readOnly && !inCaptcha(el) && !isPickerSearch(el) && (visible(el) || el.type === 'file')))
       .map((el) => {
         const f = info(el);
         const base = `${el.tagName.toLowerCase()}:${f.type}:${f.name || f.id || norm(f.label || f.placeholder).slice(0, 60)}`;
@@ -370,6 +403,10 @@
   }
 
   function info(el) {
+    if (isEditor(el)) {
+      const label = el.getAttribute('aria-label') || labelFor(el) || el.getAttribute('data-placeholder') || el.getAttribute('placeholder') || '';
+      return { label, name: el.getAttribute('name') || '', id: el.id || '', type: 'textarea', autocomplete: '', placeholder: el.getAttribute('data-placeholder') || el.getAttribute('placeholder') || '', required: el.getAttribute('aria-required') === 'true' || /\*\s*$/.test(label), hasCountry: false, controlName: '', dataTest: '' };
+    }
     const label = labelFor(el);
     const hs = hosts(el);
     const ctl = controlName(el);
@@ -387,6 +424,15 @@
   /** React / Angular / Lit friendly: the native setter, the events typing fires (crossing shadow roots), the host's value. */
   function setValue(el, value) {
     const w = win(el);
+    if (el.isContentEditable && !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) {
+      // a rich-text editor: its text, then the events typing fires
+      el.focus();
+      el.textContent = value;
+      el.dispatchEvent(new w.InputEvent('input', { bubbles: true, composed: true, data: value, inputType: 'insertText' }));
+      fire(el, 'change');
+      fire(el, 'blur');
+      return;
+    }
     const proto = el.tagName === 'TEXTAREA' ? w.HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? w.HTMLSelectElement.prototype : w.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
     el.focus();
@@ -447,7 +493,7 @@
     /^(search|חיפוש)\b|dial code|calling code|country code|קידומת/i.test(`${el.getAttribute('aria-label') || ''} ${el.placeholder || ''}`) ||
     // the country / region list of a phone widget (+972): not the form's own "Country"
     (/country|region|מדינה/i.test(`${el.getAttribute('aria-label') || ''} ${el.placeholder || ''}`) && (hosts(el).some((h) => /phone|tel/i.test(h.tagName)) || !!el.closest('[class*="phone"], [class*="tel-input"], [class*="intl-tel"]')));
-  const empty = (el) => (el.tagName === 'SELECT' ? !el.value || el.selectedIndex <= 0 : !String(el.value ?? '').trim());
+  const empty = (el) => (el.tagName === 'SELECT' ? !el.value || el.selectedIndex <= 0 : el.isContentEditable && !/^(INPUT|TEXTAREA)$/.test(el.tagName) ? !(el.textContent || '').trim() : !String(el.value ?? '').trim());
   const inCaptcha = (el) => !!el.closest('[class*="captcha"], [id*="captcha"], .g-recaptcha, .h-captcha, iframe');
   const isAutocomplete = (el) => el.getAttribute('aria-autocomplete') === 'list' || el.getAttribute('role') === 'combobox' || /select__input/.test(el.className) || hosts(el).some((h) => /autocomplete|combobox/i.test(h.tagName));
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -655,7 +701,7 @@
         label: String(f.label || '').slice(0, 300),
         placeholder: String(f.placeholder || '').slice(0, 300),
         name: String(f.name || f.id || '').slice(0, 200),
-        type: el.tagName === 'TEXTAREA' ? 'textarea' : el.tagName === 'SELECT' ? 'select-one' : f.type,
+        type: el.tagName === 'TEXTAREA' || isEditor(el) ? 'textarea' : el.tagName === 'SELECT' ? 'select-one' : f.type,
         options: el.tagName === 'SELECT' ? [...el.options].map((o) => textOf(o) || o.value).filter(Boolean).slice(0, MAX_OPTIONS) : [],
         required: !!f.required,
         near: nearText(el),
@@ -681,13 +727,24 @@
   }
 
   /** The draft a field gets (pure, also used by the background worker): its planned / dictionary type, if a draft. */
-  function draftKindOf(field, plan) {
-    const d = field.dict;
-    if (d === 'never' || d === 'cv' || d === 'social') return null;
+  function draftKindOf(field, plan, hasJobContext = false) {
+    const t = field.dict || draftOnly(field, plan, hasJobContext);
+    return t === 'bio' ? 'bio' : t === 'coverLetter' ? 'cover' : null;
+  }
+  /** what the plan / the required-field fallback make of a field the rules do not recognize */
+  function draftOnly(field, plan, hasJobContext) {
     const raw = plan ? plan[field.key] : undefined;
     const planned = raw ? PLANNED[raw] || raw : undefined;
-    const t = DRAFT_TYPES.includes(planned) && (field.type === 'textarea' || field.type === 'text') ? planned : d;
-    return t === 'bio' ? 'bio' : t === 'coverLetter' ? 'cover' : null;
+    if (DRAFT_TYPES.includes(planned) && (field.type === 'textarea' || field.type === 'text')) return planned;
+    if ((!planned || planned === 'unknown') && hasJobContext && field.required && field.type === 'textarea') return 'coverLetter';
+    return null;
+  }
+  /** Why a free-text field gets no draft (for the overlay): what the rules and the planner said. */
+  function noDraftReason(field, plan) {
+    const raw = plan ? plan[field.key] : undefined;
+    if (field.dict) return `recognized as "${field.dict}", not a cover letter or bio`;
+    if (raw) return `the form planner said "${raw}"`;
+    return 'not recognized by the rules, and the form planner gave nothing for it';
   }
 
   /** Fills the page. Returns the summary; shows the overlay unless opts.overlay === false. */
@@ -817,7 +874,8 @@
       if (host.hasAttribute(MARK) || host.closest(`[${MARK}]`) || el.hasAttribute(MARK) || !visible(el) || inCaptcha(el) || el.type === 'file' || el.type === 'hidden') continue;
       if (el.shadowRoot && el.shadowRoot.querySelector('input, textarea, select')) continue; // its inner field was handled
       if (('value' in el && typeof el.value === 'string' && el.value.trim()) || el.type === 'radio' || el.type === 'checkbox') continue;
-      needYou(out, el, el.getAttribute('label') || labelFor(el), 'required — fill it yourself');
+      const text = el.tagName === 'TEXTAREA' || el.isContentEditable || el.getAttribute('role') === 'textbox' || el.querySelector?.('textarea, [contenteditable]');
+      needYou(out, el, el.getAttribute('label') || labelFor(el), text ? `required text, not filled: ${sweepReason(el)}` : 'required — fill it yourself');
     }
     if (opts.overlay !== false) overlay(doc, data, out, opts);
     return out;
@@ -880,6 +938,14 @@
     doc.body.appendChild(host);
   }
 
+  /** why a required element the fill did not handle was left (the overlay shows it, never just "fill it yourself") */
+  function sweepReason(el) {
+    if (el.disabled) return 'it is disabled';
+    if (el.readOnly) return 'it is read-only';
+    if (inCaptcha(el)) return 'it is inside a CAPTCHA area';
+    if (!/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && !el.isContentEditable) return `a custom ${el.getAttribute('role') || el.tagName.toLowerCase()} element JobHunter cannot type into`;
+    return 'JobHunter could not read it as a form field';
+  }
   const hostOf = (u) => {
     try {
       return new URL(u).hostname;
@@ -889,5 +955,5 @@
   };
   const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
-  root.JobHunterFill = { norm, classify, dictType, fieldType, draftKindOf, bucketOption, nameQueries, pageJobText, bankAnswer, chooseOption, exactPlace, closeMatch, localPhone, answerFor, dateFor, entryKey, run, scan, clearMarks, manualOnlyHost, MANUAL_ONLY_MESSAGE, FORBIDDEN };
+  root.JobHunterFill = { norm, classify, dictType, freeTextRule, fieldType, draftKindOf, noDraftReason, bucketOption, nameQueries, pageJobText, bankAnswer, chooseOption, exactPlace, closeMatch, localPhone, answerFor, dateFor, entryKey, run, scan, clearMarks, manualOnlyHost, MANUAL_ONLY_MESSAGE, FORBIDDEN };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
