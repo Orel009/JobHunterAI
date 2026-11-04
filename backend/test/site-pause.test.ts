@@ -58,7 +58,7 @@ import { BlockedError } from '../src/browser/session.js';
 import { getActiveRun, startRun, startTask, waitIdle } from '../src/pipeline/runner.js';
 import { approveBlock, prepareJobs } from '../src/apply/service.js';
 import { Applications } from '../src/apply/plan.js';
-import { clearResume, isPaused, isRepause, israelTime, pauseBadgeText, pauseExpired, pauseOf, pauseSite, pausedText, shortBlockReason, sitePauses, unpauseSite } from '../src/core/site-pause.js';
+import { autoCheckDue, clearResume, isPaused, setManualOnly, isRepause, israelTime, pauseBadgeText, pauseExpired, pauseOf, pauseSite, pausedText, shortBlockReason, sitePauses, unpauseSite } from '../src/core/site-pause.js';
 import { BudgetError, beginBudgetSession, endBudgetSession, loadsLeft, useLoad } from '../src/core/site-budget.js';
 import { decideResume, resumeCheck } from '../src/pipeline/site-resume.js';
 import { doneReport, runHunt } from '../src/pipeline/hunt.js';
@@ -213,6 +213,31 @@ describe('Run & send with a paused site', () => {
     expect(r.note).toMatch(/JobKarov was challenged again after its pause .* paused for 7 days, until/);
     expect(toasts.join('\n')).toMatch(/paused for 7 days/);
     expect(getActiveRun()).toBeNull();
+  });
+});
+
+describe('a disabled site (manual resume only)', () => {
+  const ok = async (): Promise<SessionInfo> => ({ state: 'logged_in', checkedAt: '', detail: 'ok', realPage: true });
+  it('its pause runs out: Run & send does NOT check it and leaves it out; it stays disabled', async () => {
+    pauseSite('jobkarov', REFUSED, { now: new Date(Date.now() - 49 * 3_600_000) });
+    setManualOnly('jobkarov', 'refuses JobHunter\'s browser; applying through email alerts');
+    expect(autoCheckDue(pauseOf('jobkarov')!)).toBe(false);
+    const checked: string[] = [];
+    const r = await runHunt(db, { checkSession: ok, checkSiteSession: async (s) => (checked.push(s), ok()), notify: () => undefined });
+    expect(checked).not.toContain('jobkarov');
+    expect(r.resumed).toBeUndefined();
+    expect(r.runs.map((x) => x.site)).not.toContain('jobkarov');
+    expect(pauseOf('jobkarov')).toMatchObject({ manualOnly: true, reason: 'site refusing (402)' });
+    expect(doneReport(r, []).join('\n')).toMatch(/JobKarov: disabled — left out, never checked automatically/);
+    expect(pauseBadgeText('JobKarov', pauseOf('jobkarov')!)).toBe('JobKarov: disabled — resume by hand (Settings)');
+    expect(pausedText('jobkarov', 'JobKarov')).toMatch(/^JobKarov is disabled: .*resume it by hand/);
+  });
+  it('Settings → Resume still runs its one check: a block keeps it disabled, a real page resumes it', async () => {
+    setManualOnly('jobkarov', 'manual only');
+    await resumeCheck('jobkarov', async () => ({ state: 'unknown', checkedAt: '', detail: 'refused', blocked: REFUSED }));
+    expect(pauseOf('jobkarov')).toMatchObject({ manualOnly: true });
+    expect(await resumeCheck('jobkarov', async () => ({ state: 'logged_in', checkedAt: '', detail: 'ok', realPage: true }))).toMatchObject({ resumed: true });
+    expect(isPaused('jobkarov')).toBe(false);
   });
 });
 

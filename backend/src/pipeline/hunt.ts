@@ -26,7 +26,7 @@ import { scheduleSettings } from './schedule.js';
 import { config } from '../config.js';
 import { autoSubmitSettings } from '../apply/auto-submit.js';
 import { adapters, SITES } from '../sites/registry.js';
-import { isPaused, isRepause, israelTime, pauseExpired, pauseOf, sitePauses } from '../core/site-pause.js';
+import { autoCheckDue, isPaused, isRepause, israelTime, pauseOf, sitePauses } from '../core/site-pause.js';
 import { beginBudgetSession, budgetSummary, endBudgetSession } from '../core/site-budget.js';
 import { resumeCheck } from './site-resume.js';
 import { enabledCompanies, runCompaniesToCompletion } from '../companies/run.js';
@@ -57,7 +57,7 @@ export interface HuntSummary {
   /** per site: sends the site answered with a CAPTCHA (never attempted → assisted panel), out of all send attempts */
   captchas?: Record<string, { captcha: number; attempts: number }>;
   /** sites paused when the hunt ended (left out of it): reason and when the resume check may run */
-  paused?: Record<string, { reason: string; until: string }>;
+  paused?: Record<string, { reason: string; until: string; manualOnly?: boolean }>;
   /** resume checks of sites whose pause had run out */
   resumed?: Array<{ site: string; resumed: boolean; detail: string }>;
   /** sites challenged again after a pause during this hunt: paused for 7 days (a notification says so too) */
@@ -186,7 +186,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     const resumeSessions = new Map<string, SessionInfo>();
     for (const site of SITES.filter((x) => x.enabled && adapters[x.id])) {
       const pz = pauseOf(site.id);
-      if (!pz || !pauseExpired(pz)) continue;
+      if (!pz || !autoCheckDue(pz)) continue; // still running, or disabled (manual resume only)
       const endR = step(`checking whether ${site.displayName} serves its page again (paused: ${pz.reason}) — one session check`);
       const r = await resumeCheck(site.id, opts.checkSiteSession ?? checkSiteSession);
       resumed.push({ site: site.id, resumed: r.resumed, detail: r.detail });
@@ -197,7 +197,11 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     const pausedNow = (id: string) => isPaused(id);
     for (const site of SITES.filter((x) => x.enabled && adapters[x.id] && pausedNow(x.id))) {
       step(`${site.displayName}: paused — ${pauseOf(site.id)!.reason}`);
-      Object.assign(p.steps[p.steps.length - 1]!, { state: 'skipped', detail: `left out of this run; paused until ${israelTime(pauseOf(site.id)!.until)} Israel time, then one check at the next Run & send (or Settings → Resume)` });
+      const pz = pauseOf(site.id)!;
+      Object.assign(p.steps[p.steps.length - 1]!, {
+        state: 'skipped',
+        detail: pz.manualOnly ? 'disabled — left out, never checked automatically (Settings → Resume)' : `left out of this run; paused until ${israelTime(pz.until)} Israel time, then one check at the next Run & send (or Settings → Resume)`,
+      });
     }
 
     // the sites this hunt can apply on (an adapter and an apply flow), each with its own login; paused ones are left out
@@ -313,7 +317,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     const captchas = captchaCounts(db, startedAt);
     if (Object.keys(captchas).length) summary.captchas = captchas;
     const pz = sitePauses();
-    if (Object.keys(pz).length) summary.paused = Object.fromEntries(Object.entries(pz).map(([k, v]) => [k, { reason: v.reason, until: v.until }]));
+    if (Object.keys(pz).length) summary.paused = Object.fromEntries(Object.entries(pz).map(([k, v]) => [k, { reason: v.reason, until: v.until, ...(v.manualOnly ? { manualOnly: true } : {}) }]));
     if (resumed.length) summary.resumed = resumed;
     // challenged again after a pause (at its check, or soon after it resumed): 7 days — always told, toast setting or not
     const repaused = Object.entries(pz)
@@ -386,6 +390,10 @@ export function doneReport(h: HuntSummary & { error?: string }, still: string[])
     if (h.companiesMs !== undefined) out.push(`companies first: ${Math.round(h.companiesMs / 1000)}s`);
     for (const r of h.resumed ?? []) out.push(`${SITES.find((x) => x.id === r.site)?.displayName ?? r.site}: ${r.detail}`);
     for (const [site, v] of Object.entries(h.paused ?? {})) {
+      if (v.manualOnly) {
+        out.push(`${SITES.find((x) => x.id === site)?.displayName ?? site}: disabled — left out, never checked automatically (Settings → Resume)`);
+        continue;
+      }
       out.push(`${SITES.find((x) => x.id === site)?.displayName ?? site}: paused until ${israelTime(v.until)} (Israel time) — ${v.reason}; left out, then one check at the next Run & send (or Settings → Resume)`);
     }
     for (const [site, c] of Object.entries(h.pageLoads ?? {})) {

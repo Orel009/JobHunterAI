@@ -213,6 +213,8 @@ export interface SitePause {
   untilText?: string;
   /** "Drushim: paused until Fri 06.11 12:40" */
   badge?: string;
+  /** disabled: never checked automatically; only Resume (Settings) checks it */
+  manualOnly?: boolean;
 }
 
 export const api = {

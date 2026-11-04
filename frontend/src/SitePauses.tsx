@@ -50,7 +50,8 @@ export function SitePausesCard({ pauses, sites, busy, onChanged }: { pauses: Rec
             {p.repause ? ' — 7 days (challenged again after a pause)' : ''}
           </span>
           <span className="muted">
-            since {when(p.since)} · {p.expired ? 'pause over — checked at the next Run & send' : `paused until ${when(p.until)}, then checked once`}
+            since {when(p.since)} ·{' '}
+            {p.manualOnly ? 'disabled — never checked automatically; Resume checks it once' : p.expired ? 'pause over — checked at the next Run & send' : `paused until ${when(p.until)}, then checked once`}
           </span>
           <button disabled={busy || checking !== null} onClick={() => void resume(site)}>
             Resume {name(site)}

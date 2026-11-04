@@ -7,6 +7,8 @@
  * Challenged again — at that check after the pause ran out, or within 24 hours of resuming — the site pauses for 7
  * days (REPAUSE_HOURS), not 48 hours, and says so (strikes ≥ 2; the hunt summary and a notification tell you).
  * A new block never shortens a pause that is still running. Kept in data/settings.json (sitePauses, siteResumes).
+ * A site can also be disabled (manualOnly): it stays paused with no automatic check at all — only Settings → Resume
+ * checks it (and a block at that check keeps it disabled).
  */
 import { readSettingsFile, writeSettingsFile } from '../llm/settings.js';
 import { log } from '../log.js';
@@ -28,6 +30,8 @@ export interface SitePause {
   source: 'block' | 'manual';
   /** blocks in a row: 1 = the first (48 hours); 2+ = challenged again after a pause (7 days) */
   strikes?: number;
+  /** disabled: never checked automatically (Run & send leaves it out); only Settings → Resume checks it */
+  manualOnly?: boolean;
 }
 
 interface SiteResume {
@@ -51,6 +55,8 @@ export const pauseOf = (site: string): SitePause | null => read()[site] ?? null;
 export const isPaused = (site: string): boolean => !!pauseOf(site);
 /** The pause ran out: the next resume check may run (the site stays paused until it passes). */
 export const pauseExpired = (p: SitePause, now = new Date()) => Date.parse(p.until) <= now.getTime();
+/** Run & send may run the resume check by itself: the pause ran out and the site is not disabled. */
+export const autoCheckDue = (p: SitePause, now = new Date()) => !p.manualOnly && pauseExpired(p, now);
 /** A pause after the site challenged again (7 days). */
 export const isRepause = (p: SitePause | null | undefined): boolean => (p?.strikes ?? 1) >= 2;
 
@@ -92,6 +98,7 @@ export function pauseSite(site: string, detail: string, opts: { hours?: number; 
     until,
     source: opts.source ?? 'block',
     strikes,
+    ...(prior?.manualOnly ? { manualOnly: true } : {}), // a block at a manual check keeps it disabled
   };
   write({ ...read(), [site]: p });
   const span = fmtHours(Math.round((Date.parse(until) - now.getTime()) / 3_600_000));
@@ -115,6 +122,20 @@ export function unpauseSite(site: string, opts: { byCheck?: boolean; now?: Date 
   log.info({ site }, 'site resumed');
 }
 
+/**
+ * Disables a site: it stays paused and nothing checks it by itself (no automatic check when the pause runs out); only
+ * Settings → Resume runs its one check. A site not paused yet is paused now with this reason.
+ */
+export function setManualOnly(site: string, detail: string, now = new Date()): SitePause {
+  const prior = read()[site];
+  const p: SitePause = prior
+    ? { ...prior, manualOnly: true, detail: `${prior.detail} · disabled: ${detail}` }
+    : { reason: 'disabled', detail, since: now.toISOString(), until: now.toISOString(), source: 'manual', strikes: 1, manualOnly: true };
+  write({ ...read(), [site]: p });
+  log.warn({ site }, `${site} disabled — no automatic check; resume by hand in Settings`);
+  return p;
+}
+
 /** test seam / Settings: forget a site's resume record */
 export function clearResume(site: string): void {
   const r = resumes();
@@ -136,6 +157,7 @@ export function israelTime(iso: string): string {
 
 /** "Drushim: paused until Fri 06.11 12:40" (or "pause over — checked at the next Run & send"); 7-day pauses say so. */
 export function pauseBadgeText(label: string, p: SitePause, now = new Date()): string {
+  if (p.manualOnly) return `${label}: disabled — resume by hand (Settings)`;
   if (pauseExpired(p, now)) return `${label}: pause over — one check at the next Run & send`;
   return `${label}: paused until ${israelTime(p.until)}${isRepause(p) ? ' (7 days — challenged again)' : ''}`;
 }
@@ -143,5 +165,6 @@ export function pauseBadgeText(label: string, p: SitePause, now = new Date()): s
 /** The refusal shown when something would load a paused site. */
 export const pausedText = (site: string, label = site): string | null => {
   const p = pauseOf(site);
+  if (p?.manualOnly) return `${label} is disabled: ${p.reason} — no automatic check; resume it by hand in Settings → Paused sites`;
   return p ? `${label} is paused: ${p.reason} (until ${israelTime(p.until)} Israel time${isRepause(p) ? ' — 7 days, challenged again after a pause' : ''}; then one check at the next Run & send, or Settings → Resume)` : null;
 };
