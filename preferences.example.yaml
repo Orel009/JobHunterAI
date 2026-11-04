@@ -244,6 +244,14 @@ limits:
   dailyApplyLimit: 15
   companyCooldownDays: 30
 
+# Sending pace per site (optional; these are the defaults). Between two sends on a site JobHunter waits a random
+# minDelaySec–maxDelaySec, on one of the site's job lists (idleOnList), and sends at most maxSendsPerSession per session
+# (one Run & send or one batch) and maxSendsPerDay per day (never above limits.dailyApplyLimit).
+# pacing:
+#   drushim:   { minDelaySec: 60, maxDelaySec: 150, maxSendsPerSession: 8,  maxSendsPerDay: 12, idleOnList: true }
+#   jobmaster: { minDelaySec: 30, maxDelaySec: 90,  maxSendsPerSession: 10, maxSendsPerDay: 15, idleOnList: true }
+#   jobnet:    { minDelaySec: 30, maxDelaySec: 90,  maxSendsPerSession: 10, maxSendsPerDay: 15, idleOnList: true }
+
 # Deterministic answers, seeded into the answers bank (pending when empty). You can also answer in the dashboard.
 standardAnswers:
   city: ""

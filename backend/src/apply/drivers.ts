@@ -11,6 +11,9 @@ import * as drushim from '../sites/drushim/apply.js';
 import * as jobmaster from '../sites/jobmaster/apply.js';
 import * as jobnet from '../sites/jobnet/apply.js';
 import * as jobkarov from '../sites/jobkarov/apply.js';
+import drushimCfg from '../sites/drushim/selectors.json' with { type: 'json' };
+import { searchUrl as jmSearchUrl } from '../sites/jobmaster/parse.js';
+import { JN_BASE } from '../sites/jobnet/parse.js';
 
 export type SendOutcome =
   | { kind: 'submitted' }
@@ -38,6 +41,8 @@ export interface ApplyDriver {
   submitPanel(page: Page, job: StoredJob, shotName: string, cvName?: string): Promise<SubmitResult>;
   /** the site's own list of jobs this account applied to (job id → date sent) */
   fetchAppliedJobs(page: Page): Promise<Map<string, string | null>>;
+  /** a normal job-list page (a search for one of your terms): where JobHunter waits between two sends (apply/pacing.ts) */
+  listUrl?(term: string): string;
 }
 
 export const DRIVERS: Record<string, ApplyDriver> = {
@@ -50,6 +55,7 @@ export const DRIVERS: Record<string, ApplyDriver> = {
     installDryRunGuard: (page) => drushim.installDryRunGuard(page),
     submitPanel: (page, job, name) => drushim.submitPanel(page, Number(job.externalId), name),
     fetchAppliedJobs: (page) => drushim.fetchAppliedJobs(page),
+    listUrl: (term) => drushimCfg.searchUrl.replace('{term}', encodeURIComponent(term)),
   },
   jobmaster: {
     site: 'jobmaster',
@@ -60,6 +66,7 @@ export const DRIVERS: Record<string, ApplyDriver> = {
     installDryRunGuard: (page) => jobmaster.installDryRunGuard(page),
     submitPanel: (page, job, name) => jobmaster.submitPanel(page, job, name),
     fetchAppliedJobs: (page) => jobmaster.fetchAppliedJobs(page),
+    listUrl: (term) => jmSearchUrl(term),
   },
   jobnet: {
     site: 'jobnet',
@@ -70,6 +77,7 @@ export const DRIVERS: Record<string, ApplyDriver> = {
     installDryRunGuard: (page) => jobnet.installDryRunGuard(page),
     submitPanel: (page, job, name, cvName) => jobnet.submitPanel(page, job, name, cvName),
     fetchAppliedJobs: (page) => jobnet.fetchAppliedJobs(page),
+    listUrl: (term) => `${JN_BASE}/jobs?searchtype=freesearch&freetxt=${encodeURIComponent(term)}`,
   },
   jobkarov: {
     site: 'jobkarov',

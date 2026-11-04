@@ -12,6 +12,7 @@ import { makeBankMatcher, makeDrafter, makeYearsClassifier } from './draft.js';
 import { resolveField, type ResolveDeps } from './resolve.js';
 import { salarySettings, type PostedSalary } from '../core/salary.js';
 import { scoringRole } from '../core/prefilter.js';
+import { sameCompany } from '../core/dedupe.js';
 import type { ApplyPlan, CvChoice, FormField, ResolvedField } from './types.js';
 
 /**
@@ -222,10 +223,11 @@ export class Applications {
     return counts;
   }
 
-  /** Real (non-dry-run) submissions to a company within the cooldown window. */
+  /** Real (non-dry-run) submissions to a company within the cooldown window (the same company by core/dedupe.ts). */
   recentlyAppliedToCompany(companyNorm: string, days: number): boolean {
     if (!companyNorm) return false;
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
-    return !!this.db.prepare(`SELECT 1 FROM applications WHERE company_norm = ? AND status = 'submitted' AND dry_run = 0 AND submitted_at >= ? LIMIT 1`).get(companyNorm, since);
+    const rows = this.db.prepare(`SELECT DISTINCT company_norm AS c FROM applications WHERE status = 'submitted' AND dry_run = 0 AND submitted_at >= ?`).all(since) as Array<{ c: string }>;
+    return rows.some((r) => r.c === companyNorm || sameCompany(r.c, companyNorm));
   }
 }

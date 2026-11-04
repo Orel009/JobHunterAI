@@ -154,3 +154,31 @@ describe('placeholder company names are not companies', () => {
     expect(repo.dedupeExisting(14)).toEqual([]);
   });
 });
+
+describe('fuzzy company + title (the Voice Spin case, 2026-11-04)', () => {
+  const LINUX = 'איש /אשת תמיכה טכנית למוצרים בסביבת Linux';
+  it('the startup re-check: the queued JobMaster copy of a job sent on Drushim → skipped_duplicate, its application closed', () => {
+    const d = add('drushim', '14', 'voicespin', `${LINUX}‏`, day(4));
+    sent(d);
+    const jm = add('jobmaster', '31', 'Voice Spin', LINUX, day(4));
+    const appId = queue(jm);
+    expect(repo.dedupeExisting(14)).toEqual([{ id: jm.id, of: d.id }]);
+    expect(repo.getJob(jm.id)).toMatchObject({ status: 'skipped_duplicate', duplicateOf: d.id });
+    expect(apps.get(appId)).toMatchObject({ status: 'rejected', error: expect.stringMatching(/^duplicate of /) });
+  });
+  it('at insert and before a send: "Voice Spin" matches the sent "voicespin"; a job code on one side is ignored', async () => {
+    const d = add('drushim', '1', 'voicespin', `${LINUX} - JB-12`);
+    sent(d);
+    const jm = add('jobmaster', '2', 'Voice Spin', LINUX);
+    expect(repo.sentSameJob(repo.getJob(jm.id)!, 14)).toMatchObject({ id: d.id });
+    expect(repo.dedupeNewJob(repo.getJob(jm.id)!, 14)).toEqual({ duplicateOf: d.id, absorbed: null });
+    expect(repo.appliedToCompanySince(repo.getJob(jm.id)!.companyNorm, day(30))).toBe(true);
+  });
+  it('two different requisition codes of the same company stay two jobs', () => {
+    const a = add('drushim', '5', 'Malam מערכות', 'Angular Developer - 533313', day(2));
+    const b = add('drushim', '6', 'Malam מערכות', 'Angular Developer - 533761', day(1));
+    expect(repo.dedupeExisting(14)).toEqual([]);
+    expect(repo.dedupeNewJob(repo.getJob(b.id)!, 14).duplicateOf).toBeNull();
+    expect(repo.getJob(a.id)!.status).not.toBe('skipped_duplicate');
+  });
+});

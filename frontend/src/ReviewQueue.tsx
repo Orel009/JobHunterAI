@@ -135,7 +135,7 @@ export function ReviewQueue({
   );
 }
 
-const BATCH_ICON: Record<string, string> = { submitted: '✔', dry_run_ok: '✔', skipped: '↷', needs_review: '↩', failed: '✗', not_sent: '–' };
+const BATCH_ICON: Record<string, string> = { submitted: '✔', dry_run_ok: '✔', skipped: '↷', needs_review: '↩', failed: '✗', not_sent: '–', needs_manual: '✋' };
 
 function BatchPanel({ batch }: { batch: BatchProgress }) {
   const sent = batch.results.filter((r) => r.status === 'submitted' || r.status === 'dry_run_ok').length;
@@ -151,6 +151,15 @@ function BatchPanel({ batch }: { batch: BatchProgress }) {
         )}
       </div>
       {batch.stoppedReason && <div>⛔ {batch.stoppedReason}</div>}
+      {(batch.paused ?? []).map((p) => (
+        <div key={p.site}>
+          ⏸ <b>
+            {p.label}: paused until {p.untilText}
+          </b>{' '}
+          (Israel time){p.repause ? ' — 7 days: challenged again after a pause' : ''} · {p.reason}. {p.toAssisted} unsent job(s) moved to <b>Assisted apply</b>: open each in your regular browser, apply
+          with the copy helpers, then click “I applied”. JobHunter never shows or solves the check in its own browser.
+        </div>
+      ))}
       <ul className="batch-results">
         {batch.results.map((r) => (
           <li key={r.appId}>

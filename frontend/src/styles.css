@@ -199,3 +199,9 @@ header .badge.warn { margin-inline-start: auto; cursor: pointer; }
 .done-table td { padding: 1px 10px 1px 0; }
 header .run-send { margin-inline-start: auto; }
 header .run-send ~ .kill-switch, header .run-send ~ .badge.warn { margin-inline-start: 0; }
+
+/* ---------- paused sites in the header ---------- */
+header .badge.pause-badge { margin-inline-start: 0; white-space: nowrap; cursor: pointer; }
+header nav + .badge.pause-badge { margin-inline-start: auto; }
+header .pause-badge ~ .run-send { margin-inline-start: 0; }
+.badge.error { background: #c62828; color: #fff; font-weight: 700; }

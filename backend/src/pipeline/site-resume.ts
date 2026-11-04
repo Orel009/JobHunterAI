@@ -1,11 +1,12 @@
 /**
- * Resuming a paused site: ONE session check, and the site resumes only if it served its real page. A block re-pauses
- * it for 48 hours (the session check does that); a check that cannot tell keeps it paused. Used by Settings → Resume
- * (any time) and by Run & send once a pause has run out.
+ * Resuming a paused site: ONE session check, and the site resumes only if it served its real page. A check that cannot
+ * tell keeps it paused. Challenged again at this check after the pause ran out → paused for 7 days (core/site-pause.ts),
+ * and the result says so (`repaused`); during a pause that is still running (an early Settings → Resume) the pause keeps
+ * its end. Used by Settings → Resume (any time) and by Run & send once a pause has run out.
  */
 import type { DB } from '../db/index.js';
 import { checkSiteSession, type SessionInfo } from '../browser/site-session.js';
-import { pauseOf, pauseSite, unpauseSite } from '../core/site-pause.js';
+import { REPAUSE_HOURS, isRepause, israelTime, pauseOf, pauseSite, unpauseSite } from '../core/site-pause.js';
 import { startTask } from './runner.js';
 
 export interface ResumeResult {
@@ -13,16 +14,27 @@ export interface ResumeResult {
   resumed: boolean;
   detail: string;
   session: SessionInfo | null;
+  /** challenged again after the pause: paused for 7 days (until) — tell the user */
+  repaused?: { until: string; reason: string };
 }
 
 /** The decision after the check (pure apart from the pause store). */
 export function decideResume(site: string, info: SessionInfo): ResumeResult {
   if (info.blocked) {
-    pauseSite(site, info.blocked); // another 48 hours from now
-    return { site, resumed: false, detail: `still blocked: ${info.blocked} — paused for another 48 hours`, session: info };
+    const p = pauseSite(site, info.blocked); // the session check may have paused it already: the same pause, never shorter
+    if (isRepause(p) && Date.parse(p.until) - Date.parse(p.since) >= REPAUSE_HOURS * 3_600_000 - 60_000) {
+      return {
+        site,
+        resumed: false,
+        detail: `challenged again after the pause (${info.blocked}) — paused for 7 days, until ${israelTime(p.until)} Israel time`,
+        session: info,
+        repaused: { until: p.until, reason: p.reason },
+      };
+    }
+    return { site, resumed: false, detail: `still blocked: ${info.blocked} — paused until ${israelTime(p.until)} Israel time`, session: info };
   }
   if (!info.realPage) return { site, resumed: false, detail: `still paused: the check could not confirm a real page (${info.detail})`, session: info };
-  unpauseSite(site);
+  unpauseSite(site, { byCheck: true });
   return { site, resumed: true, detail: `resumed: the site serves its page again (${info.state === 'logged_in' ? 'logged in' : info.state === 'logged_out' ? 'NOT logged in — log in again' : info.detail})`, session: info };
 }
 

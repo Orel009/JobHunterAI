@@ -206,6 +206,13 @@ export interface SitePause {
   until: string;
   source: 'block' | 'manual';
   expired: boolean;
+  /** blocks in a row; 2+ = challenged again after a pause (7 days) */
+  strikes?: number;
+  repause?: boolean;
+  /** "Fri 06.11 12:40" (Israel time) */
+  untilText?: string;
+  /** "Drushim: paused until Fri 06.11 12:40" */
+  badge?: string;
 }
 
 export const api = {
@@ -294,6 +301,8 @@ export interface BatchProgress {
   results: SendResult[];
   stoppedReason: string | null;
   finished: boolean;
+  /** sites a block paused during the batch: until when; their unsent jobs went to the assisted panel */
+  paused?: Array<{ site: string; label: string; reason: string; until: string; untilText: string; repause: boolean; toAssisted: number }>;
 }
 export interface BankEntry {
   id: number;

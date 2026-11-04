@@ -287,6 +287,13 @@ export function LinkedInScreen({
             same way. On JobKarov, answer “לא” to “send my CV to similar jobs” and leave “קצת על עצמי” empty.
           </div>
         )}
+        {jobs.some((j) => j.status === 'needs_manual' && j.statusReason === 'bot_protection') && (
+          <div>
+            “Site paused” jobs: the site showed bot protection during a batch, so JobHunter paused it and sent nothing more there. You don't have to wait for the pause: open
+            the job in your regular browser (not JobHunter's), apply with the details below, then click “I applied”. JobHunter never shows or solves the check in its own
+            browser.
+          </div>
+        )}
       </div>
       <div className="filters">
         {(['todo', 'applied', 'all'] as const).map((v) => (
@@ -317,7 +324,7 @@ export function LinkedInScreen({
                   <div className="muted">
                     {j.company} · {j.location}
                   </div>
-                  {j.status === 'needs_manual' && <span className="badge warn" title={j.statusReason ?? ''}>{j.statusReason === 'captcha' ? 'CAPTCHA — apply by hand' : 'apply by hand'}</span>}
+                  {j.status === 'needs_manual' && <span className="badge warn" title={j.statusReason ?? ''}>{j.statusReason === 'captcha' ? 'CAPTCHA — apply by hand' : j.statusReason === 'bot_protection' ? 'site paused (bot protection) — apply by hand' : 'apply by hand'}</span>}
                   {j.applyTarget && ASSISTED.includes(j.site) && <span className="badge ok" title={j.applyTarget}>company link → review queue</span>}
                   {!j.descriptionText && <span className="badge warn">incomplete info</span>}
                 </td>

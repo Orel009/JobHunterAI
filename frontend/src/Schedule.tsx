@@ -16,6 +16,10 @@ export interface HuntSummary {
   loginNeeded: boolean;
   note: string | null;
   error?: string;
+  /** sites paused when the hunt ended: reason and until when */
+  paused?: Record<string, { reason: string; until: string }>;
+  /** sites challenged again after a pause during this hunt: 7 days */
+  repaused?: Array<{ site: string; label: string; until: string; untilText: string; reason: string }>;
 }
 
 const TRIGGER: Record<HuntSummary['trigger'], string> = { manual: 'started by you', schedule: 'in-app schedule', task: 'Windows Task Scheduler', cli: 'npm start -- --hunt' };

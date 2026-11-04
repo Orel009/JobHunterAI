@@ -170,6 +170,24 @@ export const PrefsSchema = z.object({
       maxPageLoads: z.number().int().min(3).max(200).default(10),
     })
     .prefault({}),
+  /**
+   * Sending pace per site (drushim, jobmaster, jobnet, …), over the defaults in apply/pacing.ts: the random wait between
+   * two sends on the site (spent on a job-list page), and the most sends per session (one Run & send or one batch) and
+   * per day. The daily number never goes above limits.dailyApplyLimit.
+   */
+  pacing: z
+    .record(
+      z.string(),
+      z.object({
+        minDelaySec: z.number().int().min(0).max(3600).optional(),
+        maxDelaySec: z.number().int().min(0).max(3600).optional(),
+        maxSendsPerSession: z.number().int().min(0).optional(),
+        maxSendsPerDay: z.number().int().min(0).optional(),
+        /** wait on a job-list page between two sends (instead of going straight from one send to the next) */
+        idleOnList: z.boolean().optional(),
+      }),
+    )
+    .default({}),
   standardAnswers: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
 });
 

@@ -58,7 +58,7 @@ import { BlockedError } from '../src/browser/session.js';
 import { getActiveRun, startRun, startTask, waitIdle } from '../src/pipeline/runner.js';
 import { approveBlock, prepareJobs } from '../src/apply/service.js';
 import { Applications } from '../src/apply/plan.js';
-import { isPaused, pauseExpired, pauseOf, pauseSite, pausedText, shortBlockReason, sitePauses, unpauseSite } from '../src/core/site-pause.js';
+import { clearResume, isPaused, isRepause, israelTime, pauseBadgeText, pauseExpired, pauseOf, pauseSite, pausedText, shortBlockReason, sitePauses, unpauseSite } from '../src/core/site-pause.js';
 import { BudgetError, beginBudgetSession, endBudgetSession, loadsLeft, useLoad } from '../src/core/site-budget.js';
 import { decideResume, resumeCheck } from '../src/pipeline/site-resume.js';
 import { doneReport, runHunt } from '../src/pipeline/hunt.js';
@@ -83,6 +83,7 @@ const addJob = (site: 'jobkarov' | 'drushim' = 'jobkarov') => {
 beforeEach(async () => {
   await waitIdle();
   for (const s of Object.keys(sitePauses())) unpauseSite(s);
+  for (const s of ['jobkarov', 'drushim']) clearResume(s);
   db = openDb(':memory:');
   repo = new Repo(db);
   h.searches = 0;
@@ -155,8 +156,11 @@ describe('resuming takes one check and a real page', () => {
     pauseSite('jobkarov', REFUSED, { now: new Date('2026-10-01T00:00:00Z') });
     expect(decideResume('jobkarov', info({ realPage: false, detail: 'timeout' }))).toMatchObject({ resumed: false, detail: expect.stringMatching(/could not confirm a real page/) });
     expect(isPaused('jobkarov')).toBe(true);
-    expect(decideResume('jobkarov', info({ blocked: REFUSED }))).toMatchObject({ resumed: false, detail: expect.stringMatching(/another 48 hours/) });
-    expect(Date.parse(pauseOf('jobkarov')!.until)).toBeGreaterThan(Date.now() + 47 * 3_600_000);
+    // the pause ran out long ago: challenged again at its check -> 7 days, and the result says so
+    const again = decideResume('jobkarov', info({ blocked: REFUSED }));
+    expect(again).toMatchObject({ resumed: false, detail: expect.stringMatching(/challenged again after the pause .* paused for 7 days, until /), repaused: { reason: 'site refusing (402)' } });
+    expect(Date.parse(pauseOf('jobkarov')!.until)).toBeGreaterThan(Date.now() + (7 * 24 - 1) * 3_600_000);
+    expect(pauseOf('jobkarov')!.strikes).toBe(2);
     const check = vi.fn(async () => info({ state: 'logged_in', realPage: true }));
     expect(await resumeCheck('jobkarov', check)).toMatchObject({ resumed: true, detail: expect.stringMatching(/logged in/) });
     expect(check).toHaveBeenCalledTimes(1);
@@ -173,26 +177,85 @@ describe('Run & send with a paused site', () => {
     expect(checked).not.toContain('jobkarov');
     expect(r.paused).toMatchObject({ jobkarov: { reason: 'site refusing (402)' } });
     expect(r.runs.map((x) => x.site)).not.toContain('jobkarov');
-    expect(doneReport(r, []).join('\n')).toMatch(/JobKarov paused: site refusing \(402\) — left out/);
+    expect(doneReport(r, []).join('\n')).toMatch(/JobKarov: paused until \w{3} \d\d\.\d\d \d\d:\d\d \(Israel time\) — site refusing \(402\); left out/);
   });
 
   it('a pause that ran out: one check first; a real page resumes the site for this run', async () => {
     pauseSite('jobkarov', REFUSED, { now: new Date(Date.now() - 49 * 3_600_000) });
     const checked: string[] = [];
     const r = await runHunt(db, { checkSession: ok, checkSiteSession: async (s) => (checked.push(s), ok()), notify: () => undefined });
-    expect(checked.filter((s) => s === 'jobkarov')).toHaveLength(2); // the resume check, then the normal login check
+    expect(checked.filter((s) => s === 'jobkarov')).toHaveLength(1); // ONE check after the pause: the resume check is also the login check
     expect(r.resumed).toEqual([{ site: 'jobkarov', resumed: true, detail: expect.stringMatching(/^resumed/) }]);
     expect(r.runs.map((x) => x.site)).toContain('jobkarov');
     expect(isPaused('jobkarov')).toBe(false);
   });
 
-  it('a pause that ran out, still blocked → paused for another 48 hours and left out', async () => {
+  it('a pause that ran out, challenged again at its one check → paused for 7 days, left out, and you are told', async () => {
     pauseSite('jobkarov', REFUSED, { now: new Date(Date.now() - 49 * 3_600_000) });
-    const r = await runHunt(db, { checkSession: ok, checkSiteSession: async (s) => (s === 'jobkarov' ? { state: 'unknown', checkedAt: '', detail: 'refused', blocked: REFUSED } : ok()), notify: () => undefined });
-    expect(r.resumed![0]).toMatchObject({ resumed: false });
+    const toasts: string[] = [];
+    const checked: string[] = [];
+    // the real session check pauses on a block itself; the stand-in does the same
+    const check = async (s: string): Promise<SessionInfo> => {
+      checked.push(s);
+      if (s !== 'jobkarov') return ok();
+      pauseSite('jobkarov', REFUSED);
+      return { state: 'unknown', checkedAt: '', detail: 'refused', blocked: REFUSED };
+    };
+    const r = await runHunt(db, { checkSession: ok, checkSiteSession: check, notify: (t, b) => void toasts.push(`${t}: ${b}`) });
+    expect(checked.filter((s) => s === 'jobkarov')).toHaveLength(1);
+    expect(r.resumed![0]).toMatchObject({ resumed: false, detail: expect.stringMatching(/paused for 7 days/) });
     expect(r.runs.map((x) => x.site)).not.toContain('jobkarov');
-    expect(pauseExpired(pauseOf('jobkarov')!)).toBe(false);
+    const p = pauseOf('jobkarov')!;
+    expect(pauseExpired(p)).toBe(false);
+    expect(p.strikes).toBe(2);
+    expect(Date.parse(p.until) - Date.parse(p.since)).toBe(7 * 24 * 3_600_000);
+    expect(r.repaused).toEqual([{ site: 'jobkarov', label: 'JobKarov', until: p.until, untilText: israelTime(p.until), reason: 'site refusing (402)' }]);
+    expect(r.note).toMatch(/JobKarov was challenged again after its pause .* paused for 7 days, until/);
+    expect(toasts.join('\n')).toMatch(/paused for 7 days/);
     expect(getActiveRun()).toBeNull();
+  });
+});
+
+describe('challenged again → 7 days; times in Israel time', () => {
+  it('the first block: 48 hours; a block during a running pause never shortens it', () => {
+    const now = new Date('2026-11-04T10:37:31Z');
+    pauseSite('drushim', 'captcha', { now });
+    expect(pauseOf('drushim')).toMatchObject({ until: '2026-11-06T10:37:31.000Z', strikes: 1 });
+    pauseSite('drushim', 'captcha', { now: new Date('2026-11-04T11:00:00Z') });
+    expect(pauseOf('drushim')).toMatchObject({ since: '2026-11-04T10:37:31.000Z', until: '2026-11-06T11:00:00.000Z', strikes: 1 });
+    pauseSite('jobkarov', REFUSED, { now, hours: 24 * 10 });
+    pauseSite('jobkarov', REFUSED, { now });
+    expect(pauseOf('jobkarov')!.until).toBe(new Date(now.getTime() + 240 * 3_600_000).toISOString());
+  });
+  it('blocked at the check after the pause → 7 days (strikes 2), and again after that → 7 days (strikes 3)', () => {
+    pauseSite('drushim', 'captcha', { now: new Date('2026-11-04T10:37:31Z') });
+    const p = pauseSite('drushim', 'radware bot protection', { now: new Date('2026-11-06T12:00:00Z') });
+    expect(p).toMatchObject({ since: '2026-11-06T12:00:00.000Z', until: '2026-11-13T12:00:00.000Z', strikes: 2, reason: 'bot protection' });
+    expect(isRepause(p)).toBe(true);
+    expect(pauseSite('drushim', 'captcha', { now: new Date('2026-11-13T13:00:00Z') })).toMatchObject({ until: '2026-11-20T13:00:00.000Z', strikes: 3 });
+  });
+  it('resumed by a passed check, blocked within 24 hours → 7 days; after 24 hours → 48 hours again', () => {
+    pauseSite('drushim', 'captcha', { now: new Date('2026-11-04T10:00:00Z') });
+    unpauseSite('drushim', { byCheck: true, now: new Date('2026-11-06T10:05:00Z') });
+    expect(pauseSite('drushim', 'captcha', { now: new Date('2026-11-06T15:00:00Z') })).toMatchObject({ until: '2026-11-13T15:00:00.000Z', strikes: 2 });
+    unpauseSite('drushim');
+    clearResume('drushim');
+    pauseSite('drushim', 'captcha', { now: new Date('2026-11-04T10:00:00Z') });
+    unpauseSite('drushim', { byCheck: true, now: new Date('2026-11-06T10:05:00Z') });
+    expect(pauseSite('drushim', 'captcha', { now: new Date('2026-11-07T11:00:00Z') })).toMatchObject({ until: '2026-11-09T11:00:00.000Z', strikes: 1 });
+  });
+  it('cleared by hand (not a passed check): no resume record, the next block is 48 hours', () => {
+    pauseSite('drushim', 'captcha', { now: new Date('2026-11-04T10:00:00Z') });
+    unpauseSite('drushim');
+    expect(pauseSite('drushim', 'captcha', { now: new Date('2026-11-04T12:00:00Z') })).toMatchObject({ until: '2026-11-06T12:00:00.000Z', strikes: 1 });
+  });
+  it('the header badge: "Drushim: paused until Fri 06.11 12:40" (Israel time)', () => {
+    const p = pauseSite('drushim', 'captcha', { now: new Date('2026-11-04T10:40:00Z') });
+    expect(israelTime('2026-11-06T10:40:00.000Z')).toBe('Fri 06.11 12:40');
+    expect(pauseBadgeText('Drushim', p, new Date('2026-11-05T00:00:00Z'))).toBe('Drushim: paused until Fri 06.11 12:40');
+    expect(pauseBadgeText('Drushim', p, new Date('2026-11-07T00:00:00Z'))).toBe('Drushim: pause over — one check at the next Run & send');
+    const again = pauseSite('drushim', 'captcha', { now: new Date('2026-11-07T00:00:00Z') });
+    expect(pauseBadgeText('Drushim', again, new Date('2026-11-08T00:00:00Z'))).toBe('Drushim: paused until Sat 14.11 02:00 (7 days — challenged again)');
   });
 });
 

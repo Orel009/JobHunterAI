@@ -8,7 +8,7 @@ import { Repo } from '../db/repo.js';
 import { SITES } from '../sites/registry.js';
 import { hasApplyFlow } from '../apply/drivers.js';
 import { JOB_STATUSES } from '../sites/types.js';
-import { pauseExpired, pausedText, sitePauses } from '../core/site-pause.js';
+import { isRepause, israelTime, pauseBadgeText, pauseExpired, pausedText, sitePauses } from '../core/site-pause.js';
 import { resumeSiteNow } from '../pipeline/site-resume.js';
 import { getActiveRun, refilterExisting, startRun, startTask, stopRun, syncSalaries } from '../pipeline/runner.js';
 import { scorePending } from '../pipeline/score-pending.js';
@@ -108,7 +108,12 @@ export function buildApp(db: DB, opts: { staticDir?: string } = {}) {
       /** jobs a site's send left for you to apply by hand (e.g. a JobKarov CAPTCHA): shown in the assisted panel */
       needsManual: (db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'needs_manual'").get() as { n: number }).n,
       /** paused sites (not loaded at all): reason, since, until (the resume check may run from then), expired */
-      pauses: Object.fromEntries(Object.entries(sitePauses()).map(([k, v]) => [k, { ...v, expired: pauseExpired(v) }])),
+      pauses: Object.fromEntries(
+        Object.entries(sitePauses()).map(([k, v]) => [
+          k,
+          { ...v, expired: pauseExpired(v), repause: isRepause(v), untilText: israelTime(v.until), badge: pauseBadgeText(SITES.find((s) => s.id === k)?.displayName ?? k, v) },
+        ]),
+      ),
       /** auto-submit (off by default): per-site toggles, the kill switch and the effective minimum rank */
       autoSubmit: { ...autoSubmitSettings(), minRankEffective: effectiveMinRank() },
       /** the latest hunt's summary, and the next in-app scheduled hunt (null = off) */

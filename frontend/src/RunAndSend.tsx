@@ -119,6 +119,19 @@ export function RunAndSendPanel({ status }: { status: Status }) {
         )
       )}
       {h?.loginNeeded && <div>The Drushim login expired: this run was discovery-only. Log in again, then run again.</div>}
+      {(h?.repaused ?? []).map((r) => (
+        <div key={r.site} className="banner error">
+          ⏸ <b>{r.label}</b> was challenged again after its pause ({r.reason}) — paused for <b>7 days</b>, until {r.untilText} (Israel time). Nothing loads it until then; its jobs can still be
+          applied to by hand (Assisted apply).
+        </div>
+      ))}
+      {Object.entries(status.pauses ?? {})
+        .filter(([site]) => !(h?.repaused ?? []).some((r) => r.site === site))
+        .map(([site, p]) => (
+          <div key={site} className="muted">
+            ⏸ {p.badge ?? site} — {p.reason}
+          </div>
+        ))}
       {h?.note && !h.loginNeeded && <div className="muted">{h.note}</div>}
     </div>
   );

@@ -85,6 +85,12 @@ export function App() {
             </button>
           ))}
         </nav>
+        {status &&
+          Object.entries(status.pauses ?? {}).map(([site, p]) => (
+            <span key={site} className={`badge ${p.repause ? 'error' : 'warn'} pause-badge`} title={`${p.reason} — ${p.detail}. Then one session check at the next Run & send (or Settings → Resume).`} onClick={() => setTab('settings')}>
+              {p.badge ?? `${site}: paused`}
+            </span>
+          ))}
         {status && onboarding === false && <RunAndSendButton status={status} onChange={refresh} />}
         {status && onboarding === false && <AutoSubmitKillSwitch status={status} onChange={refresh} openSettings={() => setTab('settings')} />}
       </header>

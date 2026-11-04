@@ -8,6 +8,8 @@ import { config } from '../config.js';
 import { hasApplyFlow } from './drivers.js';
 import type { DB } from '../db/index.js';
 import { nowIso } from '../db/index.js';
+import { dailySendLimit, sessionSendLimit } from './pacing.js';
+import { sendsThisSession } from '../core/site-budget.js';
 import type { Repo, StoredJob } from '../db/repo.js';
 import { readSettingsFile, writeSettingsFile } from '../llm/settings.js';
 import { effectiveLimits, type Prefs } from '../core/prefs.js';
@@ -83,6 +85,9 @@ export interface GateInput {
   excludedMatch: string | null;
   submittedToday: number;
   dailyLimit: number;
+  /** send attempts on this site in this session, and the most per session (apply/pacing.ts) */
+  sentThisSession?: number;
+  sessionLimit?: number;
 }
 
 /** answers that may be sent without review: from the profile / bank / computed from them, never written by the model */
@@ -126,6 +131,9 @@ export function autoSubmitGate(i: GateInput, now = new Date()): GateResult {
     },
     { name: 'company not on your excluded list', ok: !i.excludedMatch, detail: i.excludedMatch ? `matches "${i.excludedMatch}"` : i.company },
     { name: `under today's limit for ${i.site}`, ok: i.submittedToday < i.dailyLimit, detail: `${i.submittedToday} of ${i.dailyLimit} sent today` },
+    ...(i.sessionLimit !== undefined && Number.isFinite(i.sessionLimit)
+      ? [{ name: `under this session's limit for ${i.site}`, ok: (i.sentThisSession ?? 0) < i.sessionLimit, detail: `${i.sentThisSession ?? 0} of ${i.sessionLimit} sent this session` }]
+      : []),
     { name: 'full job description (not "incomplete info")', ok: !!i.descriptionText.trim(), detail: i.descriptionText.trim() ? `${i.descriptionText.length} characters` : 'only title / company / location known' },
   ];
   return { auto: conditions.every((c) => c.ok), at: now.toISOString(), conditions };
@@ -136,12 +144,7 @@ export function evaluateAutoSubmit(db: DB, repo: Repo, job: StoredJob, plan: App
   const s = autoSubmitSettings();
   const limits = effectiveLimits(prefs);
   const since = new Date(Date.now() - limits.companyCooldownDays * 86_400_000).toISOString();
-  const recent = !!db
-    .prepare(
-      `SELECT 1 FROM applications WHERE company_norm = ? AND status = 'submitted' AND dry_run = 0 AND submitted_at >= ?
-       UNION SELECT 1 FROM jobs WHERE company_norm = ? AND status = 'submitted_manual' AND applied_manually_at >= ? LIMIT 1`,
-    )
-    .get(job.companyNorm, since, job.companyNorm, since);
+  const recent = repo.appliedToCompanySince(job.companyNorm, since); // the same company by core/dedupe.ts ("Voice Spin" = "voicespin")
   // the role type it is judged as, and every role type its title matches: any "never auto-submit" one keeps it in review
   const roles = [scoringRole(job, prefs), ...rolesMatchingTitle(job.title, prefs.roleTypes)].filter((r) => r?.neverAutoSubmit);
   return autoSubmitGate({
@@ -161,6 +164,8 @@ export function evaluateAutoSubmit(db: DB, repo: Repo, job: StoredJob, plan: App
     recentlyAppliedToCompany: recent,
     excludedMatch: excludedCompanyMatch(job.company, prefs.filters.excludeCompanies),
     submittedToday: repo.submittedToday(job.site),
-    dailyLimit: limits.dailyApplyLimit,
+    dailyLimit: dailySendLimit(job.site, prefs),
+    sentThisSession: sendsThisSession(job.site),
+    sessionLimit: sessionSendLimit(job.site, prefs),
   });
 }

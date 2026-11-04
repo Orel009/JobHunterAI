@@ -146,7 +146,7 @@ describe('JobKarov through the apply service', () => {
     expect(repo.getJob(b.job.id)!.status).toBe('skipped_screening');
   });
 
-  it('batch: the first CAPTCHA → assisted panel only; the second in the same session pauses the site for 48h, the rest waits', async () => {
+  it('batch: the first CAPTCHA → assisted panel only; the second in the same session pauses the site for 48h, the rest → assisted panel too', async () => {
     const ids: number[] = [];
     for (let i = 0; i < 3; i++) ids.push((await prepared()).app.id);
     h.outcome = { kind: 'needs_manual', reason: 'captcha', message: 'JobKarov asked for a CAPTCHA — not attempted; apply by hand' };
@@ -155,12 +155,14 @@ describe('JobKarov through the apply service', () => {
     expect(h.sent).toHaveLength(2);
     const b = batchProgress()!;
     expect(b.captchas).toBe(2);
-    expect(b.results.map((r) => r.status)).toEqual(['needs_manual', 'needs_manual', 'not_sent']);
+    expect(b.results.map((r) => r.status)).toEqual(['needs_manual', 'needs_manual', 'needs_manual']);
     expect(b.results[0]!.detail).not.toMatch(/paused/);
-    expect(b.results[1]!.detail).toMatch(/second CAPTCHA this session: JobKarov paused for 48 hours/);
-    expect(b.results[2]!.detail).toMatch(/JobKarov is paused: CAPTCHA at send twice in a session/);
+    expect(b.results[1]!.detail).toMatch(/second CAPTCHA this session: JobKarov paused until \w{3} \d\d\.\d\d \d\d:\d\d/);
+    // the third was never attempted: the site was paused → the assisted panel, no waiting for the pause
+    expect(b.results[2]!.detail).toMatch(/JobKarov paused until .* moved to the assisted panel/);
     expect(pauseOf('jobkarov')).toMatchObject({ reason: 'CAPTCHA at send twice in a session', source: 'block' });
-    expect(apps.get(ids[2]!)!.status).toBe('needs_review');
+    expect(apps.get(ids[2]!)!).toMatchObject({ status: 'skipped', error: expect.stringMatching(/^needs_manual: bot_protection/) });
+    expect(b.paused).toEqual([expect.objectContaining({ site: 'jobkarov', toAssisted: 1, repause: false })]);
   });
 
   it('one CAPTCHA per session does not pause: two separate approvals are two sessions', async () => {

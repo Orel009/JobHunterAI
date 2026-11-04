@@ -29,7 +29,8 @@ import { getSession, setSession } from '../browser/site-session.js';
 import { excludedCompanyMatch } from '../core/prefilter.js';
 import type { ApplyPlan, ResolvedField } from './types.js';
 import { isAssistedSite, isCompanySource } from '../alerts/assisted.js';
-import { isPaused, pauseSite, pausedText } from '../core/site-pause.js';
+import { isPaused, isRepause, israelTime, pauseOf, pauseSite, pausedText } from '../core/site-pause.js';
+import { dailySendLimit, noteSendAttempt, sessionCapReached, waitBeforeSend } from './pacing.js';
 import { BudgetError, noteSendCaptcha } from '../core/site-budget.js';
 import { SITES } from '../sites/registry.js';
 
@@ -187,6 +188,11 @@ export function prepareJobs(db: DB, jobIds: string[]): number {
         }
       };
       try {
+        // a job that may be auto-submitted: the site's pacing first (the wait spent on a job list), within its caps
+        if (!config.DRY_RUN && autoSubmitOn(job.site) && !sessionCapReached(job.site, siteName(job.site), prefs) && !dailyLimitReached(repo, job.site)) {
+          await waitBeforeSend(db, job.site, page, { signal: run.controller.signal, onWait: (t) => (run.stage = `${t} — then ${job.title}`) });
+          if (run.controller.signal.aborted) return;
+        }
         const state = await driver.openPanel(page, job);
         markLoggedIn(job.site);
         const plan = await buildPlan(job, state.fields, { db, repo, prefs });
@@ -386,8 +392,8 @@ function recordSubmitResult(apps: Applications, repo: Repo, appId: number, job: 
     L.warn({ job: job.title, reason: r.outcome.reason }, 'not sent: the site wants a CAPTCHA — apply by hand (assisted panel)');
     // the second CAPTCHA at send on the same site in one session pauses that site for 48 hours (any site)
     if (r.outcome.reason === 'captcha' && noteSendCaptcha(job.site) >= 2) {
-      pauseSite(job.site, `the site asked for a CAPTCHA at send twice in one session (${siteName(job.site)})`, { reason: 'CAPTCHA at send twice in a session' });
-      return { status: 'needs_manual', detail: `${r.outcome.message} (assisted panel) — the second CAPTCHA this session: ${siteName(job.site)} paused for 48 hours` };
+      const p = pauseSite(job.site, `the site asked for a CAPTCHA at send twice in one session (${siteName(job.site)})`, { reason: 'CAPTCHA at send twice in a session' });
+      return { status: 'needs_manual', detail: `${r.outcome.message} (assisted panel) — the second CAPTCHA this session: ${siteName(job.site)} paused until ${israelTime(p.until)} (Israel time)` };
     }
     return { status: 'needs_manual', detail: `${r.outcome.message} (assisted panel)` };
   }
@@ -459,6 +465,7 @@ async function autoSubmitPrepared(o: {
   }
   L.info({ job: job.title }, 'AUTO-SUBMIT: every gate condition passed');
   const r = await driver.submitPanel(page, job, `app${appId}`, plan.cv?.cvName);
+  noteSendAttempt(job.site);
   const res = recordSubmitResult(apps, repo, appId, job, before, r, L);
   if (res.stop) throw new Error(res.detail); // daily cap / session: stop the run
   return res.status === 'submitted';
@@ -550,13 +557,22 @@ function approvable(db: DB, appId: number): { app: ApplicationRow; job: StoredJo
   return { app, job };
 }
 
-const dailyLimitReached = (repo: Repo, site: string) => repo.submittedToday(site) >= effectiveLimits(loadPrefs()).dailyApplyLimit;
+/** today's real sends on this site reached its daily number (apply/pacing.ts: Drushim 12, never above limits.dailyApplyLimit) */
+const dailyLimitReached = (repo: Repo, site: string) => repo.submittedToday(site) >= dailySendLimit(site);
 
 /**
  * Sends one approved application (or, in DRY_RUN, fills it and stops before the final click). Never throws: the
  * result says what happened and whether a batch must stop (bot protection, a daily cap, the session).
  */
-async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boolean, L: typeof log, applied: Map<string, string | null> | null): Promise<SendResult> {
+async function sendApproved(
+  db: DB,
+  appId: number,
+  job: StoredJob,
+  dryRun: boolean,
+  L: typeof log,
+  applied: Map<string, string | null> | null,
+  opts: { signal?: AbortSignal; onWait?: (text: string) => void } = {},
+): Promise<SendResult> {
   const apps = new Applications(db);
   const repo = new Repo(db);
   const app = apps.get(appId)!;
@@ -566,9 +582,16 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
     apps.update(appId, { status: 'needs_review', error: `not sent: ${paused}` });
     return done('not_sent', paused);
   }
+  // the site's own caps (apply/pacing.ts): that site's rest waits; other sites in a batch go on
   if (!dryRun && dailyLimitReached(repo, job.site)) {
-    apps.update(appId, { status: 'needs_review', error: 'not sent: the daily limit was reached' });
-    return done('not_sent', `daily apply limit reached (${effectiveLimits(loadPrefs()).dailyApplyLimit})`, 'daily_cap');
+    const why = `${siteName(job.site)}: the daily limit (${dailySendLimit(job.site)}) is reached — waits for tomorrow`;
+    apps.update(appId, { status: 'needs_review', error: `not sent: ${why}` });
+    return done('not_sent', why);
+  }
+  const capped = dryRun ? null : sessionCapReached(job.site, siteName(job.site));
+  if (capped) {
+    apps.update(appId, { status: 'needs_review', error: `not sent: ${capped}` });
+    return done('not_sent', capped);
   }
   apps.update(appId, { status: 'approved', reviewed: true, dryRun });
   // applied on the site in the meantime (by hand, or another device)? → skipped, never failed
@@ -589,6 +612,14 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
       repo.closeForExcludedCompany(job.id, early);
       L.warn({ job: job.title }, `not sent: ${early}`);
       return done('skipped', early);
+    }
+    if (!dryRun) {
+      // the wait after the site's last send, spent on one of its job lists (a block there is handled like any block)
+      await waitBeforeSend(db, job.site, page, { signal: opts.signal, onWait: opts.onWait });
+      if (opts.signal?.aborted) {
+        apps.update(appId, { status: 'needs_review', error: 'not sent: stopped by you' });
+        return done('not_sent', 'stopped by you');
+      }
     }
     const state = await driver.openPanel(page, job);
     markLoggedIn(job.site);
@@ -631,6 +662,7 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
       return done('skipped', dup);
     }
     const r = await driver.submitPanel(page, job, `app${appId}`, app.plan.cv?.cvName);
+    noteSendAttempt(job.site);
     const res = recordSubmitResult(apps, repo, appId, job, before, r, L);
     return done(res.status, res.detail, res.stop);
   } catch (e) {
@@ -639,11 +671,11 @@ async function sendApproved(db: DB, appId: number, job: StoredJob, dryRun: boole
     if (closed) return done(closed.status, closed.detail);
     if (e instanceof BlockedError) {
       // the page was refused before anything was sent: back to review, and the site pauses for 48 hours
-      pauseSite(job.site, e.reason);
+      const p = pauseSite(job.site, e.reason);
       apps.update(appId, { status: 'needs_review', error: `not sent: ${siteName(job.site)} blocked the page (${e.reason}) — site paused` });
       repo.setStatus(job.id, 'needs_review', `${siteName(job.site)} paused after a block`);
-      L.error({ job: job.title, reason: e.reason }, 'BLOCKED — site paused for 48h, not sent');
-      return done('not_sent', `${siteName(job.site)} blocked the page — paused for 48 hours`, 'captcha');
+      L.error({ job: job.title, reason: e.reason, until: p.until }, `BLOCKED — site paused until ${israelTime(p.until)} (Israel time), not sent`);
+      return done('not_sent', `${siteName(job.site)} blocked the page — paused until ${israelTime(p.until)}${isRepause(p) ? ' (7 days: challenged again after a pause)' : ''}`, 'captcha');
     }
     if (e instanceof BudgetError) {
       apps.update(appId, { status: 'needs_review', error: `not sent: ${e.message}` });
@@ -709,17 +741,39 @@ export interface BatchProgress {
   finished: boolean;
   /** sends the site answered with a CAPTCHA (never attempted; those jobs are in the assisted panel) */
   captchas: number;
+  /** sites paused by a block during this batch: until when, and how many of its jobs went to the assisted panel */
+  paused: Array<{ site: string; label: string; reason: string; until: string; untilText: string; repause: boolean; toAssisted: number }>;
 }
 let batch: BatchProgress | null = null;
 export const batchProgress = () => batch;
 
 const STOP_TEXT: Record<SendStop, string> = {
-  captcha: 'the site showed a CAPTCHA / bot protection — stopped (never bypassed); open the site yourself and try later',
+  captcha: 'the site showed a CAPTCHA / bot protection — stopped (never bypassed)',
   daily_cap: 'a daily cap was reached — stopped; the rest stay in the review queue',
   session: 'the site session is not logged in — stopped; log in again, the rest stay in the review queue',
 };
 
-/** Approves the selected applications and sends them one after another (normal pacing), stopping on a stop condition. */
+/**
+ * A job a site's bot protection kept from being sent: to the assisted panel (open in your regular browser, copy
+ * helpers, "I applied"), so you can apply by hand without waiting for the pause. JobHunter's own browser never
+ * shows or attempts the challenge. Returns false when the job was sent in the meantime (nothing to do).
+ */
+export function moveToAssisted(db: DB, appId: number, why: string): boolean {
+  const apps = new Applications(db);
+  const repo = new Repo(db);
+  const app = apps.get(appId);
+  if (!app || app.status === 'submitted' || alreadySent(db, app.jobId, appId)) return false;
+  apps.update(appId, { status: 'skipped', error: `needs_manual: bot_protection — ${why}` });
+  repo.setStatus(app.jobId, 'needs_manual', 'bot_protection');
+  return true;
+}
+
+/**
+ * Approves the selected applications and sends them one after another, each site at its own pace (apply/pacing.ts),
+ * stopping on a stop condition. A site's own caps (per session / per day) only hold back that site's jobs.
+ * When a site shows bot protection, the batch stops; that site's unsent jobs go to the assisted panel (moveToAssisted),
+ * the other sites' unsent jobs stay in the review queue.
+ */
 export function approveBatch(db: DB, appIds: number[]): { runId: number; dryRun: boolean; accepted: number; refused: Array<{ appId: number; reason: string }> } {
   const apps = new Applications(db);
   const repo = new Repo(db);
@@ -758,7 +812,10 @@ export function approveBatch(db: DB, appIds: number[]): { runId: number; dryRun:
       const still = fresh ? batchBlock(fresh) : 'gone';
       const r: SendResult = still
         ? { appId: app.id, title: job.title, company: job.company, status: 'not_sent', detail: `changed since you selected it: ${still}` }
-        : await sendApproved(db, app.id, job, dryRun, L, await appliedFor(job.site));
+        : await sendApproved(db, app.id, job, dryRun, L, await appliedFor(job.site), {
+            signal: run.controller.signal,
+            onWait: (t) => (run.stage = `${t} — then ${batch!.current}`),
+          });
       batch!.results.push(r);
       batch!.done++;
       run.stats.sent = (run.stats.sent ?? 0) + (r.status === 'submitted' ? 1 : 0);
@@ -775,9 +832,38 @@ export function approveBatch(db: DB, appIds: number[]): { runId: number; dryRun:
       // after a CAPTCHA, a much longer pause before the next send
       if (i < accepted.length - 1) await (r.status === 'needs_manual' ? pace(45_000, 90_000) : pace());
     }
+    // sites a block paused during this batch: their unsent jobs → the assisted panel (apply by hand, no waiting)
+    const blocked = [...new Set(accepted.map((a) => a.job.site))].filter((site) => {
+      const p = pauseOf(site);
+      return !!p && p.source === 'block' && p.since >= batch!.startedAt;
+    });
+    for (const site of blocked) {
+      const p = pauseOf(site)!;
+      const untilText = israelTime(p.until);
+      let moved = 0;
+      for (const { app, job } of accepted.filter((a) => a.job.site === site)) {
+        const res = batch!.results.find((x) => x.appId === app.id);
+        if (res && res.status !== 'not_sent') continue; // sent, CAPTCHA (already in the assisted panel), skipped, failed…
+        if (!moveToAssisted(db, app.id, `${siteName(site)} showed bot protection during a batch (paused until ${untilText} Israel time)`)) continue;
+        moved++;
+        const detail = `${siteName(site)} paused until ${untilText} — moved to the assisted panel: apply in your regular browser`;
+        if (res) Object.assign(res, { status: 'needs_manual', detail });
+        else batch!.results.push({ appId: app.id, title: job.title, company: job.company, status: 'needs_manual', detail });
+      }
+      batch!.paused.push({ site, label: siteName(site), reason: p.reason, until: p.until, untilText, repause: isRepause(p), toAssisted: moved });
+      L.warn({ site, until: p.until, toAssisted: moved }, `${siteName(site)} paused during the batch — ${moved} unsent job(s) moved to the assisted panel`);
+    }
+    if (blocked.length) {
+      const others = batch!.results.filter((x) => x.status === 'not_sent' && !(blocked as string[]).includes(accepted.find((a) => a.app.id === x.appId)?.job.site ?? ''));
+      for (const o of others) if (/the batch stopped/.test(o.detail)) o.detail = 'not sent: the batch stopped — still in the review queue (this site is not paused; approve it again)';
+      batch!.stoppedReason = [
+        batch!.stoppedReason ?? STOP_TEXT.captcha,
+        ...batch!.paused.map((x) => `${x.label}: paused until ${x.untilText} (Israel time)${x.repause ? ' — 7 days, challenged again after a pause' : ''}; ${x.toAssisted} unsent job(s) moved to the assisted panel — apply in your regular browser`),
+      ].join(' · ');
+    }
     batch!.current = null;
     batch!.finished = true;
   });
-  batch = { runId, dryRun, startedAt: new Date().toISOString(), total: accepted.length, done: 0, current: null, results: [], stoppedReason: null, finished: false, captchas: 0 };
+  batch = { runId, dryRun, startedAt: new Date().toISOString(), total: accepted.length, done: 0, current: null, results: [], stoppedReason: null, finished: false, captchas: 0, paused: [] };
   return { runId, dryRun, accepted: accepted.length, refused };
 }

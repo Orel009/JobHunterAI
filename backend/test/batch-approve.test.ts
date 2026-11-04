@@ -10,14 +10,26 @@ const h = vi.hoisted(() => {
   process.env.PREFERENCES_FILE = 'data/test-batch/preferences.yaml';
   process.env.DRY_RUN = 'false';
   Object.assign(process.env, { LLM_ANALYZE_PROVIDER: 'fake', LLM_ANALYZE_MODEL: 'test', LLM_WRITE_PROVIDER: 'fake', LLM_WRITE_MODEL: 'test' });
-  return { sent: [] as string[], failOn: null as null | { n: number; kind: 'captcha' | 'session' }, sendCaptcha: false };
+  return { sent: [] as string[], failOn: null as null | { n: number; kind: 'captcha' | 'session' }, sendCaptcha: false, paces: [] as Array<[number, number]> };
 });
 
 vi.mock('../src/browser/session.js', async (orig) => ({
   ...(await orig<typeof import('../src/browser/session.js')>()),
   getPage: async () => ({}) as never,
   closeContext: async () => undefined,
-  pace: async () => undefined,
+  pace: async (a?: number, b?: number) => void h.paces.push([a ?? 0, b ?? 0]),
+}));
+vi.mock('../src/sites/jobmaster/apply.js', async (orig) => ({
+  ...(await orig<typeof import('../src/sites/jobmaster/apply.js')>()),
+  fetchAppliedJobs: async () => new Map(),
+  installDryRunGuard: async () => async () => undefined,
+  openPanel: async () => ({ fields: [], cvs: [{ code: '4', name: 'cv.pdf', checked: true }], hasCoverLetter: false }),
+  fillPanel: async () => undefined,
+  screenshotPanel: async () => 'shot.png',
+  submitPanel: async () => {
+    h.sent.push('jobmaster');
+    return { outcome: { kind: 'submitted' }, confirmationText: 'ok', screenshotAfter: 'after.png' };
+  },
 }));
 vi.mock('../src/sites/drushim/apply.js', async (orig) => {
   const real = await orig<typeof import('../src/sites/drushim/apply.js')>();
@@ -49,7 +61,8 @@ vi.mock('../src/sites/drushim/apply.js', async (orig) => {
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { pauseOf, sitePauses, unpauseSite } from '../src/core/site-pause.js';
+import { clearResume, israelTime, pauseOf, sitePauses, unpauseSite } from '../src/core/site-pause.js';
+import { resetSendTimes } from '../src/apply/pacing.js';
 import { config } from '../src/config.js';
 import { openDb, type DB } from '../src/db/index.js';
 import { Repo } from '../src/db/repo.js';
@@ -104,6 +117,17 @@ const waiting = (id: string, score: number, p: ApplyPlan = plan()) => {
   return apps.savePlan(repo.getJob(j.id)!, { ...p, jobId: j.id }, 'needs_review').id;
 };
 const status = (id: string) => apps.latestForJob(jobId('drushim', id))!.status;
+/** the same on another site (JobMaster) */
+const waitingOn = (site: 'jobmaster', id: string, score: number) => {
+  const j = toJob({
+    site, externalId: id, company: `Other ${id}`, title: 'Full Stack Developer', location: '', descriptionText: 'React developer', requirementsText: '',
+    url: `https://www.jobmaster.co.il/jobs/checknum.asp?key=${id}`, postedAt: null, applyType: 'site_one_click', applyTarget: '', language: 'he', detailsFetched: true, raw: {},
+  });
+  repo.upsertJob(j);
+  repo.setPrefilter(j.id, true, 'ok');
+  repo.saveScore(j.id, { score, matchedSkills: [], missingRequirements: [], seniorityFit: 'ok', reasoningHe: 'x', model: 'm', contentHash: j.contentHash, roleType: 'fullstack' });
+  return apps.savePlan(repo.getJob(j.id)!, { ...plan(), site, jobId: j.id }, 'needs_review').id;
+};
 
 beforeEach(() => {
   db = openDb(':memory:');
@@ -116,6 +140,9 @@ beforeEach(() => {
   saveAutoSubmitSettings({ sites: { drushim: false }, minRank: 90, paused: false, pausedAt: null });
   fs.writeFileSync(config.paths.preferences, PREFS);
   for (const s of Object.keys(sitePauses())) unpauseSite(s); // a block in one test pauses the site for 48h
+  clearResume('drushim');
+  resetSendTimes();
+  h.paces = [];
 });
 
 describe('approve selected → submit', () => {
@@ -149,18 +176,32 @@ describe('approve selected → submit', () => {
     expect(() => approveBatch(db, [draft])).toThrow(/nothing to approve/);
   });
 
-  it('a CAPTCHA stops the batch and pauses the site; that one and the rest stay in the review queue', async () => {
+  it('bot protection stops the batch and pauses the site; that site\'s unsent jobs → the assisted panel', async () => {
     h.failOn = { n: 2, kind: 'captcha' };
     const ids = [waiting('10', 99), waiting('11', 98), waiting('12', 97)];
     approveBatch(db, ids);
     await waitIdle();
     expect(h.sent).toEqual(['10']);
-    expect([status('10'), status('11'), status('12')]).toEqual(['submitted', 'needs_review', 'needs_review']);
+    expect([status('10'), status('11'), status('12')]).toEqual(['submitted', 'skipped', 'skipped']);
+    for (const id of ['11', '12']) expect(repo.getJob(jobId('drushim', id))).toMatchObject({ status: 'needs_manual', statusReason: 'bot_protection' });
     const b = batchProgress()!;
-    expect(b.stoppedReason).toMatch(/CAPTCHA/);
-    expect(b.results.map((x) => x.status)).toEqual(['submitted', 'not_sent', 'not_sent']);
+    const p = pauseOf('drushim')!;
+    expect(p).toMatchObject({ reason: 'CAPTCHA / bot check', source: 'block' });
+    expect(b.stoppedReason).toMatch(/CAPTCHA \/ bot protection — stopped \(never bypassed\) · Drushim: paused until \w{3} \d\d\.\d\d \d\d:\d\d \(Israel time\); 2 unsent job\(s\) moved to the assisted panel/);
+    expect(b.results.map((x) => x.status)).toEqual(['submitted', 'needs_manual', 'needs_manual']);
     expect(b.results[1]!.stop).toBe('captcha');
-    expect(pauseOf('drushim')).toMatchObject({ reason: 'CAPTCHA / bot check', source: 'block' });
+    expect(b.results[2]!.detail).toMatch(/Drushim paused until .* moved to the assisted panel: apply in your regular browser/);
+    expect(b.paused).toEqual([{ site: 'drushim', label: 'Drushim', reason: 'CAPTCHA / bot check', until: p.until, untilText: israelTime(p.until), repause: false, toAssisted: 2 }]);
+  });
+
+  it('bot protection on one site: another site\'s unsent jobs stay in the review queue', async () => {
+    h.failOn = { n: 2, kind: 'captcha' };
+    const jm = waitingOn('jobmaster', '900', 50);
+    approveBatch(db, [waiting('13', 99), waiting('14', 98), jm]);
+    await waitIdle();
+    expect(apps.get(jm)!.status).toBe('needs_review');
+    expect(batchProgress()!.results.find((x) => x.appId === jm)).toMatchObject({ status: 'not_sent', detail: expect.stringMatching(/still in the review queue \(this site is not paused/) });
+    expect(status('14')).toBe('skipped');
   });
 
   it('a CAPTCHA at send twice in one session pauses the site (Drushim too); the first alone does not', async () => {
@@ -168,9 +209,9 @@ describe('approve selected → submit', () => {
     approveBatch(db, [waiting('30', 99), waiting('31', 98), waiting('32', 97)]);
     await waitIdle();
     expect(h.sent).toEqual(['30', '31']);
-    expect(batchProgress()!.results.map((x) => x.status)).toEqual(['needs_manual', 'needs_manual', 'not_sent']);
+    expect(batchProgress()!.results.map((x) => x.status)).toEqual(['needs_manual', 'needs_manual', 'needs_manual']);
     expect(pauseOf('drushim')).toMatchObject({ reason: 'CAPTCHA at send twice in a session' });
-    expect(status('32')).toBe('needs_review');
+    expect(status('32')).toBe('skipped'); // never attempted: the site paused → the assisted panel
   });
 
   it('a session problem stops the batch', async () => {
@@ -182,14 +223,59 @@ describe('approve selected → submit', () => {
     expect(status('21')).toBe('needs_review');
   });
 
-  it('the daily cap stops the batch (counting earlier submissions today)', async () => {
+  it('the daily cap holds back that site only (counting earlier submissions today); the batch goes on', async () => {
     fs.writeFileSync(config.paths.preferences, PREFS + 'limits: { dailyApplyLimit: 2 }\n');
     approveBatch(db, [waiting('30', 99), waiting('31', 98), waiting('32', 97)]);
     await waitIdle();
     expect(h.sent).toEqual(['30', '31']);
     const b = batchProgress()!;
-    expect(b.stoppedReason).toMatch(/daily cap/);
+    expect(b.stoppedReason).toBeNull();
     expect(b.results.map((x) => x.status)).toEqual(['submitted', 'submitted', 'not_sent']);
+    expect(b.results[2]!.detail).toMatch(/Drushim: the daily limit \(2\) is reached/);
     expect(status('32')).toBe('needs_review');
+  });
+
+  it('Drushim: at most 12 sends a day by default (under the general 15)', async () => {
+    const ids = Array.from({ length: 13 }, (_, i) => waiting(String(200 + i), 99 - i));
+    // two sessions of 8 + 5: the session cap first, then the daily cap
+    approveBatch(db, ids.slice(0, 8));
+    await waitIdle();
+    approveBatch(db, ids.slice(8));
+    await waitIdle();
+    expect(h.sent).toHaveLength(12);
+    expect(batchProgress()!.results.at(-1)).toMatchObject({ status: 'not_sent', detail: expect.stringMatching(/Drushim: the daily limit \(12\) is reached/) });
+  });
+
+  it('Drushim: at most 8 sends per session by default; the rest stay in review for the next session', async () => {
+    const ids = Array.from({ length: 10 }, (_, i) => waiting(String(100 + i), 99 - i));
+    approveBatch(db, ids);
+    await waitIdle();
+    expect(h.sent).toHaveLength(8);
+    const b = batchProgress()!;
+    expect(b.stoppedReason).toBeNull();
+    expect(b.results.slice(8).map((x) => [x.status, x.detail])).toEqual([
+      ['not_sent', 'Drushim: 8 sends this session (the most per session) — the rest wait for the next session'],
+      ['not_sent', 'Drushim: 8 sends this session (the most per session) — the rest wait for the next session'],
+    ]);
+    expect(status('108')).toBe('needs_review');
+  });
+
+  it('per-site pacing from Preferences: the session cap of 2', async () => {
+    fs.writeFileSync(config.paths.preferences, PREFS + 'pacing:\n  drushim: { maxSendsPerSession: 2 }\n');
+    approveBatch(db, [waiting('40', 99), waiting('41', 98), waiting('42', 97)]);
+    await waitIdle();
+    expect(h.sent).toEqual(['40', '41']);
+  });
+
+  it('between two Drushim sends: a 60–150 s wait (spent on a job list), never straight from send to send', async () => {
+    h.paces = [];
+    approveBatch(db, [waiting('50', 99), waiting('51', 98), waiting('52', 97)]);
+    await waitIdle();
+    expect(h.sent).toEqual(['50', '51', '52']);
+    // the pacing waits come in 5 s chunks; two waits (before the 2nd and the 3rd send), each 60–150 s
+    const chunks = h.paces.filter(([a, b]) => a === b && a <= 5000);
+    const total = chunks.reduce((n, [a]) => n + a, 0);
+    expect(total).toBeGreaterThanOrEqual(2 * 59_000);
+    expect(total).toBeLessThanOrEqual(2 * 150_000);
   });
 });

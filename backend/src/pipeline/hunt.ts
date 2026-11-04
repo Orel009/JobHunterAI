@@ -26,10 +26,11 @@ import { scheduleSettings } from './schedule.js';
 import { config } from '../config.js';
 import { autoSubmitSettings } from '../apply/auto-submit.js';
 import { adapters, SITES } from '../sites/registry.js';
-import { isPaused, pauseExpired, pauseOf, sitePauses } from '../core/site-pause.js';
+import { isPaused, isRepause, israelTime, pauseExpired, pauseOf, sitePauses } from '../core/site-pause.js';
 import { beginBudgetSession, budgetSummary, endBudgetSession } from '../core/site-budget.js';
 import { resumeCheck } from './site-resume.js';
 import { enabledCompanies, runCompaniesToCompletion } from '../companies/run.js';
+import { dailySendLimit } from '../apply/pacing.js';
 
 export type HuntTrigger = 'manual' | 'schedule' | 'task' | 'cli';
 
@@ -59,6 +60,8 @@ export interface HuntSummary {
   paused?: Record<string, { reason: string; until: string }>;
   /** resume checks of sites whose pause had run out */
   resumed?: Array<{ site: string; resumed: boolean; detail: string }>;
+  /** sites challenged again after a pause during this hunt: paused for 7 days (a notification says so too) */
+  repaused?: Array<{ site: string; label: string; until: string; untilText: string; reason: string }>;
   /** page loads per budgeted site (e.g. JobKarov) */
   pageLoads?: Record<string, { used: number; max: number }>;
   /** the companies step (the first one): how long it took, in milliseconds */
@@ -178,19 +181,23 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       );
     }
     // paused sites whose pause ran out: one session check each; resumed only if the site serves its real page
+    // that check is the FIRST thing loaded on the site after the pause; when it passes, it is also the login check
     const resumed: NonNullable<HuntSummary['resumed']> = [];
+    const resumeSessions = new Map<string, SessionInfo>();
     for (const site of SITES.filter((x) => x.enabled && adapters[x.id])) {
       const pz = pauseOf(site.id);
       if (!pz || !pauseExpired(pz)) continue;
-      const endR = step(`checking whether ${site.displayName} serves its page again (paused: ${pz.reason})`);
+      const endR = step(`checking whether ${site.displayName} serves its page again (paused: ${pz.reason}) — one session check`);
       const r = await resumeCheck(site.id, opts.checkSiteSession ?? checkSiteSession);
       resumed.push({ site: site.id, resumed: r.resumed, detail: r.detail });
+      if (r.resumed && r.session) resumeSessions.set(site.id, r.session);
       endR(r.resumed ? 'done' : 'failed', r.detail);
+      if (r.repaused) L.error({ site: site.id, until: r.repaused.until }, `${site.displayName}: ${r.detail}`);
     }
     const pausedNow = (id: string) => isPaused(id);
     for (const site of SITES.filter((x) => x.enabled && adapters[x.id] && pausedNow(x.id))) {
       step(`${site.displayName}: paused — ${pauseOf(site.id)!.reason}`);
-      Object.assign(p.steps[p.steps.length - 1]!, { state: 'skipped', detail: `left out of this run; resume check from ${pauseOf(site.id)!.until.slice(0, 16).replace('T', ' ')} UTC (or Settings → Resume)` });
+      Object.assign(p.steps[p.steps.length - 1]!, { state: 'skipped', detail: `left out of this run; paused until ${israelTime(pauseOf(site.id)!.until)} Israel time, then one check at the next Run & send (or Settings → Resume)` });
     }
 
     // the sites this hunt can apply on (an adapter and an apply flow), each with its own login; paused ones are left out
@@ -200,7 +207,8 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     for (const site of applySites) {
       end = step(`checking the ${site.displayName} login`);
       const check = site.id === 'drushim' ? (opts.checkSession ?? checkDrushimSession) : () => (opts.checkSiteSession ?? checkSiteSession)(site.id);
-      const session = await check().catch((e: unknown): SessionInfo => ({ state: 'unknown', checkedAt: nowIso(), detail: String(e) }));
+      // just resumed: its resume check already read the login — no second load right after it
+      const session = resumeSessions.get(site.id) ?? (await check().catch((e: unknown): SessionInfo => ({ state: 'unknown', checkedAt: nowIso(), detail: String(e) })));
       sessions.set(site.id, session);
       if (session.state === 'logged_in') {
         const n = repo.requeueLoginFailures(site.id);
@@ -253,7 +261,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
         .filter((j) => j.site === site.id)
         .map((j) => ({ ...j, r: rankStoredJob(j, j.score, prefs).rank ?? -Infinity }))
         .sort((x, y) => y.r - x.r)
-        .slice(0, Math.max(0, limits.dailyApplyLimit - repo.submittedToday(site.id)));
+        .slice(0, Math.max(0, dailySendLimit(site.id, prefs) - repo.submittedToday(site.id)));
       if (sessions.get(site.id)?.state === 'logged_out' || getSession(site.id).state === 'logged_out') {
         loggedOut.push(site.displayName);
         if (mine.length) waiting.push(`${mine.length} on ${site.displayName}`);
@@ -307,6 +315,17 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
     const pz = sitePauses();
     if (Object.keys(pz).length) summary.paused = Object.fromEntries(Object.entries(pz).map(([k, v]) => [k, { reason: v.reason, until: v.until }]));
     if (resumed.length) summary.resumed = resumed;
+    // challenged again after a pause (at its check, or soon after it resumed): 7 days — always told, toast setting or not
+    const repaused = Object.entries(pz)
+      .filter(([, v]) => isRepause(v) && v.since >= startedAt)
+      .map(([site, v]) => ({ site, label: SITES.find((x) => x.id === site)?.displayName ?? site, until: v.until, untilText: israelTime(v.until), reason: v.reason }));
+    let repausedText = '';
+    if (repaused.length) {
+      summary.repaused = repaused;
+      const text = (repausedText = repaused.map((r) => `${r.label} was challenged again after its pause (${r.reason}) — paused for 7 days, until ${r.untilText} (Israel time)`).join(' · '));
+      summary.note = summary.note ? `${text} · ${summary.note}` : text;
+      if (!scheduleSettings().toast) (opts.notify ?? showToast)('JobHunter: site paused for 7 days', text);
+    }
     if (companiesMs !== null) summary.companiesMs = companiesMs;
     const loads = budgetSummary();
     if (Object.keys(loads).length) summary.pageLoads = loads;
@@ -319,7 +338,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       const body = summary.loginNeeded
         ? `Log in to Drushim again. Found ${summary.found} new job(s), discovery only.`
         : `Found ${summary.found} · skipped ${skippedN} · ready for review ${summary.readyForReview} · auto-submitted ${summary.autoSubmitted} · failed ${summary.failed}`;
-      (opts.notify ?? showToast)('JobHunter hunt finished', body);
+      (opts.notify ?? showToast)(repausedText ? 'JobHunter: site paused for 7 days' : 'JobHunter hunt finished', repausedText ? `${repausedText} · ${body}` : body);
     }
     p.step = 'done';
     return { ...summary, id: huntId, candidates: candidates.length, prepared, before, after: repo.statusCounts() };
@@ -367,7 +386,7 @@ export function doneReport(h: HuntSummary & { error?: string }, still: string[])
     if (h.companiesMs !== undefined) out.push(`companies first: ${Math.round(h.companiesMs / 1000)}s`);
     for (const r of h.resumed ?? []) out.push(`${SITES.find((x) => x.id === r.site)?.displayName ?? r.site}: ${r.detail}`);
     for (const [site, v] of Object.entries(h.paused ?? {})) {
-      out.push(`${SITES.find((x) => x.id === site)?.displayName ?? site} paused: ${v.reason} — left out; resume check from ${v.until.slice(0, 16).replace('T', ' ')} UTC (or Settings → Resume)`);
+      out.push(`${SITES.find((x) => x.id === site)?.displayName ?? site}: paused until ${israelTime(v.until)} (Israel time) — ${v.reason}; left out, then one check at the next Run & send (or Settings → Resume)`);
     }
     for (const [site, c] of Object.entries(h.pageLoads ?? {})) {
       if (Number.isFinite(c.max)) out.push(`${SITES.find((x) => x.id === site)?.displayName ?? site}: ${c.used} of ${c.max} page loads used this session`);
