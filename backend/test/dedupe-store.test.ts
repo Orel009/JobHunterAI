@@ -135,8 +135,10 @@ describe('final check before every send', () => {
     db.prepare("UPDATE jobs SET status = 'submitted_manual', applied_manually_at = ? WHERE id = ?").run(day(2), li.id);
     const dr = add('drushim', '10', 'Hooli', 'Backend Developer');
     expect(repo.sentSameJob(dr, 14)).toMatchObject({ id: li.id, site: 'linkedin' });
-    db.prepare('UPDATE jobs SET applied_manually_at = ? WHERE id = ?').run(day(20), li.id);
-    expect(repo.sentSameJob(dr, 14)).toBeNull();
+    // an "I applied" 20 days ago (a send time never moves, so another pair)
+    const old = add('linkedin', '11', 'Initrode', 'Backend Developer');
+    db.prepare("UPDATE jobs SET status = 'submitted_manual', applied_manually_at = ? WHERE id = ?").run(day(20), old.id);
+    expect(repo.sentSameJob(add('drushim', '12', 'Initrode', 'Backend Developer'), 14)).toBeNull();
     expect(repo.sentSameJob({ id: 'x', companyNorm: 'חסוי', titleNorm: 'backend developer' }, 14)).toBeNull();
   });
   it('jobId helper sanity', () => expect(jobId('drushim', '1')).toBe(add('drushim', '1').id));

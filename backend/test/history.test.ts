@@ -23,7 +23,8 @@ function seed() {
     const job = repo.getJob(jobId('drushim', id))!;
     const plan: ApplyPlan = { jobId: job.id, site: 'drushim', createdAt: at, cv: { lang: 'he', cvName: 'קורות חיים - דוגמה.pdf', hebrewRatio: 1, threshold: 0.2 }, fields: [], readiness: 'ready', notes: [] };
     const app = apps.savePlan(job, plan, 'needs_review');
-    apps.update(app.id, { status: 'submitted', submitted: true, screenshotBefore: `app${app.id}-before.png`, confirmationText: 'עבודה טובה!' });
+    // the send time set once, at the time given (a send time never moves afterwards)
+    apps.update(app.id, { status: 'submitted', screenshotBefore: `app${app.id}-before.png`, confirmationText: 'עבודה טובה!' });
     db.prepare('UPDATE applications SET submitted_at = ? WHERE id = ?').run(at, app.id);
     repo.setStatus(job.id, 'submitted', 'submitted');
     return job.id;
@@ -72,7 +73,7 @@ describe('History', () => {
     const csv = historyCsv(historyEntries(db, prefs));
     const lines = csv.replace(/^﻿/, '').trim().split('\r\n');
     expect(csv.startsWith('﻿')).toBe(true);
-    expect(lines[0]).toBe('applied_at,site,company,title,url,role_type,cv,rank,score,how,outcome,outcome_on,outcome_history,notes');
+    expect(lines[0]).toBe('applied_at_israel,applied_at_utc,site,company,title,url,role_type,cv,rank,score,how,outcome,outcome_on,outcome_history,notes');
     expect(lines).toHaveLength(4);
     expect(lines[3]).toContain('"Acme, Ltd ""Israel"""');
     expect(lines[3]).toContain('2026-10-27 interview');

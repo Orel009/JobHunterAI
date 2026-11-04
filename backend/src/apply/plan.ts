@@ -194,7 +194,7 @@ export class Applications {
     this.db
       .prepare(
         `UPDATE applications SET status = ?, screenshot_before = ?, screenshot_after = ?, confirmation_text = ?, error = ?, plan_json = ?, dry_run = ?,
-           submitted_at = CASE WHEN ? THEN ? ELSE submitted_at END, reviewed_at = CASE WHEN ? THEN ? ELSE reviewed_at END, updated_at = ? WHERE id = ?`,
+           submitted_at = CASE WHEN ? AND submitted_at IS NULL THEN ? ELSE submitted_at END, reviewed_at = CASE WHEN ? THEN ? ELSE reviewed_at END, updated_at = ? WHERE id = ?`,
       )
       .run(
         patch.status ?? cur.status,

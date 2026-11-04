@@ -47,6 +47,9 @@ interface Stats {
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
+/** a send time in Israel: "01/11/2026, 09:21" */
+const ilTime = (iso: string) =>
+  new Date(iso).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const shot = (f: string) => `/api/screenshots/${encodeURIComponent(f)}`;
 
 function RateTable({ title, rows }: { title: string; rows: Rate[] }) {
@@ -106,7 +109,7 @@ function OutcomeEditor({ e, onChanged }: { e: Entry; onChanged: () => void }) {
         </div>
         <ul className="timeline">
           <li className="muted">
-            {e.appliedAt.slice(0, 10)} applied{e.kind === 'submitted_manual' ? ' (by hand)' : e.autoGate ? ' (auto-submitted)' : ''}
+            {ilTime(e.appliedAt)} applied{e.kind === 'submitted_manual' ? ' (by hand)' : e.autoGate ? ' (auto-submitted)' : ''}
           </li>
           {e.outcomes.map((o) => (
             <li key={o.id}>
@@ -188,6 +191,8 @@ export function HistoryScreen() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  /** by the send time: newest first (the default) or oldest first */
+  const [oldestFirst, setOldestFirst] = useState(false);
   const qs = new URLSearchParams(Object.entries(f).filter(([, v]) => v)).toString();
 
   const load = useCallback(async () => {
@@ -260,7 +265,11 @@ export function HistoryScreen() {
       <table>
         <thead>
           <tr>
-            <th>Applied</th>
+            <th>
+              <button className="link" title="sort by the send time" onClick={() => setOldestFirst((x) => !x)}>
+                Applied (Israel time) {oldestFirst ? '▲' : '▼'}
+              </button>
+            </th>
             <th>Company</th>
             <th>Title</th>
             <th>Site</th>
@@ -271,10 +280,10 @@ export function HistoryScreen() {
           </tr>
         </thead>
         <tbody>
-          {entries.map((e) => (
+          {(oldestFirst ? [...entries].reverse() : entries).map((e) => (
             <Fragment key={e.jobId}>
               <tr className={open === e.jobId ? 'row open' : 'row'} onClick={() => setOpen(open === e.jobId ? null : e.jobId)}>
-                <td>{e.appliedAt.slice(0, 10)}</td>
+                <td title={e.appliedAt}>{ilTime(e.appliedAt)}</td>
                 <td dir="auto">{e.company}</td>
                 <td dir="auto">
                   <a href={e.url} target="_blank" rel="noreferrer" onClick={(x) => x.stopPropagation()}>

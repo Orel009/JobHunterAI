@@ -48,9 +48,28 @@ export interface HistoryEntry {
 export interface HistoryFilter {
   site?: string;
   outcome?: Outcome;
-  /** YYYY-MM-DD, inclusive, on the application date */
+  /** YYYY-MM-DD, inclusive, on the application date (Israel time) */
   from?: string;
   to?: string;
+}
+
+// ---------- Israel time ----------
+const IL = 'Asia/Jerusalem';
+const ilParts = (iso: string) =>
+  Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', { timeZone: IL, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(new Date(iso))
+      .map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+/** the calendar day in Israel of an ISO time ("2026-10-31T22:30:00Z" → "2026-11-01") */
+export function israelDay(iso: string): string {
+  const p = ilParts(iso);
+  return `${p.year}-${p.month}-${p.day}`;
+}
+/** "2026-11-01 09:21" in Israel time */
+export function israelDateTime(iso: string): string {
+  const p = ilParts(iso);
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
 function evidenceFiles(appId: number): { plan: string | null; response: string | null } {
@@ -110,10 +129,10 @@ export function historyEntries(db: DB, prefs: Prefs, f: HistoryFilter = {}): His
       notes: (notesFor.get(job.id) as { notes: string } | undefined)?.notes ?? '',
     });
   }
-  const day = (iso: string) => iso.slice(0, 10);
+  // the day you applied, in Israel; newest first, by the send time itself
   return out
-    .filter((e) => (!f.site || e.site === f.site) && (!f.outcome || e.outcome === f.outcome) && (!f.from || day(e.appliedAt) >= f.from) && (!f.to || day(e.appliedAt) <= f.to))
-    .sort((a, b) => b.appliedAt.localeCompare(a.appliedAt));
+    .filter((e) => (!f.site || e.site === f.site) && (!f.outcome || e.outcome === f.outcome) && (!f.from || israelDay(e.appliedAt) >= f.from) && (!f.to || israelDay(e.appliedAt) <= f.to))
+    .sort((a, b) => Date.parse(b.appliedAt) - Date.parse(a.appliedAt) || a.jobId.localeCompare(b.jobId));
 }
 
 const isDay = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
@@ -139,10 +158,11 @@ const csvCell = (v: unknown) => {
 };
 
 export function historyCsv(entries: HistoryEntry[]): string {
-  const head = ['applied_at', 'site', 'company', 'title', 'url', 'role_type', 'cv', 'rank', 'score', 'how', 'outcome', 'outcome_on', 'outcome_history', 'notes'];
+  const head = ['applied_at_israel', 'applied_at_utc', 'site', 'company', 'title', 'url', 'role_type', 'cv', 'rank', 'score', 'how', 'outcome', 'outcome_on', 'outcome_history', 'notes'];
   const lines = entries.map((e) =>
     [
-      e.appliedAt.slice(0, 10),
+      israelDateTime(e.appliedAt),
+      e.appliedAt,
       e.site,
       e.company,
       e.title,
@@ -165,9 +185,9 @@ export function historyCsv(entries: HistoryEntry[]): string {
 }
 
 // ---------- stats ----------
-/** Sunday of the week of an ISO date (YYYY-MM-DD), the Israeli work week. */
+/** Sunday of the week of an ISO date or time (its day in Israel), the Israeli work week. */
 export function weekStart(iso: string): string {
-  const d = new Date(`${iso.slice(0, 10)}T12:00:00Z`);
+  const d = new Date(`${iso.length > 10 ? israelDay(iso) : iso}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() - d.getUTCDay());
   return d.toISOString().slice(0, 10);
 }
