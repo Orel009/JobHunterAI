@@ -14,7 +14,7 @@ import { Repo } from '../db/repo.js';
 import { log } from '../log.js';
 import { Applications } from '../apply/plan.js';
 import { prepareJobs } from '../apply/service.js';
-import { checkDrushimSession, checkSiteSession, getSession, type SessionInfo } from '../browser/site-session.js';
+import { checkDrushimSession, checkSiteSession, getSession, resumeSessionCheck, type SessionInfo } from '../browser/site-session.js';
 import { hasApplyFlow } from '../apply/drivers.js';
 import { effectiveLimits, loadPrefs } from '../core/prefs.js';
 import { rankStoredJob } from '../core/rank.js';
@@ -188,7 +188,7 @@ export async function runHunt(db: DB, opts: HuntOptions = {}): Promise<HuntResul
       const pz = pauseOf(site.id);
       if (!pz || !autoCheckDue(pz)) continue; // still running, or disabled (manual resume only)
       const endR = step(`checking whether ${site.displayName} serves its page again (paused: ${pz.reason}) — one session check`);
-      const r = await resumeCheck(site.id, opts.checkSiteSession ?? checkSiteSession);
+      const r = await resumeCheck(site.id, opts.checkSiteSession ?? resumeSessionCheck);
       resumed.push({ site: site.id, resumed: r.resumed, detail: r.detail });
       if (r.resumed && r.session) resumeSessions.set(site.id, r.session);
       endR(r.resumed ? 'done' : 'failed', r.detail);

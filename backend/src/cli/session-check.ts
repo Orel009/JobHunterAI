@@ -4,6 +4,7 @@
  */
 import { config } from '../config.js';
 import { pausedText } from '../core/site-pause.js';
+import { exitCleanly } from '../log.js';
 import { profileInUse, PROFILE_IN_USE } from '../browser/chrome.js';
 import { siteBrowser } from '../browser/session.js';
 import { formatSessionReport, sessionReport } from '../browser/session-report.js';
@@ -11,19 +12,19 @@ import { formatSessionReport, sessionReport } from '../browser/session-report.js
 const site = process.argv[2] ?? 'drushim';
 if (site !== 'drushim' && site !== 'alljobs' && site !== 'jobmaster' && site !== 'jobnet' && site !== 'jobkarov') {
   console.error('session checks exist for drushim, alljobs, jobmaster, jobnet and jobkarov');
-  process.exit(1);
+  await exitCleanly(1);
 }
 const paused = pausedText(site);
 if (paused && !process.argv.includes('--anyway')) {
   console.error(`${paused}. Not checking it (Settings → Resume runs the one check that can resume it; --anyway checks regardless).`);
-  process.exit(2);
+  await exitCleanly(2);
 }
 if (profileInUse(config.paths.browserProfile)) {
   console.error(PROFILE_IN_USE);
-  process.exit(1);
+  await exitCleanly(1);
 }
 console.log(`browser: ${siteBrowser().label} · profile: ${config.paths.browserProfile}`);
-const r = await sessionReport(config.paths.browserProfile, site);
+const r = await sessionReport(config.paths.browserProfile, site, { evenIfPaused: process.argv.includes('--anyway') });
 console.log(formatSessionReport(r));
 if (r.session.state === 'logged_out') console.log(`\nLog in with: npm run login -- ${site}${site === 'drushim' ? ' (or the dashboard button)' : ''}`);
 if (r.session.state === 'logged_in') {
@@ -32,4 +33,4 @@ if (r.session.state === 'logged_in') {
   const n = new Repo(await getDb()).requeueLoginFailures(site);
   if (n) console.log(`${n} job(s) that failed on "not logged in" are back in the queue.`);
 }
-process.exit(0);
+await exitCleanly(0);

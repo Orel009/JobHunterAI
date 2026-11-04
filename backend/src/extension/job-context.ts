@@ -13,6 +13,18 @@ import { comeetPageUrl, comeetPositionsUrl, comeetToken, type ComeetPosition } f
 import { wkJobUrl, type WkJob } from '../companies/workable.js';
 import { decodeEntities, isLinkedInHost } from '../linkedin/parse.js';
 import { isIndeedHost } from '../alerts/assisted.js';
+import { pausedText } from '../core/site-pause.js';
+import { SITES } from '../sites/registry.js';
+
+/** A job board that is paused / disabled, by host ("www.drushim.co.il" → the pause text), or null. */
+function pausedSiteOf(host: string): string | null {
+  const h = host.toLowerCase().replace(/^www\./, '');
+  for (const s of SITES) {
+    const base = new URL(s.loginUrl).hostname.toLowerCase().replace(/^www\./, '');
+    if (h === base || h.endsWith(`.${base}`)) return pausedText(s.id, s.displayName);
+  }
+  return null;
+}
 import { text } from '../sites/jobmaster/parse.js';
 
 export interface JobContext {
@@ -118,6 +130,8 @@ export async function fetchJobContext(url: string, fetchImpl: typeof fetch = fet
     const u = new URL(url);
     if (!/^https?:$/.test(u.protocol)) return { ok: false, error: 'not a web address' };
     if (isLinkedInHost(url) || isIndeedHost(url)) return { ok: false, error: 'LinkedIn / Indeed pages are never fetched (manual only)' };
+    const paused = pausedSiteOf(u.hostname);
+    if (paused) return { ok: false, error: `${paused} — its pages are not fetched while paused (the page you have open is used)` };
     result = (await workable(u, fetchImpl)) ?? (await greenhouse(u, fetchImpl)) ?? (await smartrecruiters(u, fetchImpl)) ?? (await comeet(u, fetchImpl)) ?? (await generic(u, fetchImpl));
     if (result.ok && result.context.text.length < MIN_TEXT) result = { ok: false, error: `${result.context.source} gave no job text` };
   } catch (e) {

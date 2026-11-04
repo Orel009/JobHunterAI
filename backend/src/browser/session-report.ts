@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { checkSiteSession, type SessionInfo } from './site-session.js';
+import { checkSiteSession, type SessionCheckOptions, type SessionInfo } from './site-session.js';
 
 export interface CookieInfo {
   domain: string;
@@ -52,14 +52,14 @@ export interface SessionReport {
   lost: CookieInfo[];
 }
 
-export async function sessionReport(profileDir: string, site: string): Promise<SessionReport> {
+export async function sessionReport(profileDir: string, site: string, opts: SessionCheckOptions = {}): Promise<SessionReport> {
   const saved = savedCookies(profileDir, site);
   let seen: CookieInfo[] = [];
   const session = await checkSiteSession(site, async (ctx) => {
     seen = (await ctx.cookies())
       .filter((c) => c.domain.includes(site))
       .map((c) => ({ domain: c.domain, name: c.name, expires: c.expires === -1 ? null : new Date(c.expires * 1000).toISOString() }));
-  });
+  }, opts);
   const key = (c: CookieInfo) => `${c.domain}|${c.name}`;
   const seenKeys = new Set(seen.map(key));
   return { session, saved, seen, lost: saved.filter((c) => !seenKeys.has(key(c))) };

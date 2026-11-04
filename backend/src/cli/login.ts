@@ -13,22 +13,24 @@ import { CHROME_MISSING_HELP, findChrome, profileInUse, PROFILE_IN_USE } from '.
 import { formatSessionReport, sessionReport } from '../browser/session-report.js';
 import { checkLoginPage } from '../browser/login-page.js';
 import { pausedText } from '../core/site-pause.js';
+import { exitCleanly } from '../log.js';
 
 const site = process.argv[2];
-const entry = SITES.find((s) => s.id === site);
-if (!entry) {
+const found = SITES.find((s) => s.id === site);
+if (!found) {
   console.error(`usage: npm run login -- <${SITES.map((s) => s.id).join('|')}>`);
-  process.exit(1);
+  await exitCleanly(1);
 }
+const entry = found!;
 const profile = config.paths.browserProfile;
 const paused = pausedText(entry.id, entry.displayName);
 if (paused && !process.argv.includes('--anyway')) {
   console.error(`${paused}. Not opening it (npm run login -- ${entry.id} --anyway to open it regardless).`);
-  process.exit(2);
+  await exitCleanly(2);
 }
 if (profileInUse(profile)) {
   console.error(PROFILE_IN_USE);
-  process.exit(1);
+  await exitCleanly(1);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -41,7 +43,7 @@ if (!pre.ok) {
     console.error(`  Not opening it. Open ${entry.loginUrl} in your own browser to see when the site is back, then run this again`);
     console.error(`  (or: npm run login -- ${entry.id} --anyway).\n`);
     console.log(`SESSION_RESULT ${JSON.stringify({ site: entry.id, state: 'unknown', checkedAt: new Date().toISOString(), detail: `${entry.id}: login page not available — ${pre.reason}` })}`);
-    process.exit(2);
+    await exitCleanly(2);
   }
 } else console.log(`  ${entry.loginUrl}: ${pre.reason}`);
 const chrome = findChrome();
@@ -78,8 +80,8 @@ if (chrome) {
 }
 
 console.log('\nChecking the session with the same profile (browser restarted, in the background)…');
-const report = await sessionReport(profile, entry.id);
+const report = await sessionReport(profile, entry.id, { evenIfPaused: process.argv.includes('--anyway') });
 console.log(formatSessionReport(report));
 // one machine-readable line for the dashboard, which started this command
 console.log(`SESSION_RESULT ${JSON.stringify({ site: entry.id, ...report.session })}`);
-process.exit(0);
+await exitCleanly(0);

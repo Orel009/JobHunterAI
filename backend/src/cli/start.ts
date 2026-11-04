@@ -44,9 +44,14 @@ function fail(he: string, en: string, fixHe: string, fixEn: string): void {
   console.log(`${c.red('✗')} ${en}\n  ${he}\n  → ${fixEn}\n  → ${fixHe}`);
   if (!DOCTOR) {
     console.log(c.red('\nStartup stopped at the first failing check. / ההפעלה נעצרה בבדיקה הראשונה שנכשלה.'));
+    logApi?.flushLogSync(); // the log is written out before the exit (never "sonic boom is not ready yet")
     process.exit(1);
   }
 }
+/** the logger, once config is loaded (before that nothing has logged, and process.exit is safe) */
+let logApi: typeof import('../log.js') | null = null;
+/** Exits after the log is written out. */
+const quit = async (code: number): Promise<never> => (logApi ? logApi.exitCleanly(code) : process.exit(code));
 
 async function ask(question: string): Promise<boolean> {
   if (NO_BROWSER) return false; // scheduled run: nobody is there to answer
@@ -62,16 +67,6 @@ async function ask(question: string): Promise<boolean> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Total VRAM in MB of the largest NVIDIA GPU (nvidia-smi), or null when unavailable. */
-function gpuMemoryMb(): number | null {
-  try {
-    const out = execSync('nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits', { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString();
-    const vals = out.split(/\r?\n/).map((l) => Number(l.trim())).filter((n) => n > 0);
-    return vals.length ? Math.max(...vals) : null;
-  } catch {
-    return null;
-  }
-}
 
 // ---------- check: .env (before anything imports config) ----------
 const envFile = path.join(ROOT, '.env');
@@ -96,6 +91,7 @@ try {
   process.exit(1);
 }
 ok('.env valid');
+logApi = await import('../log.js');
 
 // ---------- hunt while JobHunter is already running: let the running app do it ----------
 if (HUNT && (NO_BROWSER || SEND)) {
@@ -104,7 +100,7 @@ if (HUNT && (NO_BROWSER || SEND)) {
   if (up) {
     const r = await fetch(`${base}/api/hunt`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ trigger: NO_BROWSER ? 'task' : 'manual' }) }).catch(() => null);
     console.log(r?.ok ? 'JobHunter is already running: it runs this hunt now (summary in the dashboard).' : `JobHunter is running but did not start the hunt: ${r ? await r.text() : 'no answer'}`);
-    if (!SEND || !r?.ok) process.exit(r?.ok ? 0 : 1);
+    if (!SEND || !r?.ok) await quit(r?.ok ? 0 : 1);
     // --send: wait for the running app to finish, then print its summary
     const { doneReport } = await import('../pipeline/hunt.js');
     type St = { huntRunning: boolean; huntProgress: { step: string; current: string | null } | null; lastHunt: Parameters<typeof doneReport>[0] | null; stillRunning: string[] };
@@ -120,7 +116,7 @@ if (HUNT && (NO_BROWSER || SEND)) {
     }
     if (st?.lastHunt) for (const l of doneReport(st.lastHunt, st.stillRunning)) console.log(`  ${l}`);
     console.log('  (the dashboard is still open in the running JobHunter — close it there)');
-    process.exit(0);
+    await quit(0);
   }
 }
 
@@ -172,21 +168,18 @@ if (providers.includes('ollama')) {
       if (!have(models, m)) llmProblem(`המודל ${m} לא מותקן`, `Model ${m} is not installed`, `יש להריץ: ollama pull ${m}`, `Run: ollama pull ${m}`);
     }
     if (required.length && required.every((m) => have(models, m))) ok(`local model(s): ${required.join(', ')}`);
-    // does the model fit the GPU?
-    const vram = gpuMemoryMb();
+    // where does the model run? nvidia-smi (PATH, System32, NVSMI), then Ollama's own report after loading it
+    const { gpuVerdict, ollamaPlacement, probeNvidiaSmi } = await import('../llm/gpu.js');
+    const nvidia = probeNvidiaSmi();
     for (const m of required) {
       const sizeMb = (have(models, m)?.size ?? 0) / 1024 / 1024;
       if (!sizeMb) continue;
-      if (vram === null) {
-        warn('לא נמצא GPU של NVIDIA (nvidia-smi) — מודל מקומי ירוץ לאט על המעבד', `No NVIDIA GPU found (nvidia-smi) — ${m} will run slowly on the CPU`, 'כדאי לבחור מודל קטן יותר או ספק API במסך Settings', 'Pick a smaller model or an API provider on the Settings screen');
-      } else if (sizeMb > vram * 0.9) {
-        warn(
-          `המודל ${m} (${(sizeMb / 1024).toFixed(1)}GB) גדול מזיכרון ה-GPU (${(vram / 1024).toFixed(1)}GB)`,
-          `${m} (${(sizeMb / 1024).toFixed(1)} GB) does not fit the GPU (${(vram / 1024).toFixed(1)} GB VRAM)`,
-          'יש לבחור מודל מקומי קטן יותר (למשל גרסת 4B) או ספק API במסך Settings',
-          'Choose a smaller local model (e.g. a 4B variant) or an API provider on the Settings screen',
-        );
-      } else ok(`${m} fits the GPU (${(sizeMb / 1024).toFixed(1)} of ${(vram / 1024).toFixed(1)} GB)`);
+      console.log(`… loading ${m} in Ollama to see where it runs (ollama ps)`);
+      const where = await ollamaPlacement(config.OLLAMA_URL, m);
+      const v = gpuVerdict(m, nvidia, where, sizeMb);
+      if (v.level === 'ok') ok(v.text);
+      else if (v.level === 'info') console.log(`${c.yellow('i')} ${v.text}`);
+      else warn(`המודל ${m} רץ (או עלול לרוץ) על המעבד (CPU) — איטי`, v.text, 'כדאי לבדוק את דרייבר ה-NVIDIA (מנהל ההתקנים / הפעלה מחדש), או לבחור מודל קטן יותר או ספק API במסך Settings', 'Check the NVIDIA driver (Device Manager, or restart after a driver update), or pick a smaller model / an API provider on the Settings screen');
     }
   }
 }
@@ -333,29 +326,49 @@ else {
   else fail('אין דפדפן: Chrome לא נמצא ו-Chromium לא מותקן', 'No browser: Chrome not found and the bundled Chromium is not installed', 'יש להתקין את Google Chrome', 'Install Google Chrome');
 }
 
-// ---------- check 6: Drushim session ----------
+// ---------- check 6: paused sites, then the Drushim session ----------
+// a paused / disabled site is not loaded at all: no session check, no login window — only "paused until …"
 const { checkDrushimSession, getSession } = await import('../browser/site-session.js');
-console.log('… checking the Drushim session (headless browser)');
-let session = profileInUse(config.paths.browserProfile)
-  ? { state: 'unknown' as const, checkedAt: null, detail: PROFILE_IN_USE }
-  : await checkDrushimSession();
-if (session.state === 'logged_in') ok('Drushim: logged in');
-else if (session.state === 'logged_out') {
-  warn('אין חיבור לדרושים — ההגשה תהיה מושבתת', 'Not logged in to Drushim — applying will be disabled', 'יש ללחוץ "Open the login window" ב-dashboard, או להריץ: npm run login -- drushim', 'Click "Open the login window" in the dashboard, or run: npm run login -- drushim');
-  // on a fresh installation the setup wizard has a login step
-  if (!DOCTOR && !ONBOARDING && (await ask('Open the Drushim login window now? / לפתוח עכשיו חלון התחברות לדרושים?'))) {
-    execSync(`"${process.execPath}" "${TSX_CLI}" src/cli/login.ts drushim`, { cwd: BACKEND, stdio: 'inherit' });
-    session = await checkDrushimSession();
-    if (session.state === 'logged_in') ok('Drushim: logged in');
-    else warn('עדיין אין חיבור — ההפעלה ממשיכה בלי אפשרות הגשה', 'Still not logged in — continuing with applying disabled');
-  }
-} else warn(`מצב החיבור לדרושים לא ידוע: ${session.detail}`, `Drushim session unknown: ${session.detail}`, 'אם השרת כבר רץ, יש לסגור אותו ולנסות שוב', 'If JobHunter is already running, close it and try again');
+const { isPaused, pauseBadgeText, sitePauses } = await import('../core/site-pause.js');
+const { SITES: siteList } = await import('../sites/registry.js');
+for (const [id, p] of Object.entries(sitePauses())) {
+  const label = siteList.find((s) => s.id === id)?.displayName ?? id;
+  console.log(`${c.yellow('⏸')} ${pauseBadgeText(label, p)} (Israel time) — ${p.reason}; not loaded at startup (no session check, no login window)`);
+}
+/** Runs the login window; a refusal or a closed window is an outcome (false), never a startup failure. */
+const { runLoginWindow } = await import('../browser/login-window.js');
+const runLogin = (site: string): boolean => {
+  const r = runLoginWindow(`"${process.execPath}" "${TSX_CLI}" src/cli/login.ts ${site}`, BACKEND);
+  if (!r.ok) warn('חלון ההתחברות לא הושלם — ההפעלה ממשיכה', `The login window did not finish (${r.why}) — continuing`);
+  return r.ok;
+};
+if (isPaused('drushim')) {
+  // nothing to do: the badge above says until when; the first Drushim action after it is its one resume check
+} else {
+  console.log('… checking the Drushim session (headless browser)');
+  let session = profileInUse(config.paths.browserProfile)
+    ? { state: 'unknown' as const, checkedAt: null, detail: PROFILE_IN_USE, blocked: undefined as string | undefined }
+    : await checkDrushimSession();
+  if (session.state === 'logged_in') ok('Drushim: logged in');
+  else if (session.blocked) {
+    const p = (await import('../core/site-pause.js')).pauseOf('drushim');
+    warn('דרושים הציג הגנת בוטים — האתר מושהה', `Drushim showed bot protection (${session.blocked}) — ${p ? pauseBadgeText('Drushim', p) : 'paused'} (Israel time)`, 'אין מה לעשות — ניתן להגיש ידנית מהדפדפן הרגיל', 'Nothing to do now; apply by hand from your regular browser meanwhile');
+  } else if (session.state === 'logged_out') {
+    warn('אין חיבור לדרושים — ההגשה תהיה מושבתת', 'Not logged in to Drushim — applying will be disabled', 'יש ללחוץ "Open the login window" ב-dashboard, או להריץ: npm run login -- drushim', 'Click "Open the login window" in the dashboard, or run: npm run login -- drushim');
+    // on a fresh installation the setup wizard has a login step
+    if (!DOCTOR && !ONBOARDING && (await ask('Open the Drushim login window now? / לפתוח עכשיו חלון התחברות לדרושים?')) && runLogin('drushim') && !isPaused('drushim')) {
+      session = await checkDrushimSession();
+      if (session.state === 'logged_in') ok('Drushim: logged in');
+      else warn('עדיין אין חיבור — ההפעלה ממשיכה בלי אפשרות הגשה', 'Still not logged in — continuing with applying disabled');
+    }
+  } else warn(`מצב החיבור לדרושים לא ידוע: ${session.detail}`, `Drushim session unknown: ${session.detail}`, 'אם השרת כבר רץ, יש לסגור אותו ולנסות שוב', 'If JobHunter is already running, close it and try again');
+}
 
 if (DOCTOR) {
   console.log(`\n${c.bold('Doctor report')}: ${failures.length} failed, ${warnings.length} warning(s). Nothing was changed.`);
   for (const f of failures) console.log(`  ${c.red('✗')} ${f}`);
   for (const w of warnings) console.log(`  ${c.yellow('!')} ${w}`);
-  process.exit(failures.length ? 1 : 0);
+  await quit(failures.length ? 1 : 0);
 }
 
 // ---------- check 7: frontend build + server ----------
@@ -408,7 +421,7 @@ async function shutdown(code = 0) {
   } catch {
     /* already closed */
   }
-  process.exit(code);
+  await quit(code);
 }
 process.on('SIGINT', () => void shutdown(0));
 process.on('SIGTERM', () => void shutdown(0));
@@ -422,7 +435,7 @@ console.log(config.DRY_RUN ? c.bold(c.yellow('   DRY RUN — nothing is sent   /
 console.log(line);
 const llmLabel = (t: { provider: string; model: string }) => `${t.provider}:${t.model || '(not set)'}`;
 console.log(`  model          ${llmLabel(tasks.analyze)}${llmLabel(tasks.write) !== llmLabel(tasks.analyze) ? ` (write: ${llmLabel(tasks.write)})` : ''}`);
-console.log(`  Drushim login  ${getSession('drushim').state === 'logged_in' ? c.green('yes') : c.red(getSession('drushim').state === 'logged_out' ? 'NO (applying disabled)' : 'unknown')}`);
+console.log(`  Drushim login  ${isPaused('drushim') ? c.yellow('not checked — paused') : getSession('drushim').state === 'logged_in' ? c.green('yes') : c.red(getSession('drushim').state === 'logged_out' ? 'NO (applying disabled)' : 'unknown')}`);
 const { dailySendLimit } = await import('../apply/pacing.js');
 console.log(`  applied today  ${Object.entries(repo.submittedTodayBySite()).map(([s, n]) => `${s} ${n}/${dailySendLimit(s)}`).join(' · ') || `0 (limit per site: Drushim ${dailySendLimit('drushim')}, others up to ${limits.dailyApplyLimit})`}`);
 console.log(`  pending answers ${pendingQ}`);

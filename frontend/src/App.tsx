@@ -98,7 +98,7 @@ export function App() {
       <LlmOffer onChange={refresh} />
       {status?.dryRun === false && <div className="banner live-banner">DRY_RUN is OFF — approving in the review queue submits real applications.</div>}
       {error && <div className="banner error">{error} — is JobHunter running (npm start)?</div>}
-      {status?.sessions.drushim?.state === 'logged_out' && onboarding === false && (
+      {status?.sessions.drushim?.state === 'logged_out' && !status?.pauses?.drushim && onboarding === false && (
         <div className="banner error">
           <div dir="rtl">אין חיבור לדרושים — ההגשה מושבתת. יש לפתוח את חלון ההתחברות, להתחבר ולסגור את החלון.</div>
           <div dir="ltr">

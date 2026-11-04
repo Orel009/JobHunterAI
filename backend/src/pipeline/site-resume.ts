@@ -5,7 +5,7 @@
  * its end. Used by Settings → Resume (any time) and by Run & send once a pause has run out.
  */
 import type { DB } from '../db/index.js';
-import { checkSiteSession, type SessionInfo } from '../browser/site-session.js';
+import { resumeSessionCheck, type SessionInfo } from '../browser/site-session.js';
 import { REPAUSE_HOURS, isRepause, israelTime, pauseOf, pauseSite, unpauseSite } from '../core/site-pause.js';
 import { startTask } from './runner.js';
 
@@ -38,7 +38,7 @@ export function decideResume(site: string, info: SessionInfo): ResumeResult {
   return { site, resumed: true, detail: `resumed: the site serves its page again (${info.state === 'logged_in' ? 'logged in' : info.state === 'logged_out' ? 'NOT logged in — log in again' : info.detail})`, session: info };
 }
 
-export async function resumeCheck(site: string, check: (site: string) => Promise<SessionInfo> = checkSiteSession): Promise<ResumeResult> {
+export async function resumeCheck(site: string, check: (site: string) => Promise<SessionInfo> = resumeSessionCheck): Promise<ResumeResult> {
   if (!pauseOf(site)) return { site, resumed: true, detail: 'not paused', session: null };
   const info = await check(site).catch((e: unknown): SessionInfo => ({ state: 'unknown', checkedAt: new Date().toISOString(), detail: e instanceof Error ? e.message : String(e) }));
   return decideResume(site, info);

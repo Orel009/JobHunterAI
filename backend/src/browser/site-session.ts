@@ -10,7 +10,7 @@ import { JM_BASE, loginState as jmLoginState } from '../sites/jobmaster/parse.js
 import { JN_BASE, sendFormUrl as jnSendFormUrl } from '../sites/jobnet/parse.js';
 import { sendFormLoginState as jnLoginState } from '../sites/jobnet/apply.js';
 import { JK_BASE } from '../sites/jobkarov/parse.js';
-import { pauseSite } from '../core/site-pause.js';
+import { pauseSite, pausedText } from '../core/site-pause.js';
 import { useLoad } from '../core/site-budget.js';
 import { jkSessionVerdict, readLogin as jkReadLogin, type JkSessionEvidence } from '../sites/jobkarov/apply.js';
 
@@ -24,7 +24,37 @@ export interface SessionInfo {
   blocked?: string;
   /** the site served its normal page (a paused site resumes only on this) */
   realPage?: boolean;
+  /** not checked: the site is paused / disabled, so nothing was loaded */
+  paused?: boolean;
 }
+
+export interface SessionCheckOptions {
+  /**
+   * The one check allowed on a paused site: the resume check (Run & send after the pause, Settings → Resume), or an
+   * explicit --anyway. Without it a paused site is never loaded.
+   */
+  evenIfPaused?: boolean;
+}
+
+/** A paused / disabled site is not loaded at all: the answer says so, nothing is opened. */
+export function refusedWhilePaused(site: string, opts: SessionCheckOptions = {}): SessionInfo | null {
+  if (opts.evenIfPaused) return null;
+  const text = pausedText(site, SITE_LABEL[site] ?? site);
+  return text ? { state: 'unknown', checkedAt: null, detail: `${text} — not loaded (no session check while paused)`, paused: true } : null;
+}
+const SITE_LABEL: Record<string, string> = { drushim: 'Drushim', alljobs: 'AllJobs', jobmaster: 'JobMaster', jobnet: 'Jobnet', jobkarov: 'JobKarov' };
+
+/**
+ * Radware Bot Manager's challenge lives on validate.perfdrive.com (its script on normal pages talks to other perfdrive
+ * hosts, never to this one). A page or request there = the site is challenging this browser.
+ */
+export const isChallengeUrl = (url: string): boolean => {
+  try {
+    return /(^|\.)validate\.perfdrive\.com$/i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+};
 
 const states: Record<string, SessionInfo> = {
   drushim: { state: 'unknown', checkedAt: null, detail: 'not checked yet' },
@@ -44,27 +74,41 @@ export const setSession = (site: string, s: SessionInfo) => {
 /**
  * Opens the persistent profile headless, loads the Drushim homepage and reads the seeker-details probe:
  * 200 = logged in, 401 = logged out. Closes the browser afterwards. Records the result.
+ * Bot protection (Radware: a request to validate.perfdrive.com, or a challenge page) is a block, never "logged out"
+ * (a challenged probe answers 401 / 403): the site pauses, as for any block.
+ * A paused site is not loaded at all unless this is its resume check (opts.evenIfPaused).
  * onContext runs on the fresh context first (e.g. to read which cookies survived the restart).
  */
-export async function checkDrushimSession(onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
+export async function checkDrushimSession(onContext?: (ctx: BrowserContext) => Promise<void>, opts: SessionCheckOptions = {}): Promise<SessionInfo> {
+  const refused = refusedWhilePaused('drushim', opts);
+  if (refused) return refused;
   let info: SessionInfo;
   try {
     const ctx = await getContext({ headless: true });
     await onContext?.(ctx);
     const page = await getPage({ headless: true });
+    let challenge: string | null = null;
+    const watch = (url: string) => {
+      if (!challenge && isChallengeUrl(url)) challenge = 'radware bot protection (validate.perfdrive.com)';
+    };
+    page.on('request', (r) => watch(r.url()));
+    page.on('framenavigated', (f) => watch(f.url()));
     // the first probe is often 401 until the site refreshes its token; wait for the settled answer
     const probe = watchSessionProbe(page, 30_000);
-    await page.goto(cfg.baseUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    const res = await page.goto(cfg.baseUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
     const state = await probe.settle();
+    const blocked = challenge ?? (await detectBlock(page, res?.status()));
     const now = new Date().toISOString();
     const seen = probe.statuses.join('→') || 'none';
-    if (state === 'unknown') info = { state: 'unknown', checkedAt: now, detail: 'session probe not seen (site changed or slow?)' };
+    if (blocked) info = { state: 'unknown', checkedAt: now, detail: `drushim: ${blocked} — not bypassed (probe ${seen})`, blocked, realPage: false };
+    else if (state === 'unknown') info = { state: 'unknown', checkedAt: now, detail: 'session probe not seen (site changed or slow?)' };
     else info = { state, checkedAt: now, detail: `probe ${seen}` };
   } catch (e) {
     info = { state: 'unknown', checkedAt: new Date().toISOString(), detail: e instanceof Error ? e.message.split('\n')[0]! : String(e) };
   } finally {
     await closeContext();
   }
+  if (info.blocked) pauseSite('drushim', info.blocked); // the same pause checkSiteSession would set (never shortened)
   setSession('drushim', info);
   return info;
 }
@@ -216,8 +260,13 @@ export async function checkJobKarovSession(onContext?: (ctx: BrowserContext) => 
   return info;
 }
 
-/** The session check of a site (sites without one answer "unknown"). A check that hits a block pauses the site for 48h. */
-export async function checkSiteSession(site: string, onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
+/**
+ * The session check of a site (sites without one answer "unknown"). A check that hits a block pauses the site for 48h.
+ * A paused / disabled site is not loaded at all, unless this is its resume check (opts.evenIfPaused).
+ */
+export async function checkSiteSession(site: string, onContext?: (ctx: BrowserContext) => Promise<void>, opts: SessionCheckOptions = {}): Promise<SessionInfo> {
+  const refused = refusedWhilePaused(site, opts);
+  if (refused) return refused;
   const info = await runSiteCheck(site, onContext);
   if (info.blocked) pauseSite(site, info.blocked);
   // the site's normal page = the check could tell logged in / out (JobKarov tells it apart itself); unknown = not shown
@@ -225,8 +274,11 @@ export async function checkSiteSession(site: string, onContext?: (ctx: BrowserCo
   return info;
 }
 
+/** The resume check of a paused site: the one session check allowed while it is paused. */
+export const resumeSessionCheck = (site: string): Promise<SessionInfo> => checkSiteSession(site, undefined, { evenIfPaused: true });
+
 function runSiteCheck(site: string, onContext?: (ctx: BrowserContext) => Promise<void>): Promise<SessionInfo> {
-  if (site === 'drushim') return checkDrushimSession(onContext);
+  if (site === 'drushim') return checkDrushimSession(onContext, { evenIfPaused: true }); // checkSiteSession decided already
   if (site === 'alljobs') return checkAllJobsSession(onContext);
   if (site === 'jobmaster') return checkJobMasterSession(onContext);
   if (site === 'jobnet') return checkJobnetSession(onContext);

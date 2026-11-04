@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { Writable } from 'node:stream';
@@ -37,7 +38,22 @@ const ringStream = new Writable({
   },
 });
 
-const fileDest = READONLY ? null : pino.destination({ dest: path.join(config.paths.logs, 'jobhunter.log'), mkdir: true, sync: false });
+/**
+ * The log file, opened HERE synchronously and handed to pino as a file descriptor: the stream is ready at once, so
+ * pino's exit hook (flushSync on process.exit) can never meet a file that is still opening ("sonic boom is not ready
+ * yet" — a CLI that exited right after its first log line crashed with it). Writes stay asynchronous.
+ */
+function openLogFile(): number | null {
+  if (READONLY) return null;
+  try {
+    fs.mkdirSync(config.paths.logs, { recursive: true });
+    return fs.openSync(path.join(config.paths.logs, 'jobhunter.log'), 'a');
+  } catch {
+    return null; // no log file (read-only folder, locked file): the console and the dashboard still get every line
+  }
+}
+const logFd = openLogFile();
+const fileDest = logFd === null ? null : pino.destination({ dest: logFd, sync: false });
 const pretty = pino.transport({ target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss' } });
 
 export const log = pino(
@@ -48,3 +64,36 @@ export const log = pino(
     { stream: ringStream, level: config.LOG_LEVEL },
   ]),
 );
+
+const within = (ms: number, p: Promise<unknown>) => Promise.race([p, new Promise((r) => setTimeout(r, ms).unref())]);
+
+/** Writes out what is still buffered (the log file, then the console transport). Never throws. */
+export async function flushLog(timeoutMs = 2000): Promise<void> {
+  try {
+    if (fileDest) await within(timeoutMs, new Promise<void>((r) => fileDest.flush(() => r())));
+    await within(timeoutMs, new Promise<void>((r) => log.flush(() => r())));
+  } catch {
+    /* best effort */
+  }
+}
+
+/** The same, synchronously (a synchronous exit path): the file is always open, so this never meets "not ready". */
+export function flushLogSync(): void {
+  try {
+    fileDest?.flushSync();
+  } catch {
+    /* best effort */
+  }
+  try {
+    (pretty as unknown as { flushSync?: () => void }).flushSync?.();
+  } catch {
+    /* best effort */
+  }
+}
+
+/** The way out of a CLI: flush the log, then exit with this code (never process.exit right after a log line). */
+export async function exitCleanly(code: number): Promise<never> {
+  process.exitCode = code;
+  await flushLog();
+  process.exit(code);
+}
